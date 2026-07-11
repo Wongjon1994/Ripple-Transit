@@ -13,10 +13,29 @@ import { useTheme } from "../lib/theme.js";
 
 const SG_CENTER: [number, number] = [1.3521, 103.8198];
 
-// OneMap raster tiles. `Default` = detailed street map; `Night` = dark variant.
-// https://www.onemap.gov.sg/docs/maps/ (raster basemaps, zoom 11–19).
-const TILE_URL = (variant: "Default" | "Night") =>
-  `https://www.onemap.gov.sg/maps/tiles/${variant}/{z}/{x}/{y}.png`;
+// Zoom tuned for Singapore transit planning: 12 shows a useful neighbourhood
+// span; 10 fits the whole island; 19 reaches building level.
+const DEFAULT_ZOOM = 12;
+const MIN_ZOOM = 10;
+const MAX_ZOOM = 19;
+const FIT_MAX_ZOOM = 16; // don't over-zoom short routes when fitting bounds
+
+// Modern OSM-based basemaps. Light = OpenStreetMap standard (colourful);
+// dark = CARTO dark_all (free, no key). Routing still uses OneMap.
+const TILES = {
+  light: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    subdomains: "abc",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · Routing by OneMap',
+  },
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+    subdomains: "abcd",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Routing by OneMap',
+  },
+} as const;
 
 /** Decode an encoded polyline (precision 5) into lat/lng pairs. */
 function decodePolyline(str: string): [number, number][] {
@@ -65,7 +84,10 @@ function FitBounds({
   const map = useMap();
   useEffect(() => {
     if (points.length >= 2) {
-      map.fitBounds(L.latLngBounds(points), { padding: [60, 60] });
+      map.fitBounds(L.latLngBounds(points), {
+        padding: [60, 60],
+        maxZoom: FIT_MAX_ZOOM,
+      });
     } else if (points.length === 1) {
       map.setView(points[0], 15);
     }
@@ -110,23 +132,24 @@ export function MapView({
   ];
 
   const { theme } = useTheme();
-  const variant = theme === "dark" ? "Night" : "Default";
+  const tiles = theme === "dark" ? TILES.dark : TILES.light;
 
   return (
     <MapContainer
       center={SG_CENTER}
-      zoom={12}
-      minZoom={11}
-      maxZoom={19}
+      zoom={DEFAULT_ZOOM}
+      minZoom={MIN_ZOOM}
+      maxZoom={MAX_ZOOM}
       className="h-full w-full"
       zoomControl
     >
       <TileLayer
-        key={variant}
-        url={TILE_URL(variant)}
-        attribution='&copy; <a href="https://www.onemap.gov.sg/">OneMap</a> &copy; contributors'
-        minZoom={11}
-        maxZoom={19}
+        key={theme}
+        url={tiles.url}
+        subdomains={tiles.subdomains}
+        attribution={tiles.attribution}
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
       />
       {legLines.map((l, i) => (
         <Polyline
