@@ -8,9 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -n server,client -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "tsx watch server/index.ts",
-    "dev:client": "vite",
+    "dev": "cross-env NODE_ENV=development PORT=5173 CLIENT_ORIGIN=http://localhost:5173 tsx watch server/index.ts",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",

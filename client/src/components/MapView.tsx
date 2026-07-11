@@ -9,8 +9,14 @@ import {
 import L from "leaflet";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
+import { useTheme } from "../lib/theme.js";
 
 const SG_CENTER: [number, number] = [1.3521, 103.8198];
+
+// OneMap raster tiles. `Default` = detailed street map; `Night` = dark variant.
+// https://www.onemap.gov.sg/docs/maps/ (raster basemaps, zoom 11–19).
+const TILE_URL = (variant: "Default" | "Night") =>
+  `https://www.onemap.gov.sg/maps/tiles/${variant}/{z}/{x}/{y}.png`;
 
 /** Decode an encoded polyline (precision 5) into lat/lng pairs. */
 function decodePolyline(str: string): [number, number][] {
@@ -103,15 +109,21 @@ export function MapView({
     ...legLines.flatMap((l) => l.coords),
   ];
 
+  const { theme } = useTheme();
+  const variant = theme === "dark" ? "Night" : "Default";
+
   return (
     <MapContainer
       center={SG_CENTER}
       zoom={12}
+      minZoom={11}
+      maxZoom={19}
       className="h-full w-full"
       zoomControl
     >
       <TileLayer
-        url="https://www.onemap.gov.sg/maps/tiles/Default/{z}/{x}/{y}.png"
+        key={variant}
+        url={TILE_URL(variant)}
         attribution='&copy; <a href="https://www.onemap.gov.sg/">OneMap</a> &copy; contributors'
         minZoom={11}
         maxZoom={19}

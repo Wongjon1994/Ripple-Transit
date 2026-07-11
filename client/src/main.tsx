@@ -6,6 +6,7 @@ import superjson from "superjson";
 import { Toaster } from "sonner";
 import { trpc } from "./lib/trpc.js";
 import { ThemeProvider } from "./lib/theme.js";
+import { AuthProvider } from "./lib/auth.js";
 import { App } from "./App.js";
 import "./index.css";
 
@@ -28,8 +29,10 @@ function Root() {
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <App />
-          <Toaster position="top-center" richColors />
+          <AuthProvider>
+            <App />
+            <Toaster position="top-center" richColors />
+          </AuthProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </trpc.Provider>

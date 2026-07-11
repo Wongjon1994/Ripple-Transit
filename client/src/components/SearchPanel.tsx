@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpDown, MapPin, Search, Loader2 } from "lucide-react";
+import { Link } from "wouter";
+import { ArrowUpDown, MapPin, Search, Loader2, Star } from "lucide-react";
 import { trpc } from "../lib/trpc.js";
+import { useAuth } from "../lib/auth.js";
 import { Button, Input, Card } from "./ui.js";
 import { cn } from "../lib/utils.js";
 import type { LatLng, SearchResult } from "@shared/types.js";
@@ -132,6 +134,8 @@ export function SearchPanel({
   onSearch,
   canSearch,
   isSearching,
+  onPickSavedLocation,
+  onPickFavourite,
 }: {
   fromText: string;
   toText: string;
@@ -147,7 +151,17 @@ export function SearchPanel({
   onSearch: () => void;
   canSearch: boolean;
   isSearching: boolean;
+  onPickSavedLocation: (p: Place) => void;
+  onPickFavourite: (origin: string, destination: string) => void;
 }) {
+  const { user } = useAuth();
+  const saved = trpc.savedLocations.list.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const favourites = trpc.favouriteRoutes.list.useQuery(undefined, {
+    enabled: !!user,
+  });
+
   return (
     <div className="flex flex-col gap-3">
       <div className="relative flex flex-col gap-3">
@@ -198,6 +212,7 @@ export function SearchPanel({
       </div>
 
       <Button
+        variant="accent"
         onClick={onSearch}
         disabled={!canSearch || isSearching}
         className={cn("mt-1")}
@@ -209,6 +224,81 @@ export function SearchPanel({
         )}
         {isSearching ? "Finding routes…" : "Search routes"}
       </Button>
+
+      {user && (saved.data?.length || favourites.data?.length) ? (
+        <div className="mt-1 flex flex-col gap-4">
+          {saved.data && saved.data.length > 0 && (
+            <section>
+              <SectionHeader title="Saved Locations" href="/saved-locations" />
+              <div className="flex flex-col">
+                {saved.data.map((loc) => (
+                  <button
+                    key={loc.id}
+                    onClick={() =>
+                      onPickSavedLocation({
+                        label: loc.label,
+                        point: { lat: Number(loc.lat), lng: Number(loc.lng) },
+                      })
+                    }
+                    className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ripple-muted/10"
+                  >
+                    <MapPin size={15} className="shrink-0 text-bus" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">
+                        {loc.label}
+                      </span>
+                      <span className="block truncate text-xs text-ripple-muted">
+                        {loc.address}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {favourites.data && favourites.data.length > 0 && (
+            <section>
+              <SectionHeader title="Favourite Routes" href="/favourite-routes" />
+              <div className="flex flex-col">
+                {favourites.data.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => onPickFavourite(r.origin, r.destination)}
+                    className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ripple-muted/10"
+                  >
+                    <Star size={15} className="shrink-0 text-warning" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">
+                        {r.label}
+                      </span>
+                      <span className="block truncate text-xs text-ripple-muted">
+                        {r.origin} → {r.destination}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SectionHeader({ title, href }: { title: string; href: string }) {
+  return (
+    <div className="mb-1 flex items-center justify-between">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+        {title}
+      </h3>
+      <Link
+        href={href}
+        className="text-xs font-medium text-bus hover:underline"
+      >
+        View all
+      </Link>
     </div>
   );
 }

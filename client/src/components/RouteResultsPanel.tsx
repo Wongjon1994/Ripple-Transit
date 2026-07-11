@@ -8,127 +8,182 @@ import {
   Clock,
   Wallet,
   Repeat,
+  BarChart3,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { Itinerary, RouteLeg } from "@shared/types.js";
 import { fmtDuration, fmtDistance, fmtTime, cn } from "../lib/utils.js";
-import { FeasibilityBadge, feasibilityMessage } from "./FeasibilityBadge.js";
-import { Button } from "./ui.js";
+import { lineColor, lineName } from "../lib/transit.js";
+import { FeasibilityBadge, FeasibilityCallout } from "./FeasibilityBadge.js";
+import { Button, Card } from "./ui.js";
 
-function LegIcon({ type }: { type: RouteLeg["type"] }) {
-  const common = "shrink-0";
-  if (type === "walk")
-    return <Footprints size={16} className={cn(common, "text-walk")} />;
-  if (type === "mrt")
-    return <TrainFront size={16} className={cn(common, "text-mrt")} />;
-  return <Bus size={16} className={cn(common, "text-bus")} />;
+function LegIconCircle({ leg }: { leg: RouteLeg }) {
+  const bg =
+    leg.type === "walk"
+      ? "#22c55e"
+      : leg.type === "bus"
+        ? "#3b82f6"
+        : lineColor(leg.lineCode);
+  const Icon =
+    leg.type === "walk" ? Footprints : leg.type === "bus" ? Bus : TrainFront;
+  return (
+    <span
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white"
+      style={{ background: bg }}
+    >
+      <Icon size={17} />
+    </span>
+  );
 }
 
-function LegRow({ leg, index }: { leg: RouteLeg; index: number }) {
+function legTitle(leg: RouteLeg): string {
+  if (leg.type === "walk")
+    return `${leg.startBusStop ?? leg.startStation ?? "Walk"} → ${leg.endBusStop ?? leg.endStation ?? "destination"}`;
+  if (leg.type === "mrt")
+    return `${leg.startStation ?? "Board"} → ${leg.endStation ?? "Alight"}`;
+  return `Bus ${leg.busNo ?? ""} → ${leg.endBusStop ?? "stop"}`;
+}
+
+function LegCard({ leg }: { leg: RouteLeg }) {
   const [showAlts, setShowAlts] = useState(false);
   const f = leg.busLegFeasibility;
 
   return (
-    <div className="flex gap-3 border-b border-[var(--border)] px-4 py-3 last:border-0">
-      <div className="flex flex-col items-center pt-0.5">
-        <LegIcon type={leg.type} />
-        <span className="mt-1 text-[10px] font-semibold text-ripple-muted">
-          {index + 1}
-        </span>
-      </div>
-      <div className="min-w-0 flex-1">
-        {/* Title line */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-semibold text-[var(--fg)]">
-            {leg.type === "walk" && `Walk · ${fmtDuration(leg.duration)}`}
-            {leg.type === "mrt" &&
-              `${leg.lineCode ? leg.lineCode + " " : ""}MRT · ${fmtDuration(leg.duration)}`}
-            {leg.type === "bus" && `Bus ${leg.busNo ?? ""} · ${fmtDuration(leg.duration)}`}
-          </span>
-          <span className="text-xs text-ripple-muted">
-            {fmtDistance(leg.distance)}
-            {leg.type === "mrt" && leg.numStops
-              ? ` · ${leg.numStops} stops`
-              : ""}
-          </span>
-        </div>
-
-        {/* Endpoints */}
-        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ripple-muted">
-          <span className="truncate">
-            {leg.startStation ?? leg.startBusStop ?? "Start"}
-          </span>
-          {(leg.endStation || leg.endBusStop) && (
-            <>
-              <ArrowRight size={11} className="shrink-0" />
-              <span className="truncate">
-                {leg.endStation ?? leg.endBusStop}
+    <Card className="p-4">
+      <div className="flex gap-3">
+        <LegIconCircle leg={leg} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <span className="text-sm font-semibold leading-snug text-[var(--fg)]">
+              {leg.type === "walk" ? "Walk" : legTitle(leg)}
+            </span>
+            {leg.type === "mrt" && leg.lineCode && (
+              <span
+                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
+                style={{ background: lineColor(leg.lineCode) }}
+              >
+                {leg.lineCode}
               </span>
-            </>
-          )}
-          {leg.type === "mrt" && leg.lineName && (
-            <span className="truncate">· {leg.lineName}</span>
-          )}
-        </div>
-
-        {/* Bus feasibility */}
-        {f && (
-          <div className="mt-2 rounded-md bg-ripple-muted/5 p-2.5">
-            <div className="flex items-center gap-2">
-              <FeasibilityBadge status={f.status} buffer={f.buffer} />
-              {f.eta && (
-                <span className="text-xs text-ripple-muted">
-                  ETA {fmtTime(f.eta)} · walk ~{f.walkMinutes} min
-                </span>
-              )}
-            </div>
-            <p className="mt-1.5 text-xs text-ripple-muted">
-              {feasibilityMessage(f.status, f.buffer)}
-            </p>
-
-            {f.alternatives.length > 0 && (
-              <div className="mt-2">
-                <button
-                  onClick={() => setShowAlts((s) => !s)}
-                  className="flex items-center gap-1 text-xs font-semibold text-bus hover:underline"
-                  aria-expanded={showAlts}
-                >
-                  <ChevronDown
-                    size={13}
-                    className={cn("transition-transform", showAlts && "rotate-180")}
-                  />
-                  {showAlts ? "Hide" : "Show"} {f.alternatives.length}{" "}
-                  alternative{f.alternatives.length > 1 ? "s" : ""}
-                </button>
-                {showAlts && (
-                  <ul className="mt-2 flex flex-col gap-1.5">
-                    {f.alternatives.map((alt, i) => (
-                      <li
-                        key={i}
-                        className="flex items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Bus size={13} className="text-bus" />
-                          <span className="text-sm font-semibold">
-                            {alt.serviceNo}
-                          </span>
-                          <span className="text-xs text-ripple-muted">
-                            {fmtTime(alt.eta)}
-                          </span>
-                        </div>
-                        <FeasibilityBadge
-                          status={alt.feasibility}
-                          buffer={alt.buffer}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
             )}
           </div>
-        )}
+
+          <div className="mt-0.5 text-xs text-ripple-muted">
+            {fmtDuration(leg.duration)} · {fmtDistance(leg.distance)}
+            {leg.type === "mrt" && leg.numStops ? ` · ${leg.numStops} stops` : ""}
+          </div>
+
+          {leg.type === "mrt" && (
+            <div className="mt-1 text-xs text-ripple-muted">
+              {lineName(leg.lineCode)}
+              {leg.startStation && leg.endStation ? (
+                <span className="inline-flex items-center gap-1">
+                  {" · "}
+                  {leg.startStation}
+                  <ArrowRight size={10} />
+                  {leg.endStation}
+                </span>
+              ) : null}
+            </div>
+          )}
+
+          {leg.type === "walk" && (leg.startBusStop || leg.endStation) && (
+            <div className="mt-1 flex items-center gap-1 text-xs text-ripple-muted">
+              <span className="truncate">{leg.startStation ?? "Start"}</span>
+              <ArrowRight size={10} className="shrink-0" />
+              <span className="truncate">{leg.endStation ?? "next stop"}</span>
+            </div>
+          )}
+
+          {f && (
+            <div className="mt-2.5">
+              <FeasibilityCallout status={f.status} buffer={f.buffer} />
+              {f.eta && (
+                <div className="mt-1.5 text-xs text-ripple-muted">
+                  Depart {fmtTime(f.eta)} · walk ~{f.walkMinutes} min
+                </div>
+              )}
+
+              <div className="mt-2 flex flex-wrap gap-2">
+                {leg.busStopCode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      toast.info(
+                        `Live arrivals at stop ${leg.busStopCode} — full board coming soon.`,
+                      )
+                    }
+                  >
+                    <BarChart3 size={14} /> View arrivals
+                  </Button>
+                )}
+                {f.alternatives.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAlts((s) => !s)}
+                    aria-expanded={showAlts}
+                  >
+                    <ChevronDown
+                      size={14}
+                      className={cn(
+                        "transition-transform",
+                        showAlts && "rotate-180",
+                      )}
+                    />
+                    {showAlts ? "Hide" : "Show"} {f.alternatives.length}{" "}
+                    alternative{f.alternatives.length > 1 ? "s" : ""}
+                  </Button>
+                )}
+              </div>
+
+              {showAlts && f.alternatives.length > 0 && (
+                <div className="mt-2.5">
+                  <p className="mb-2 text-xs text-ripple-muted">
+                    Other buses at this stop that might work better
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {f.alternatives.map((alt, i) => (
+                      <Card
+                        key={i}
+                        className="flex items-center justify-between gap-3 p-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-base font-bold leading-none">
+                            Bus {alt.serviceNo}
+                          </div>
+                          <div className="mt-1 text-xs text-ripple-muted">
+                            ETA {fmtTime(alt.eta)}
+                          </div>
+                          <div className="mt-1.5">
+                            <FeasibilityBadge
+                              status={alt.feasibility}
+                              buffer={alt.buffer}
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 whitespace-nowrap"
+                          onClick={() =>
+                            toast.success(
+                              `Bus ${alt.serviceNo} selected — arriving ${fmtTime(alt.eta)}.`,
+                            )
+                          }
+                        >
+                          Take this bus <ArrowRight size={14} />
+                        </Button>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -163,7 +218,6 @@ export function RouteResultsPanel({
 
   return (
     <div className="flex flex-col">
-      {/* Itinerary selector */}
       <div className="flex gap-2 overflow-x-auto p-3">
         {itineraries.map((it, i) => (
           <button
@@ -172,7 +226,7 @@ export function RouteResultsPanel({
             className={cn(
               "flex shrink-0 flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors",
               i === selected
-                ? "border-ripple-fg bg-ripple-muted/10"
+                ? "border-bus bg-bus/5"
                 : "border-[var(--border)] hover:bg-ripple-muted/5",
             )}
           >
@@ -189,7 +243,6 @@ export function RouteResultsPanel({
         ))}
       </div>
 
-      {/* Active itinerary summary */}
       <div className="flex items-center gap-4 border-y border-[var(--border)] bg-ripple-muted/5 px-4 py-2.5">
         <SummaryChip icon={Clock}>{fmtDuration(active.duration)}</SummaryChip>
         <SummaryChip icon={Wallet}>${active.fare.toFixed(2)}</SummaryChip>
@@ -198,15 +251,14 @@ export function RouteResultsPanel({
         </SummaryChip>
       </div>
 
-      {/* Legs */}
-      <div>
+      <div className="flex flex-col gap-2 p-3">
         {active.legs.map((leg, i) => (
-          <LegRow key={i} leg={leg} index={i} />
+          <LegCard key={i} leg={leg} />
         ))}
       </div>
 
       {onSave && (
-        <div className="p-3">
+        <div className="px-3 pb-3">
           <Button variant="outline" className="w-full" onClick={onSave}>
             Save this route
           </Button>

@@ -1,13 +1,31 @@
-import { Route, Switch, Link, useLocation } from "wouter";
-import { Moon, Sun, Waves } from "lucide-react";
+import { Route, Switch, Link, useLocation, Redirect } from "wouter";
+import { Moon, Sun, Waves, LogOut, User } from "lucide-react";
+import { toast } from "sonner";
 import { useTheme } from "./lib/theme.js";
+import { useAuth } from "./lib/auth.js";
+import { trpc } from "./lib/trpc.js";
 import { Home } from "./pages/Home.js";
+import { Login } from "./pages/Login.js";
+import { SavedLocations } from "./pages/SavedLocations.js";
+import { FavouriteRoutes } from "./pages/FavouriteRoutes.js";
+import { Settings } from "./pages/Settings.js";
 import { Button } from "./components/ui.js";
 import { cn } from "./lib/utils.js";
+import type { ReactNode } from "react";
 
 function Header() {
   const { theme, toggleTheme } = useTheme();
+  const { user, refetch } = useAuth();
   const [loc] = useLocation();
+  const utils = trpc.useUtils();
+
+  const logout = trpc.auth.logout.useMutation({
+    onSuccess: async () => {
+      await utils.auth.me.invalidate();
+      refetch();
+      toast.success("Signed out.");
+    },
+  });
 
   const nav = [
     { href: "/", label: "Map" },
@@ -34,7 +52,7 @@ function Header() {
             key={n.href}
             href={n.href}
             className={cn(
-              "rounded-md px-2.5 py-1.5 text-sm font-medium",
+              "hidden rounded-md px-2.5 py-1.5 text-sm font-medium sm:block",
               loc === n.href
                 ? "bg-ripple-muted/15 text-[var(--fg)]"
                 : "text-ripple-muted hover:text-[var(--fg)]",
@@ -43,37 +61,53 @@ function Header() {
             {n.label}
           </Link>
         ))}
+
         <Button
           variant="ghost"
           size="icon"
           onClick={toggleTheme}
           aria-label="Toggle theme"
-          className="ml-1"
         >
           {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
         </Button>
+
+        {user ? (
+          <div className="flex items-center gap-1.5 pl-1">
+            <span className="hidden max-w-[140px] truncate text-xs text-ripple-muted md:inline">
+              {user.email}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Sign out"
+              onClick={() => logout.mutate()}
+            >
+              <LogOut size={16} />
+            </Button>
+          </div>
+        ) : (
+          <Link href="/login">
+            <Button variant="outline" size="sm" className="ml-1">
+              <User size={15} /> Sign in
+            </Button>
+          </Link>
+        )}
       </nav>
     </header>
   );
 }
 
-function Placeholder({ title }: { title: string }) {
-  return (
-    <div className="flex h-full items-center justify-center p-8 text-center">
-      <div>
-        <h1 className="text-xl font-semibold">{title}</h1>
-        <p className="mt-2 text-sm text-ripple-muted">
-          This page arrives in a later phase.
-        </p>
-        <Link
-          href="/"
-          className="mt-4 inline-block text-sm font-medium text-bus hover:underline"
-        >
-          ← Back to map
-        </Link>
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-ripple-muted">
+        Loading…
       </div>
-    </div>
-  );
+    );
+  }
+  if (!user) return <Redirect to="/login" />;
+  return <>{children}</>;
 }
 
 export function App() {
@@ -83,17 +117,34 @@ export function App() {
       <div className="min-h-0 flex-1">
         <Switch>
           <Route path="/" component={Home} />
+          <Route path="/login" component={Login} />
           <Route path="/saved-locations">
-            <Placeholder title="Saved Locations" />
+            <RequireAuth>
+              <SavedLocations />
+            </RequireAuth>
           </Route>
           <Route path="/favourite-routes">
-            <Placeholder title="Favourite Routes" />
+            <RequireAuth>
+              <FavouriteRoutes />
+            </RequireAuth>
           </Route>
           <Route path="/settings">
-            <Placeholder title="Settings" />
+            <RequireAuth>
+              <Settings />
+            </RequireAuth>
           </Route>
           <Route>
-            <Placeholder title="Page not found" />
+            <div className="flex h-full items-center justify-center p-8 text-center">
+              <div>
+                <h1 className="text-xl font-semibold">Page not found</h1>
+                <Link
+                  href="/"
+                  className="mt-4 inline-block text-sm font-medium text-bus hover:underline"
+                >
+                  ← Back to map
+                </Link>
+              </div>
+            </div>
           </Route>
         </Switch>
       </div>

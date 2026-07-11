@@ -120,6 +120,22 @@ export function Home() {
             onSearch={handleSearch}
             canSearch={!!fromText.trim() && !!toText.trim()}
             isSearching={resolving || route.isFetching}
+            onPickSavedLocation={(p) => {
+              // Fill the first empty field (From, else To).
+              if (!fromText.trim()) {
+                setFrom(p.point);
+                setFromText(p.label);
+              } else {
+                setTo(p.point);
+                setToText(p.label);
+              }
+            }}
+            onPickFavourite={(origin, destination) => {
+              setFrom(null);
+              setTo(null);
+              setFromText(origin);
+              setToText(destination);
+            }}
           />
         </div>
 
