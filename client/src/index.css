@@ -91,6 +91,15 @@ body {
   color: var(--muted) !important;
 }
 
+/*
+ * CARTO dark_all is near-black; lift the basemap so streets, water and labels
+ * stay legible in dark mode. Only the tile pane is filtered — the route
+ * polylines and markers live in the overlay/marker panes, so they're unaffected.
+ */
+.dark .leaflet-tile-pane {
+  filter: brightness(1.9) contrast(1.05) saturate(1.15);
+}
+
 /* Thin, unobtrusive scrollbars */
 * {
   scrollbar-width: thin;
