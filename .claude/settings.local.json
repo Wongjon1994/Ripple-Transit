@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git init *)",
+      "Bash(git branch *)",
+      "Bash(npx tsc *)",
+      "Bash(curl -s 'http://localhost:3001/api/trpc/onemap.search?input=%7B%22json%22%3A%7B%22q%22%3A%22Raffles%20Place%22%7D%7D')",
+      "Bash(curl -s 'http://localhost:3001/api/trpc/here.usageStats')",
+      "Bash(npm install *)",
+      "Bash(npx vite *)",
+      "Bash(pkill -f \"tsx server/index.ts\")",
+      "Bash(pkill -f \"vite --port\")",
+      "Bash(pkill -f \"vite\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(curl -s http://localhost:5173/api/health)",
+      "Bash(lsof -iTCP:3001 -sTCP:LISTEN -n)",
+      "Bash(lsof -iTCP:5173 -sTCP:LISTEN -n)",
+      "Bash(timeout 5 npx tsx server/index.ts)",
+      "Bash(pkill -f concurrently)",
+      "Bash(pkill -f \"tsx watch\")",
+      "Bash(pkill -f \"server/index.ts\")",
+      "Bash(pkill -f \"node_modules/.bin/vite\")",
+      "Bash(pkill -f \"esbuild --service\")",
+      "Bash(npx vitest *)",
+      "Bash(git check-ignore *)",
+      "Bash(git add *)",
+      "Bash(grep -E \"^\\(\\\\.env$|node_modules/|data/|dist/\\)\")"
+    ]
+  }
+}
