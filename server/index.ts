@@ -14,6 +14,10 @@ const rootDir = resolve(__dirname, "..");
 async function main() {
   const app = express();
 
+  // Render (and most PaaS) terminate TLS at a proxy; trust it so secure
+  // cookies and req.protocol behave correctly.
+  if (isProd) app.set("trust proxy", 1);
+
   app.use(
     cors({
       origin: env.CLIENT_ORIGIN,

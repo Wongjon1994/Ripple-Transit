@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { db, libsql } from "../server/db/index.js";
 import { users, mrtLineStatuses } from "./schema.js";
 import { getUserByEmail } from "../server/db/helpers.js";
+import { isProd } from "../server/env.js";
 
 const MRT_LINES: { lineCode: string; message?: string }[] = [
   { lineCode: "NS" }, // North-South
@@ -25,16 +26,21 @@ async function main() {
   }
   console.log(`✓ Seeded ${MRT_LINES.length} MRT lines`);
 
-  // Seed a dev user (admin) so protected features work immediately.
-  const existing = await getUserByEmail(DEV_EMAIL);
-  if (!existing) {
-    const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
-    await db
-      .insert(users)
-      .values({ email: DEV_EMAIL, passwordHash, role: "admin" });
-    console.log(`✓ Created dev user  →  ${DEV_EMAIL} / ${DEV_PASSWORD}`);
+  // Seed a dev user (admin) so protected features work immediately — but never
+  // in production (no default admin account in a live deployment).
+  if (isProd) {
+    console.log("• Skipping dev user (NODE_ENV=production)");
   } else {
-    console.log(`• Dev user already exists (${DEV_EMAIL})`);
+    const existing = await getUserByEmail(DEV_EMAIL);
+    if (!existing) {
+      const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
+      await db
+        .insert(users)
+        .values({ email: DEV_EMAIL, passwordHash, role: "admin" });
+      console.log(`✓ Created dev user  →  ${DEV_EMAIL} / ${DEV_PASSWORD}`);
+    } else {
+      console.log(`• Dev user already exists (${DEV_EMAIL})`);
+    }
   }
 
   libsql.close();

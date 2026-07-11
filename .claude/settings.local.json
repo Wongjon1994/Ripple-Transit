@@ -32,7 +32,11 @@
       "Bash(gh auth *)",
       "Bash(git remote *)",
       "Bash(git push *)",
-      "Bash(pkill -f \"preview:serve\")"
+      "Bash(pkill -f \"preview:serve\")",
+      "Bash(curl -s 'http://localhost:8090/api/trpc/mrt.lineStatuses')",
+      "Bash(curl -s 'http://localhost:8090/api/trpc/savedLocations.list')",
+      "Bash(pkill -f \"PORT=8090\")",
+      "Bash(pkill -f \"start:prod\")"
     ]
   }
 }
