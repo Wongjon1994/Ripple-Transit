@@ -149,6 +149,7 @@ export function SearchPanel({
   isSearching,
   onPickSavedLocation,
   onPickFavourite,
+  showShortcuts = true,
 }: {
   fromText: string;
   toText: string;
@@ -166,6 +167,7 @@ export function SearchPanel({
   isSearching: boolean;
   onPickSavedLocation: (p: Place) => void;
   onPickFavourite: (origin: string, destination: string) => void;
+  showShortcuts?: boolean;
 }) {
   const { user } = useAuth();
   const saved = trpc.savedLocations.list.useQuery(undefined, {
@@ -289,7 +291,7 @@ export function SearchPanel({
         {isSearching ? "Finding routes…" : "Search routes"}
       </Button>
 
-      {user && (saved.data?.length || favourites.data?.length) ? (
+      {showShortcuts && user && (saved.data?.length || favourites.data?.length) ? (
         <div className="mt-1 flex flex-col gap-4">
           {saved.data && saved.data.length > 0 && (
             <section>

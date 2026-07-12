@@ -95,10 +95,14 @@ export function Home() {
     setPoint(p.point);
 
   return (
-    <div className="flex h-full flex-col md:flex-row">
-      {/* Sidebar */}
-      <aside className="z-10 flex w-full flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--bg)] md:w-[380px]">
-        <div className="p-4">
+    <div className="relative h-full md:flex md:overflow-hidden">
+      {/* Panel: bottom sheet on mobile, sidebar on desktop */}
+      <aside className="absolute inset-x-0 bottom-0 z-[500] flex max-h-[72%] flex-col overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[var(--border)] bg-[var(--bg)] shadow-[0_-4px_24px_rgba(0,0,0,0.18)] md:relative md:inset-auto md:z-10 md:max-h-none md:w-[380px] md:rounded-none md:border-r md:border-t-0 md:shadow-none">
+        {/* Grab handle (mobile only) */}
+        <div className="sticky top-0 z-10 flex shrink-0 justify-center bg-[var(--bg)] pb-1 pt-2 md:hidden">
+          <span className="h-1 w-10 rounded-full bg-ripple-muted/40" />
+        </div>
+        <div className="px-4 pb-4 pt-2 md:pt-4">
           <SearchPanel
             fromText={fromText}
             toText={toText}
@@ -136,6 +140,7 @@ export function Home() {
               setFromText(origin);
               setToText(destination);
             }}
+            showShortcuts={!routeParams}
           />
         </div>
 
@@ -168,8 +173,8 @@ export function Home() {
         )}
       </aside>
 
-      {/* Map */}
-      <main className="relative min-h-[300px] flex-1">
+      {/* Map: full-screen background on mobile, right pane on desktop */}
+      <main className="absolute inset-0 md:relative md:min-h-0 md:flex-1">
         <MapView
           origin={from}
           destination={to}
