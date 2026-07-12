@@ -67,6 +67,7 @@ export interface RouteLeg {
   endBusStop?: string;
   busStopCode?: string; // boarding stop code
   endBusStopCode?: string; // alighting stop code
+  trafficAlert?: string; // live traffic incident on this leg's road, if any
 
   // phase 12
   busLegFeasibility?: BusLegFeasibility;

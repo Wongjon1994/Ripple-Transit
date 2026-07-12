@@ -17,6 +17,11 @@ import {
 } from "../services/feasibility.js";
 import { weatherAt } from "../services/weather.js";
 import { computeRouteRisk } from "../services/risk.js";
+import {
+  getTrafficIncidents,
+  incidentsOnPath,
+  incidentLabel,
+} from "../services/traffic.js";
 import { getAllLineStatuses } from "../db/helpers.js";
 import type {
   Itinerary,
@@ -217,10 +222,11 @@ export const onemapRouter = router({
       itineraries = dedupeItineraries(itineraries);
       await enrichItineraries(itineraries);
 
-      // Context for per-option risk: weather at the origin + MRT disruptions.
-      const [wx, lineStatuses] = await Promise.all([
+      // Context for per-option risk: weather, MRT disruptions, live traffic.
+      const [wx, lineStatuses, incidents] = await Promise.all([
         weatherAt(input.start.lat, input.start.lng).catch(() => null),
         getAllLineStatuses().catch(() => []),
+        getTrafficIncidents().catch(() => []),
       ]);
       weather = wx;
       const disruptedLines = new Set(
@@ -228,9 +234,27 @@ export const onemapRouter = router({
           .filter((l) => l.status !== "operational")
           .map((l) => l.lineCode),
       );
-      const ctx = { wet: wx?.wet ?? false, disruptedLines };
+
       for (const it of itineraries) {
-        it.risk = computeRouteRisk(it, ctx);
+        // Flag bus legs whose road has a live traffic incident.
+        const trafficAlerts: { severe: boolean; label: string }[] = [];
+        for (const leg of it.legs) {
+          if (leg.type !== "bus") continue;
+          const hits = incidentsOnPath(
+            { polyline: leg.polyline, start: leg.startPoint, end: leg.endPoint },
+            incidents,
+          );
+          if (hits.length) {
+            leg.trafficAlert = incidentLabel(hits[0]);
+            for (const h of hits)
+              trafficAlerts.push({ severe: h.severe, label: incidentLabel(h) });
+          }
+        }
+        it.risk = computeRouteRisk(it, {
+          wet: wx?.wet ?? false,
+          disruptedLines,
+          trafficAlerts,
+        });
       }
     }
 

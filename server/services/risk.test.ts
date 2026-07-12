@@ -64,6 +64,16 @@ describe("computeRouteRisk", () => {
     expect(r.score).toBeGreaterThanOrEqual(2);
   });
 
+  it("raises risk for a live traffic incident on a bus leg", () => {
+    const base = computeRouteRisk(itin([walk(3), bus("ok")]), dry);
+    const withJam = computeRouteRisk(itin([walk(3), bus("ok")]), {
+      ...dry,
+      trafficAlerts: [{ severe: true, label: "Accident on AYE" }],
+    });
+    expect(withJam.score).toBeGreaterThan(base.score);
+    expect(withJam.reasons).toContain("Accident on AYE");
+  });
+
   it("adds rain exposure weighted by walking time", () => {
     const wet = { wet: true, disruptedLines: new Set<string>() };
     const light = computeRouteRisk(itin([walk(4), bus("ok")]), wet);

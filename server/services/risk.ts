@@ -3,6 +3,8 @@ import type { Itinerary, RouteRisk } from "../../shared/types.js";
 export interface RiskContext {
   wet: boolean;
   disruptedLines: Set<string>;
+  /** Live traffic incidents affecting this option's bus legs. */
+  trafficAlerts?: { severe: boolean; label: string }[];
 }
 
 /**
@@ -47,6 +49,13 @@ export function computeRouteRisk(
   if (disrupted.length) {
     score += 2;
     reasons.push(`${[...new Set(disrupted)].join(", ")} line disruption`);
+  }
+
+  // Live road traffic on a bus leg (accident / heavy traffic / breakdown).
+  if (ctx.trafficAlerts?.length) {
+    const severe = ctx.trafficAlerts.some((a) => a.severe);
+    score += severe ? 2 : 1;
+    reasons.push(ctx.trafficAlerts[0].label);
   }
 
   const walkMin = Math.round(

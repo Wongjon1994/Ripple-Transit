@@ -16,6 +16,7 @@ import {
   Cloud,
   Sun,
   Zap,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -120,6 +121,12 @@ function LegCard({ leg }: { leg: RouteLeg }) {
                 {leg.startBusStop}
               </span>
               {leg.busStopCode ? ` · ${leg.busStopCode}` : ""}
+            </div>
+          )}
+
+          {leg.type === "bus" && leg.trafficAlert && (
+            <div className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+              <TriangleAlert size={12} /> {leg.trafficAlert} — allow extra time
             </div>
           )}
 
