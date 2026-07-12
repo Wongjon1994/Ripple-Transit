@@ -7,10 +7,12 @@ services:
     runtime: node
     plan: free
     region: singapore
-    # Install devDeps too (vite/tailwind/tsc are needed to build the client).
-    buildCommand: npm ci --include=dev && npm run build
-    # Runs migrations + seed (MRT lines; no dev user in prod) then starts the server.
-    startCommand: npm run start:prod
+    # Install devDeps (vite/tailwind needed to build the client), build, then
+    # apply DB migrations + seed once at build time (env vars are available here).
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate && npm run db:seed
+    # Start the server directly so it begins listening immediately and the
+    # health check passes fast (no per-boot migration delay / restart loop).
+    startCommand: npm run start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
