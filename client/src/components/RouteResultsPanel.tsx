@@ -11,6 +11,11 @@ import {
   BarChart3,
   DoorOpen,
   RotateCcw,
+  ShieldCheck,
+  CloudRain,
+  Cloud,
+  Sun,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -18,7 +23,10 @@ import type {
   RouteLeg,
   BusLegFeasibility,
   BusAlternative,
+  WeatherContext,
+  RiskLevel,
 } from "@shared/types.js";
+import { RISK_COLORS, RISK_LABELS } from "@shared/types.js";
 import { fmtDuration, fmtDistance, fmtTime, cn } from "../lib/utils.js";
 import { lineColor, lineName } from "../lib/transit.js";
 import { FeasibilityBadge, FeasibilityCallout } from "./FeasibilityBadge.js";
@@ -273,6 +281,38 @@ function journeyModes(it: Itinerary): ModeChip[] {
     );
 }
 
+function RiskPill({ level }: { level: RiskLevel }) {
+  const color = RISK_COLORS[level];
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+      style={{ color, background: `${color}1a` }}
+    >
+      <ShieldCheck size={11} />
+      {RISK_LABELS[level]}
+    </span>
+  );
+}
+
+function WeatherBanner({ weather }: { weather: WeatherContext }) {
+  const Icon = weather.wet ? CloudRain : /cloud/i.test(weather.forecast) ? Cloud : Sun;
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 px-4 py-2 text-xs",
+        weather.wet ? "bg-warning/10 text-warning" : "bg-ripple-muted/8 text-ripple-muted",
+      )}
+    >
+      <Icon size={14} />
+      <span>
+        <span className="font-medium">{weather.forecast}</span> near{" "}
+        {weather.area}
+        {weather.wet ? " — bring an umbrella and allow extra time" : ""}
+      </span>
+    </div>
+  );
+}
+
 function SummaryChip({
   icon: Icon,
   children,
@@ -293,18 +333,35 @@ export function RouteResultsPanel({
   selected,
   onSelect,
   onSave,
+  weather,
 }: {
   itineraries: Itinerary[];
   selected: number;
   onSelect: (i: number) => void;
   onSave?: () => void;
+  weather?: WeatherContext | null;
 }) {
   if (itineraries.length === 0) return null;
   const active = itineraries[selected];
   const fastest = Math.min(...itineraries.map((it) => it.duration));
 
+  // Decision aids: which option is quickest vs most reliable.
+  const riskScore = (it: Itinerary) => it.risk?.score ?? 0;
+  const fastestIdx = itineraries.findIndex((it) => it.duration === fastest);
+  const mostReliableIdx = itineraries.reduce(
+    (best, it, i) => (riskScore(it) < riskScore(itineraries[best]) ? i : best),
+    0,
+  );
+  // Only surface a "Most reliable" tag when it's a genuinely safer, different pick.
+  const showReliableTag =
+    itineraries.length > 1 &&
+    mostReliableIdx !== fastestIdx &&
+    riskScore(itineraries[mostReliableIdx]) < riskScore(itineraries[fastestIdx]);
+
   return (
     <div className="flex flex-col">
+      {weather && <WeatherBanner weather={weather} />}
+
       <div className="p-3">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ripple-muted">
           {itineraries.length === 1
@@ -326,15 +383,27 @@ export function RouteResultsPanel({
                     : "border-[var(--border)] hover:bg-ripple-muted/5",
                 )}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-base font-semibold">
                     {fmtDuration(it.duration)}
                   </span>
-                  {dev === 0 ? (
-                    <span className="text-xs font-semibold text-ok">Fastest</span>
-                  ) : (
-                    <span className="text-xs text-ripple-muted">+{dev} min</span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {i === fastestIdx && (
+                      <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-ok">
+                        <Zap size={12} /> Fastest
+                      </span>
+                    )}
+                    {dev > 0 && (
+                      <span className="text-xs text-ripple-muted">
+                        +{dev} min
+                      </span>
+                    )}
+                    {showReliableTag && i === mostReliableIdx && (
+                      <span className="text-xs font-semibold text-bus">
+                        Most reliable
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
                   {modes.map((m, j) => (
@@ -356,12 +425,15 @@ export function RouteResultsPanel({
                     </span>
                   ))}
                 </div>
-                <span className="text-xs text-ripple-muted">
-                  ${it.fare.toFixed(2)} ·{" "}
-                  {it.transfers === 0
-                    ? "direct"
-                    : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
-                </span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-ripple-muted">
+                    ${it.fare.toFixed(2)} ·{" "}
+                    {it.transfers === 0
+                      ? "direct"
+                      : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
+                  </span>
+                  {it.risk && <RiskPill level={it.risk.level} />}
+                </div>
               </button>
             );
           })}
@@ -375,6 +447,15 @@ export function RouteResultsPanel({
           {active.transfers} transfer{active.transfers === 1 ? "" : "s"}
         </SummaryChip>
       </div>
+
+      {active.risk && active.risk.reasons.length > 0 && (
+        <div className="border-b border-[var(--border)] px-4 py-2 text-xs text-ripple-muted">
+          <span className="font-medium" style={{ color: RISK_COLORS[active.risk.level] }}>
+            {RISK_LABELS[active.risk.level]}
+          </span>{" "}
+          · {active.risk.reasons.join(" · ")}
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 p-3">
         {active.legs.map((leg, i) => (

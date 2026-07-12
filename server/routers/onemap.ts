@@ -15,7 +15,14 @@ import {
   computeBusFeasibility,
   type BusCandidate,
 } from "../services/feasibility.js";
-import type { Itinerary, RouteLeg } from "../../shared/types.js";
+import { weatherAt } from "../services/weather.js";
+import { computeRouteRisk } from "../services/risk.js";
+import { getAllLineStatuses } from "../db/helpers.js";
+import type {
+  Itinerary,
+  RouteLeg,
+  WeatherContext,
+} from "../../shared/types.js";
 
 const routeInput = z.object({
   start: z.object({ lat: z.number(), lng: z.number() }),
@@ -205,12 +212,29 @@ export const onemapRouter = router({
       });
     }
 
+    let weather: WeatherContext | null = null;
     if (input.mode === "TRANSIT") {
       itineraries = dedupeItineraries(itineraries);
       await enrichItineraries(itineraries);
+
+      // Context for per-option risk: weather at the origin + MRT disruptions.
+      const [wx, lineStatuses] = await Promise.all([
+        weatherAt(input.start.lat, input.start.lng).catch(() => null),
+        getAllLineStatuses().catch(() => []),
+      ]);
+      weather = wx;
+      const disruptedLines = new Set(
+        lineStatuses
+          .filter((l) => l.status !== "operational")
+          .map((l) => l.lineCode),
+      );
+      const ctx = { wet: wx?.wet ?? false, disruptedLines };
+      for (const it of itineraries) {
+        it.risk = computeRouteRisk(it, ctx);
+      }
     }
 
-    return { plan: { itineraries } };
+    return { plan: { itineraries }, weather };
   }),
 
   reverseGeocode: publicProcedure

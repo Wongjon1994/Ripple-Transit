@@ -72,16 +72,44 @@ export interface RouteLeg {
   busLegFeasibility?: BusLegFeasibility;
 }
 
+export type RiskLevel = "low" | "moderate" | "high";
+
+export interface RouteRisk {
+  level: RiskLevel;
+  score: number;
+  reasons: string[];
+}
+
+export interface WeatherContext {
+  area: string;
+  forecast: string; // e.g. "Light Rain", "Cloudy"
+  wet: boolean;
+}
+
 export interface Itinerary {
   duration: number; // seconds
   fare: number; // SGD
   transfers: number;
   legs: RouteLeg[];
+  risk?: RouteRisk;
 }
 
 export interface RoutePlan {
   plan: { itineraries: Itinerary[] };
+  weather?: WeatherContext | null;
 }
+
+export const RISK_COLORS: Record<RiskLevel, string> = {
+  low: "#10b981",
+  moderate: "#f59e0b",
+  high: "#dc2626",
+};
+
+export const RISK_LABELS: Record<RiskLevel, string> = {
+  low: "Low risk",
+  moderate: "Some risk",
+  high: "Risky",
+};
 
 export const TRANSIT_COLORS = {
   bus: "#3b82f6",

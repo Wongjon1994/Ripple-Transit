@@ -161,6 +161,7 @@ export function Home() {
                 selected={selected}
                 onSelect={setSelected}
                 onSave={() => toast.success("Route saving comes in Phase 11.")}
+                weather={route.data?.weather}
               />
             )}
           </div>
