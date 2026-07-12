@@ -18,6 +18,16 @@ async function main() {
   // cookies and req.protocol behave correctly.
   if (isProd) app.set("trust proxy", 1);
 
+  // Guard against deploying with an unconfigured database: a local file DB in
+  // production means DATABASE_URL/DATABASE_AUTH_TOKEN weren't set, and every
+  // DB query will fail. Fail loudly at boot instead of silently 500-ing.
+  if (isProd && env.DATABASE_URL.startsWith("file:")) {
+    console.error(
+      "\n✖ DATABASE_URL is a local file in production.\n" +
+        "  Set DATABASE_URL (libsql://…) and DATABASE_AUTH_TOKEN to your Turso DB.\n",
+    );
+  }
+
   app.use(
     cors({
       origin: env.CLIENT_ORIGIN,
