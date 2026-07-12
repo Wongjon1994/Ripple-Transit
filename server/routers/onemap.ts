@@ -6,9 +6,11 @@ import {
   oneMapRoute,
   getOneMapTokenInfo,
   forceRefreshOneMap,
+  mrtStationExits,
+  reverseGeocode,
 } from "../services/onemap.js";
 import { hereAutosuggest } from "../services/here.js";
-import { busArrivals } from "../services/lta.js";
+import { busArrivals, serviceConnects, haversineMeters } from "../services/lta.js";
 import {
   computeBusFeasibility,
   type BusCandidate,
@@ -36,38 +38,99 @@ function todayParts() {
   return { date, time };
 }
 
-/** Attach live bus-feasibility to each bus leg (best-effort, per-leg). */
-async function enrichFeasibility(itineraries: Itinerary[]): Promise<void> {
+/**
+ * Bus-leg feasibility. Only offers alternatives that keep you on the same
+ * service OR that also stop at your alighting stop (a genuine re-route to the
+ * same destination) — never unrelated buses that happen to share the stop.
+ */
+async function enrichBusLeg(
+  it: Itinerary,
+  leg: RouteLeg,
+  idx: number,
+  now: number,
+): Promise<void> {
+  const board = leg.busStopCode!;
+  const alight = leg.endBusStopCode;
+  const prev = it.legs[idx - 1];
+  const walkSeconds = prev?.type === "walk" ? prev.duration : 0;
+  try {
+    const { services } = await busArrivals(board);
+    const candidates: BusCandidate[] = [];
+    await Promise.all(
+      services.map(async (s) => {
+        const sameRoute = s.serviceNo === leg.busNo;
+        let reaches = sameRoute;
+        if (!reaches && alight) {
+          reaches = await serviceConnects(s.serviceNo, board, alight).catch(
+            () => false,
+          );
+        }
+        if (!reaches) return;
+        for (const nb of [s.nextBus, s.nextBus2, s.nextBus3]) {
+          if (nb)
+            candidates.push({
+              serviceNo: s.serviceNo,
+              eta: nb.estimatedArrival,
+              reroute: !sameRoute,
+            });
+        }
+      }),
+    );
+    leg.busLegFeasibility = computeBusFeasibility(
+      walkSeconds,
+      candidates,
+      leg.busNo,
+      now,
+    );
+  } catch {
+    leg.busLegFeasibility = {
+      status: "unknown",
+      buffer: 0,
+      eta: null,
+      walkMinutes: Math.round((walkSeconds / 60) * 10) / 10,
+      alternatives: [],
+    };
+  }
+}
+
+/** Pick the station exit closest to where you head next (best-effort). */
+async function enrichMrtExit(
+  it: Itinerary,
+  leg: RouteLeg,
+  idx: number,
+): Promise<void> {
+  if (!leg.endStation) return;
+  // Aim at the next leg's destination, or the itinerary's final point.
+  const next = it.legs[idx + 1];
+  const aim = next ? next.endPoint : it.legs[it.legs.length - 1].endPoint;
+  try {
+    const exits = await mrtStationExits(leg.endStation);
+    if (!exits.length) return;
+    let best = exits[0];
+    let bestD = Infinity;
+    for (const e of exits) {
+      const d = haversineMeters(aim, { lat: e.lat, lng: e.lng });
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    leg.exitName = best.name;
+  } catch {
+    /* no exit info — leave undefined */
+  }
+}
+
+/** Attach live feasibility (bus) and exit guidance (MRT) to every leg. */
+async function enrichItineraries(itineraries: Itinerary[]): Promise<void> {
   const now = Date.now();
   await Promise.all(
     itineraries.flatMap((it) =>
       it.legs.map(async (leg, idx) => {
-        if (leg.type !== "bus" || !leg.busStopCode) return;
-        // Walk time to the boarding stop = the immediately preceding walk leg.
-        const prev = it.legs[idx - 1];
-        const walkSeconds = prev?.type === "walk" ? prev.duration : 0;
-        try {
-          const { services } = await busArrivals(leg.busStopCode);
-          const candidates: BusCandidate[] = [];
-          for (const s of services) {
-            for (const nb of [s.nextBus, s.nextBus2, s.nextBus3]) {
-              if (nb) candidates.push({ serviceNo: s.serviceNo, eta: nb.estimatedArrival });
-            }
-          }
-          (leg as RouteLeg).busLegFeasibility = computeBusFeasibility(
-            walkSeconds,
-            candidates,
-            leg.busNo,
-            now,
-          );
-        } catch {
-          (leg as RouteLeg).busLegFeasibility = {
-            status: "unknown",
-            buffer: 0,
-            eta: null,
-            walkMinutes: Math.round((walkSeconds / 60) * 10) / 10,
-            alternatives: [],
-          };
+        if (leg.type === "bus" && leg.busStopCode) {
+          await enrichBusLeg(it, leg, idx, now);
+        } else if (leg.type === "mrt") {
+          await enrichMrtExit(it, leg, idx);
         }
       }),
     ),
@@ -115,11 +178,18 @@ export const onemapRouter = router({
     }
 
     if (input.mode === "TRANSIT") {
-      await enrichFeasibility(itineraries);
+      await enrichItineraries(itineraries);
     }
 
     return { plan: { itineraries } };
   }),
+
+  reverseGeocode: publicProcedure
+    .input(z.object({ lat: z.number(), lng: z.number() }))
+    .query(async ({ input }) => {
+      const label = await reverseGeocode(input.lat, input.lng);
+      return { label };
+    }),
 
   forceRefreshToken: adminProcedure
     .input(z.object({ email: z.string(), password: z.string() }))

@@ -150,3 +150,84 @@ export async function nearbyStops(
     .filter((s) => s.distance <= radius)
     .sort((a, b) => a.distance - b.distance);
 }
+
+// ── Bus routes (service → ordered stops), cached 24h ──────────
+// Used to decide whether a bus service connects a boarding stop to an alighting
+// stop (so we only offer alternatives that reach the same destination).
+interface BusRouteRow {
+  ServiceNo: string;
+  Direction: number;
+  StopSequence: number;
+  BusStopCode: string;
+}
+
+// index: serviceNo -> array of directions -> Map<stopCode, stopSequence>
+type RouteIndex = Map<string, Array<Map<string, number>>>;
+
+let routeIndexCache: { at: number; index: RouteIndex } | null = null;
+
+async function buildRouteIndex(): Promise<RouteIndex> {
+  const index: RouteIndex = new Map();
+  for (let skip = 0; skip < 60_000; skip += 500) {
+    const url = new URL(`${BASE}/BusRoutes`);
+    url.searchParams.set("$skip", String(skip));
+    const res = await fetch(url, {
+      headers: headers(),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) throw new Error(`LTA bus routes failed: ${res.status}`);
+    const data = (await res.json()) as { value: BusRouteRow[] };
+    if (!data.value?.length) break;
+    for (const r of data.value) {
+      let dirs = index.get(r.ServiceNo);
+      if (!dirs) {
+        dirs = [];
+        index.set(r.ServiceNo, dirs);
+      }
+      // Direction is 1 or 2.
+      const di = r.Direction - 1;
+      if (!dirs[di]) dirs[di] = new Map();
+      dirs[di].set(r.BusStopCode, r.StopSequence);
+    }
+    if (data.value.length < 500) break;
+  }
+  return index;
+}
+
+export async function getBusRouteIndex(): Promise<RouteIndex> {
+  if (routeIndexCache && Date.now() - routeIndexCache.at < STOPS_TTL_MS) {
+    return routeIndexCache.index;
+  }
+  const index = await buildRouteIndex();
+  routeIndexCache = { at: Date.now(), index };
+  return index;
+}
+
+/** Warm the route index in the background (e.g. at server startup). */
+export function warmBusRouteIndex(): void {
+  getBusRouteIndex().catch((err) =>
+    console.warn("Bus route index warm-up failed:", err?.message ?? err),
+  );
+}
+
+/**
+ * Does `serviceNo` travel from `boardCode` to `alightCode` (boarding before
+ * alighting) in at least one direction? i.e. can you take this bus from the
+ * boarding stop and reach the same alighting stop.
+ */
+export async function serviceConnects(
+  serviceNo: string,
+  boardCode: string,
+  alightCode: string,
+): Promise<boolean> {
+  const index = await getBusRouteIndex();
+  const dirs = index.get(serviceNo);
+  if (!dirs) return false;
+  for (const stops of dirs) {
+    if (!stops) continue;
+    const b = stops.get(boardCode);
+    const a = stops.get(alightCode);
+    if (b !== undefined && a !== undefined && b < a) return true;
+  }
+  return false;
+}

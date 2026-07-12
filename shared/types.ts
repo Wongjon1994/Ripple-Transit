@@ -25,6 +25,9 @@ export interface BusAlternative {
   eta: string; // ISO timestamp
   feasibility: Exclude<FeasibilityStatus, "unknown">;
   buffer: number; // minutes
+  /** false = a later arrival of the same service; true = a different service
+   *  that also reaches your alighting stop (a genuine re-route option). */
+  reroute: boolean;
 }
 
 export interface BusLegFeasibility {
@@ -51,12 +54,14 @@ export interface RouteLeg {
   startStation?: string;
   endStation?: string;
   numStops?: number;
+  exitName?: string; // e.g. "Exit B" — best exit for the onward journey
 
   // bus
   busNo?: string;
   startBusStop?: string;
   endBusStop?: string;
-  busStopCode?: string;
+  busStopCode?: string; // boarding stop code
+  endBusStopCode?: string; // alighting stop code
 
   // phase 12
   busLegFeasibility?: BusLegFeasibility;

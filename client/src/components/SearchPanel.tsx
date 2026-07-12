@@ -1,6 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ArrowUpDown, MapPin, Search, Loader2, Star } from "lucide-react";
+import {
+  ArrowUpDown,
+  MapPin,
+  Search,
+  Loader2,
+  Star,
+  LocateFixed,
+} from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { useAuth } from "../lib/auth.js";
 import { Button, Input, Card } from "./ui.js";
@@ -27,12 +35,14 @@ function LocationInput({
   onChange,
   onSelect,
   accent,
+  labelAction,
 }: {
   label: string;
   value: string;
   onChange: (text: string) => void;
   onSelect: (place: Place) => void;
   accent: string;
+  labelAction?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const debounced = useDebounced(value, 250);
@@ -57,13 +67,16 @@ function LocationInput({
 
   return (
     <div ref={boxRef} className="relative">
-      <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ripple-muted">
-        <span
-          className="inline-block h-2 w-2 rounded-full"
-          style={{ background: accent }}
-        />
-        {label}
-      </label>
+      <div className="mb-1 flex items-center justify-between">
+        <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: accent }}
+          />
+          {label}
+        </label>
+        {labelAction}
+      </div>
       <div className="relative">
         <MapPin
           size={15}
@@ -162,6 +175,42 @@ export function SearchPanel({
     enabled: !!user,
   });
 
+  const utils = trpc.useUtils();
+  const [locating, setLocating] = useState(false);
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation isn't supported by this browser.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const point = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        let label = "Current location";
+        try {
+          const r = await utils.onemap.reverseGeocode.fetch(point);
+          if (r.label) label = r.label;
+        } catch {
+          /* keep the generic label */
+        }
+        onFromText(label);
+        onFromSelect({ label, point });
+        setLocating(false);
+        toast.success("Using your current location");
+      },
+      (err) => {
+        setLocating(false);
+        toast.error(
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied."
+            : "Couldn't get your location.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10_000 },
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="relative flex flex-col gap-3">
@@ -171,6 +220,21 @@ export function SearchPanel({
           value={fromText}
           onChange={onFromText}
           onSelect={onFromSelect}
+          labelAction={
+            <button
+              type="button"
+              onClick={useCurrentLocation}
+              disabled={locating}
+              className="flex items-center gap-1 text-xs font-medium text-bus hover:underline disabled:opacity-60"
+            >
+              {locating ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <LocateFixed size={12} />
+              )}
+              Use my location
+            </button>
+          }
         />
         <button
           onClick={onSwap}

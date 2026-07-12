@@ -36,7 +36,30 @@
       "Bash(curl -s 'http://localhost:8090/api/trpc/mrt.lineStatuses')",
       "Bash(curl -s 'http://localhost:8090/api/trpc/savedLocations.list')",
       "Bash(pkill -f \"PORT=8090\")",
-      "Bash(pkill -f \"start:prod\")"
+      "Bash(pkill -f \"start:prod\")",
+      "Bash(export DATABASE_URL=\"libsql://ripple-transit-wongjon1994.aws-ap-northeast-1.turso.io\")",
+      "Bash(export DATABASE_AUTH_TOKEN=\"eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3ODM4Mzg0ODIsImlkIjoiMDE5ZjU1MGQtZDIwMS03OWYwLWEwN2ItZGMxM2EyZTIyOTAxIiwia2lkIjoic1BiLUV1SFFSUzVlalFvR0lIWlJuYXVqNUppWWpHMlRLY0V5YWFJa2oxTSIsInJpZCI6ImYxMTc5MTEyLWY2ZTgtNGZmNy1iNzlhLWVmYmRjZDVjOWZkYyJ9.bvCwDzyiEngOKgMY_kiD-jh70_zOVjrpbNAWxM1SH4AIHvZwn2HRPUPtXYSBxzuCcuY7fCMlfYzwm2qBRtMXBA\")",
+      "Bash(npx tsx -e ' *)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -s https://ripple-transit.onrender.com/)",
+      "Bash(curl -sI https://ripple-transit.onrender.com/assets/index-D765zJOA.css)",
+      "Bash(curl -s https://ripple-transit.onrender.com/assets/index-D765zJOA.css)",
+      "Bash(curl -sI https://ripple-transit.onrender.com/assets/index-B0DeB5Qf.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://ripple-transit.onrender.com/api/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://ripple-transit.onrender.com/)",
+      "Bash(curl -s 'https://ripple-transit.onrender.com/api/trpc/mrt.lineStatuses')",
+      "Bash(curl -s -G 'https://ripple-transit.onrender.com/api/trpc/onemap.search' --data-urlencode 'input={\"json\":{\"q\":\"Raffles Place\"}}')",
+      "Bash(curl -s 'https://ripple-transit.onrender.com/api/trpc/here.usageStats')",
+      "Bash(curl -s https://ripple-transit.onrender.com/api/health)",
+      "Bash(git reset *)",
+      "Bash(git restore *)",
+      "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(d\\);const v=j.value||[];console.log\\(\"total in page:\",v.length\\);console.log\\(\"sample row:\",JSON.stringify\\(v[0]\\)\\);}\\)')",
+      "Bash(curl -s 'https://www.onemap.gov.sg/api/common/elastic/search?searchVal=Farrer%20Road%20MRT%20Station%20Exit&returnGeom=Y&getAddrDetails=Y&pageNum=1')",
+      "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\(\"found:\",j.found\\);\\(j.results||[]\\).slice\\(0,6\\).forEach\\(r=>console.log\\(\" -\",r.SEARCHVAL,\"|\",r.LATITUDE,r.LONGITUDE\\)\\);}\\)')",
+      "Bash(curl -s -G 'http://localhost:5173/api/trpc/onemap.route' --data-urlencode 'input={\"json\":{\"start\":{\"lat\":1.3329,\"lng\":103.7436},\"end\":{\"lat\":1.3490,\"lng\":103.7495},\"mode\":\"TRANSIT\",\"date\":\"2026-07-13\",\"time\":\"08:00\"}}')",
+      "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(d\\);const its=j.result?.data?.json?.plan?.itineraries;if\\(!its\\){console.log\\(\"ERR\",JSON.stringify\\(j\\).slice\\(0,300\\)\\);return;}its.slice\\(0,2\\).forEach\\(\\(it,n\\)=>{console.log\\(`\\\\nItinerary ${n+1}: ${Math.round\\(it.duration/60\\)}min`\\);it.legs.forEach\\(l=>{let s=l.type+\\(l.busNo?\" \"+l.busNo:l.lineCode?\" \"+l.lineCode:\"\"\\);if\\(l.exitName\\)s+=\" [\"+l.exitName+\"]\";if\\(l.busLegFeasibility\\){const f=l.busLegFeasibility;s+=` {${f.status} ${f.buffer}min; alts: `+f.alternatives.map\\(a=>a.serviceNo+\\(a.reroute?\"\\(rr\\)\":\"\\(same\\)\"\\)\\).join\\(\",\"\\)+\"}\";}console.log\\(\"  -\",s\\);}\\);}\\);}\\)')",
+      "Bash(curl -s -G 'http://localhost:5173/api/trpc/onemap.route' --data-urlencode 'input={\"json\":{\"start\":{\"lat\":1.3151,\"lng\":103.7649},\"end\":{\"lat\":1.3175,\"lng\":103.8079},\"mode\":\"TRANSIT\",\"date\":\"2026-07-13\",\"time\":\"08:00\"}}')",
+      "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(d\\);const its=j.result?.data?.json?.plan?.itineraries;if\\(!its\\){console.log\\(\"ERR\",JSON.stringify\\(j\\).slice\\(0,300\\)\\);return;}its.slice\\(0,3\\).forEach\\(\\(it,n\\)=>{console.log\\(`Itin ${n+1}: ${Math.round\\(it.duration/60\\)}min`\\);it.legs.forEach\\(l=>{let s=\"  \"+l.type+\\(l.busNo?\" \"+l.busNo:l.lineCode?\" \"+l.lineCode:\"\"\\);if\\(l.exitName\\)s+=\" [\"+l.exitName+\"]\";if\\(l.busLegFeasibility\\){const f=l.busLegFeasibility;s+=` {${f.status} ${f.buffer}min; alts:`+f.alternatives.map\\(a=>a.serviceNo+\\(a.reroute?\"\\(rr\\)\":\"\\(same\\)\"\\)\\).join\\(\",\"\\)+\"}\";}console.log\\(s\\);}\\);}\\);}\\)')"
     ]
   }
 }

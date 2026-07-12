@@ -29,6 +29,9 @@ export function classify(bufferMin: number): Exclude<
 export interface BusCandidate {
   serviceNo: string;
   eta: string | null; // ISO timestamp
+  /** true if this is a different service that still reaches the alighting stop
+   *  (a re-route), false/undefined for later arrivals of the planned service. */
+  reroute?: boolean;
 }
 
 export function minutesUntil(iso: string, now: number): number {
@@ -74,8 +77,9 @@ export function computeBusFeasibility(
     eta = target.eta;
   }
 
-  // Alternatives: other feasible buses (and later arrivals of the target),
-  // ranked by soonest catchable, capped at 3.
+  // Alternatives: later arrivals of the planned service and re-route options
+  // (different services that reach the same stop). Same-route first, then
+  // re-routes, each by soonest arrival; misses dropped; capped at 3.
   const alternatives: BusAlternative[] = candidates
     .filter((c) => c.eta && c.eta !== eta)
     .map((c) => {
@@ -85,10 +89,15 @@ export function computeBusFeasibility(
         eta: c.eta!,
         buffer: b,
         feasibility: classify(b),
+        reroute: c.reroute ?? false,
       };
     })
     .filter((a) => a.feasibility !== "miss")
-    .sort((a, b) => new Date(a.eta).getTime() - new Date(b.eta).getTime())
+    .sort(
+      (a, b) =>
+        Number(a.reroute) - Number(b.reroute) ||
+        new Date(a.eta).getTime() - new Date(b.eta).getTime(),
+    )
     .slice(0, 3);
 
   return { status, buffer, eta, walkMinutes, alternatives };

@@ -7,6 +7,7 @@ import * as trpcExpress from "@trpc/server/adapters/express";
 import { env, isProd } from "./env.js";
 import { appRouter } from "./routers/index.js";
 import { createContext } from "./context.js";
+import { warmBusRouteIndex } from "./services/lta.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, "..");
@@ -74,6 +75,9 @@ async function main() {
     console.log(
       `▲ Ripple Transit on http://localhost:${env.PORT} (${env.NODE_ENV})`,
     );
+    // Pre-load the bus-route connectivity index so the first route request
+    // isn't slowed by fetching ~26k route rows.
+    warmBusRouteIndex();
   });
 }
 

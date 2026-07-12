@@ -9,9 +9,16 @@ import {
   Wallet,
   Repeat,
   BarChart3,
+  DoorOpen,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Itinerary, RouteLeg } from "@shared/types.js";
+import type {
+  Itinerary,
+  RouteLeg,
+  BusLegFeasibility,
+  BusAlternative,
+} from "@shared/types.js";
 import { fmtDuration, fmtDistance, fmtTime, cn } from "../lib/utils.js";
 import { lineColor, lineName } from "../lib/transit.js";
 import { FeasibilityBadge, FeasibilityCallout } from "./FeasibilityBadge.js";
@@ -45,7 +52,6 @@ function legTitle(leg: RouteLeg): string {
 }
 
 function LegCard({ leg }: { leg: RouteLeg }) {
-  const [showAlts, setShowAlts] = useState(false);
   const f = leg.busLegFeasibility;
 
   return (
@@ -86,6 +92,12 @@ function LegCard({ leg }: { leg: RouteLeg }) {
             </div>
           )}
 
+          {leg.type === "mrt" && leg.exitName && (
+            <div className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
+              <DoorOpen size={12} /> Alight and take {leg.exitName}
+            </div>
+          )}
+
           {leg.type === "walk" && (leg.startBusStop || leg.endStation) && (
             <div className="mt-1 flex items-center gap-1 text-xs text-ripple-muted">
               <span className="truncate">{leg.startStation ?? "Start"}</span>
@@ -94,96 +106,146 @@ function LegCard({ leg }: { leg: RouteLeg }) {
             </div>
           )}
 
-          {f && (
-            <div className="mt-2.5">
-              <FeasibilityCallout status={f.status} buffer={f.buffer} />
-              {f.eta && (
-                <div className="mt-1.5 text-xs text-ripple-muted">
-                  Depart {fmtTime(f.eta)} · walk ~{f.walkMinutes} min
-                </div>
-              )}
-
-              <div className="mt-2 flex flex-wrap gap-2">
-                {leg.busStopCode && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      toast.info(
-                        `Live arrivals at stop ${leg.busStopCode} — full board coming soon.`,
-                      )
-                    }
-                  >
-                    <BarChart3 size={14} /> View arrivals
-                  </Button>
-                )}
-                {f.alternatives.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAlts((s) => !s)}
-                    aria-expanded={showAlts}
-                  >
-                    <ChevronDown
-                      size={14}
-                      className={cn(
-                        "transition-transform",
-                        showAlts && "rotate-180",
-                      )}
-                    />
-                    {showAlts ? "Hide" : "Show"} {f.alternatives.length}{" "}
-                    alternative{f.alternatives.length > 1 ? "s" : ""}
-                  </Button>
-                )}
-              </div>
-
-              {showAlts && f.alternatives.length > 0 && (
-                <div className="mt-2.5">
-                  <p className="mb-2 text-xs text-ripple-muted">
-                    Other buses at this stop that might work better
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    {f.alternatives.map((alt, i) => (
-                      <Card
-                        key={i}
-                        className="flex items-center justify-between gap-3 p-3"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-base font-bold leading-none">
-                            Bus {alt.serviceNo}
-                          </div>
-                          <div className="mt-1 text-xs text-ripple-muted">
-                            ETA {fmtTime(alt.eta)}
-                          </div>
-                          <div className="mt-1.5">
-                            <FeasibilityBadge
-                              status={alt.feasibility}
-                              buffer={alt.buffer}
-                            />
-                          </div>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="shrink-0 whitespace-nowrap"
-                          onClick={() =>
-                            toast.success(
-                              `Bus ${alt.serviceNo} selected — arriving ${fmtTime(alt.eta)}.`,
-                            )
-                          }
-                        >
-                          Take this bus <ArrowRight size={14} />
-                        </Button>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {f && <BusFeasibility leg={leg} f={f} />}
         </div>
       </div>
     </Card>
+  );
+}
+
+/** Feasibility callout + re-route: pick an alternative to swap the active bus. */
+function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
+  const [showAlts, setShowAlts] = useState(false);
+  const [chosen, setChosen] = useState<BusAlternative | null>(null);
+
+  const active = chosen
+    ? {
+        serviceNo: chosen.serviceNo,
+        status: chosen.feasibility,
+        buffer: chosen.buffer,
+        eta: chosen.eta,
+      }
+    : {
+        serviceNo: leg.busNo,
+        status: f.status,
+        buffer: f.buffer,
+        eta: f.eta,
+      };
+
+  // Show every alternative except the one currently active.
+  const alts = f.alternatives.filter(
+    (a) => !(a.serviceNo === active.serviceNo && a.eta === active.eta),
+  );
+
+  return (
+    <div className="mt-2.5">
+      {chosen && (
+        <div className="mb-1.5 flex items-center justify-between gap-2 rounded-md bg-bus/10 px-2.5 py-1.5 text-xs text-bus">
+          <span className="font-medium">Re-routed to Bus {chosen.serviceNo}</span>
+          <button
+            onClick={() => setChosen(null)}
+            className="inline-flex items-center gap-1 font-medium hover:underline"
+          >
+            <RotateCcw size={12} /> Undo
+          </button>
+        </div>
+      )}
+
+      <FeasibilityCallout status={active.status} buffer={active.buffer} />
+      {active.eta && (
+        <div className="mt-1.5 text-xs text-ripple-muted">
+          Depart {fmtTime(active.eta)} · walk ~{f.walkMinutes} min
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        {leg.busStopCode && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              toast.info(
+                `Live arrivals at stop ${leg.busStopCode} — full board coming soon.`,
+              )
+            }
+          >
+            <BarChart3 size={14} /> View arrivals
+          </Button>
+        )}
+        {alts.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAlts((s) => !s)}
+            aria-expanded={showAlts}
+          >
+            <ChevronDown
+              size={14}
+              className={cn("transition-transform", showAlts && "rotate-180")}
+            />
+            {showAlts ? "Hide" : "Show"} {alts.length} alternative
+            {alts.length > 1 ? "s" : ""}
+          </Button>
+        )}
+      </div>
+
+      {showAlts && alts.length > 0 && (
+        <div className="mt-2.5">
+          <p className="mb-2 text-xs text-ripple-muted">
+            Same route or other buses to your stop — tap to re-route
+          </p>
+          <div className="flex flex-col gap-2">
+            {alts.map((alt, i) => (
+              <Card
+                key={i}
+                className="flex items-center justify-between gap-3 p-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-bold leading-none">
+                      Bus {alt.serviceNo}
+                    </span>
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                        alt.reroute
+                          ? "bg-bus/10 text-bus"
+                          : "bg-ripple-muted/15 text-ripple-muted",
+                      )}
+                    >
+                      {alt.reroute ? "re-route" : "same bus"}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-ripple-muted">
+                    ETA {fmtTime(alt.eta)}
+                  </div>
+                  <div className="mt-1.5">
+                    <FeasibilityBadge
+                      status={alt.feasibility}
+                      buffer={alt.buffer}
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 whitespace-nowrap"
+                  onClick={() => {
+                    setChosen(alt);
+                    setShowAlts(false);
+                    toast.success(
+                      `Re-routed to Bus ${alt.serviceNo} — ETA ${fmtTime(alt.eta)}.`,
+                    );
+                  }}
+                >
+                  Take this bus <ArrowRight size={14} />
+                </Button>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

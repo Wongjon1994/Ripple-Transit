@@ -132,6 +132,87 @@ interface OneMapSearchResponse {
   }>;
 }
 
+/** Reverse-geocode a coordinate to a human label (for "use my location"). */
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<string | null> {
+  const token = await getOneMapToken();
+  if (!token) return null;
+  const url = new URL(`${BASE}/api/public/revgeocode`);
+  url.searchParams.set("location", `${lat},${lng}`);
+  url.searchParams.set("buffer", "60");
+  url.searchParams.set("addressType", "All");
+  const res = await fetch(url, {
+    headers: { Authorization: token },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    GeocodeInfo?: Array<{
+      BUILDINGNAME?: string;
+      BLOCK?: string;
+      ROAD?: string;
+      POSTALCODE?: string;
+    }>;
+  };
+  const g = data.GeocodeInfo?.[0];
+  if (!g) return null;
+  const named =
+    g.BUILDINGNAME && g.BUILDINGNAME !== "null" ? g.BUILDINGNAME : null;
+  const road = [g.BLOCK, g.ROAD].filter((x) => x && x !== "null").join(" ");
+  return named ?? (road || null);
+}
+
+// ── MRT station exits ─────────────────────────────────────────
+export interface StationExit {
+  name: string; // "Exit A"
+  lat: number;
+  lng: number;
+}
+
+const exitCache = new Map<string, StationExit[]>();
+
+/** Look up the labelled exits of an MRT station via OneMap search (cached). */
+export async function mrtStationExits(
+  stationName: string,
+): Promise<StationExit[]> {
+  const key = stationName.toUpperCase().trim();
+  const cached = exitCache.get(key);
+  if (cached) return cached;
+
+  const url = new URL(`${BASE}/api/common/elastic/search`);
+  url.searchParams.set("searchVal", `${stationName} EXIT`);
+  url.searchParams.set("returnGeom", "Y");
+  url.searchParams.set("getAddrDetails", "N");
+  url.searchParams.set("pageNum", "1");
+
+  let exits: StationExit[] = [];
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        results?: Array<{ SEARCHVAL: string; LATITUDE: string; LONGITUDE: string }>;
+      };
+      exits = (data.results ?? [])
+        .map((r) => {
+          const m = r.SEARCHVAL.match(/EXIT\s+([0-9A-Z]+)/i);
+          if (!m) return null;
+          return {
+            name: `Exit ${m[1].toUpperCase()}`,
+            lat: Number(r.LATITUDE),
+            lng: Number(r.LONGITUDE),
+          };
+        })
+        .filter((x): x is StationExit => x !== null);
+    }
+  } catch {
+    exits = [];
+  }
+  exitCache.set(key, exits);
+  return exits;
+}
+
 export async function oneMapSearch(
   q: string,
   page = 1,
@@ -263,6 +344,7 @@ function toItinerary(it: OtpItinerary): Itinerary {
       base.startBusStop = leg.from.name;
       base.endBusStop = leg.to.name;
       base.busStopCode = leg.from.stopCode;
+      base.endBusStopCode = leg.to.stopCode;
     }
     return base;
   });
