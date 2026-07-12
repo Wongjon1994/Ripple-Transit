@@ -56,11 +56,13 @@ async function refreshFromCredentials(): Promise<{
  * Order of preference: fresh cached token → refresh via credentials →
  * seed from ONEMAP_TOKEN env var.
  */
-export async function getOneMapToken(): Promise<string | null> {
+export async function getOneMapToken(
+  forceRefresh = false,
+): Promise<string | null> {
   const now = Math.floor(Date.now() / 1000);
   const cached = await getCachedToken("onemap");
 
-  if (cached && cached.expiresAt - now > REFRESH_MARGIN_SEC) {
+  if (!forceRefresh && cached && cached.expiresAt - now > REFRESH_MARGIN_SEC) {
     return cached.token;
   }
 
@@ -70,10 +72,10 @@ export async function getOneMapToken(): Promise<string | null> {
     return refreshed.token;
   }
 
-  // No credentials to refresh; fall back to the seeded env token.
-  if (env.ONEMAP_TOKEN) {
-    const expiresAt =
-      jwtExp(env.ONEMAP_TOKEN) ?? now + 3 * 24 * 60 * 60;
+  // No credentials to refresh; fall back to the seeded env token (unless we're
+  // force-refreshing because it just got rejected).
+  if (!forceRefresh && env.ONEMAP_TOKEN) {
+    const expiresAt = jwtExp(env.ONEMAP_TOKEN) ?? now + 3 * 24 * 60 * 60;
     if (!cached || cached.token !== env.ONEMAP_TOKEN) {
       await upsertCachedToken("onemap", env.ONEMAP_TOKEN, expiresAt);
     }
@@ -81,7 +83,7 @@ export async function getOneMapToken(): Promise<string | null> {
   }
 
   // Last resort: return whatever we have, even if stale.
-  return cached?.token ?? null;
+  return cached?.token ?? env.ONEMAP_TOKEN ?? null;
 }
 
 export async function getOneMapTokenInfo(): Promise<{
@@ -311,11 +313,31 @@ export async function oneMapRoute(params: {
     url.searchParams.set("numItineraries", "3");
   }
 
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     headers: { Authorization: token },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!res.ok) throw new Error(`OneMap route failed: ${res.status}`);
+
+  // Token expired/rejected → force a refresh and retry once (self-heals when
+  // ONEMAP_EMAIL/PASSWORD are configured).
+  if (res.status === 401) {
+    const fresh = await getOneMapToken(true);
+    if (fresh && fresh !== token) {
+      res = await fetch(url, {
+        headers: { Authorization: fresh },
+        signal: AbortSignal.timeout(15_000),
+      });
+    }
+  }
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error(
+        "OneMap token expired. Set ONEMAP_EMAIL/ONEMAP_PASSWORD to auto-refresh, or update ONEMAP_TOKEN.",
+      );
+    }
+    throw new Error(`OneMap route failed: ${res.status}`);
+  }
   const data = (await res.json()) as OtpResponse;
 
   const itineraries = data.plan?.itineraries ?? [];

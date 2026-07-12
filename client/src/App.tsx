@@ -1,6 +1,7 @@
 import { Route, Switch, Link, useLocation, Redirect } from "wouter";
-import { Moon, Sun, Waves, LogOut, User } from "lucide-react";
+import { Moon, Sun, Waves, LogOut, User, Menu, X } from "lucide-react";
 import { toast } from "sonner";
+import { useState, useEffect, type ReactNode } from "react";
 import { useTheme } from "./lib/theme.js";
 import { useAuth } from "./lib/auth.js";
 import { trpc } from "./lib/trpc.js";
@@ -11,13 +12,16 @@ import { FavouriteRoutes } from "./pages/FavouriteRoutes.js";
 import { Settings } from "./pages/Settings.js";
 import { Button } from "./components/ui.js";
 import { cn } from "./lib/utils.js";
-import type { ReactNode } from "react";
 
 function Header() {
   const { theme, toggleTheme } = useTheme();
   const { user, refetch } = useAuth();
   const [loc] = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
   const utils = trpc.useUtils();
+
+  // Close the mobile menu on navigation.
+  useEffect(() => setMenuOpen(false), [loc]);
 
   const logout = trpc.auth.logout.useMutation({
     onSuccess: async () => {
@@ -35,7 +39,7 @@ function Header() {
   ];
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4">
+    <header className="relative flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4">
       <Link href="/" className="flex items-center gap-2">
         <Waves size={20} className="text-bus" />
         <div className="leading-tight">
@@ -47,6 +51,7 @@ function Header() {
       </Link>
 
       <nav className="flex items-center gap-1">
+        {/* Desktop inline links */}
         {nav.map((n) => (
           <Link
             key={n.href}
@@ -81,18 +86,77 @@ function Header() {
               size="icon"
               aria-label="Sign out"
               onClick={() => logout.mutate()}
+              className="hidden sm:inline-flex"
             >
               <LogOut size={16} />
             </Button>
           </div>
         ) : (
-          <Link href="/login">
+          <Link href="/login" className="hidden sm:block">
             <Button variant="outline" size="sm" className="ml-1">
               <User size={15} /> Sign in
             </Button>
           </Link>
         )}
+
+        {/* Mobile menu button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="sm:hidden"
+          aria-label="Menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((o) => !o)}
+        >
+          {menuOpen ? <X size={18} /> : <Menu size={18} />}
+        </Button>
       </nav>
+
+      {/* Mobile dropdown menu */}
+      {menuOpen && (
+        <>
+          <div
+            className="fixed inset-0 top-14 z-[900] bg-black/20 sm:hidden"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="absolute right-2 top-full z-[901] mt-1 w-52 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-xl sm:hidden">
+            {nav.map((n) => (
+              <Link
+                key={n.href}
+                href={n.href}
+                className={cn(
+                  "block px-4 py-2.5 text-sm font-medium",
+                  loc === n.href
+                    ? "bg-ripple-muted/15 text-[var(--fg)]"
+                    : "text-[var(--fg)] hover:bg-ripple-muted/10",
+                )}
+              >
+                {n.label}
+              </Link>
+            ))}
+            <div className="border-t border-[var(--border)]">
+              {user ? (
+                <button
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-error hover:bg-ripple-muted/10"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    logout.mutate();
+                  }}
+                >
+                  <LogOut size={15} /> Sign out
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-bus hover:bg-ripple-muted/10"
+                >
+                  <User size={15} /> Sign in
+                </Link>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </header>
   );
 }
