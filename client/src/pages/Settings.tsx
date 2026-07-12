@@ -162,6 +162,20 @@ export function Settings() {
           </>
         )}
       </Section>
+
+      <p className="px-1 pb-4 text-[11px] leading-relaxed text-ripple-muted">
+        Map data ©{" "}
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          className="hover:underline"
+          target="_blank"
+          rel="noreferrer"
+        >
+          OpenStreetMap
+        </a>{" "}
+        contributors, © CARTO. Routing &amp; geocoding by OneMap. Bus &amp; rail
+        data by LTA DataMall.
+      </p>
     </PageShell>
   );
 }

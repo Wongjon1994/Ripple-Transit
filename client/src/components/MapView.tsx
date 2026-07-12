@@ -142,12 +142,12 @@ export function MapView({
       maxZoom={MAX_ZOOM}
       className="h-full w-full"
       zoomControl
+      attributionControl={false}
     >
       <TileLayer
         key={theme}
         url={tiles.url}
         subdomains={tiles.subdomains}
-        attribution={tiles.attribution}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
       />

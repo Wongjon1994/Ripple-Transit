@@ -87,7 +87,7 @@ async function enrichBusLeg(
       status: "unknown",
       buffer: 0,
       eta: null,
-      walkMinutes: Math.round((walkSeconds / 60) * 10) / 10,
+      walkMinutes: Math.round(walkSeconds / 60),
       alternatives: [],
     };
   }

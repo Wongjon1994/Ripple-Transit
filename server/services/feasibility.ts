@@ -60,7 +60,7 @@ export function computeBusFeasibility(
   targetService: string | undefined,
   now: number = Date.now(),
 ): BusLegFeasibility {
-  const walkMinutes = round1(walkSeconds / 60);
+  const walkMinutes = Math.round(walkSeconds / 60);
 
   // The primary bus: the target service's next arrival if present.
   const target = candidates.find(
@@ -72,7 +72,7 @@ export function computeBusFeasibility(
   let eta: string | null = null;
 
   if (target?.eta) {
-    buffer = round1(bufferMinutes(target.eta, walkSeconds, now));
+    buffer = Math.round(bufferMinutes(target.eta, walkSeconds, now));
     status = classify(buffer);
     eta = target.eta;
   }
@@ -83,7 +83,7 @@ export function computeBusFeasibility(
   const alternatives: BusAlternative[] = candidates
     .filter((c) => c.eta && c.eta !== eta)
     .map((c) => {
-      const b = round1(bufferMinutes(c.eta!, walkSeconds, now));
+      const b = Math.round(bufferMinutes(c.eta!, walkSeconds, now));
       return {
         serviceNo: c.serviceNo,
         eta: c.eta!,
@@ -101,8 +101,4 @@ export function computeBusFeasibility(
     .slice(0, 3);
 
   return { status, buffer, eta, walkMinutes, alternatives };
-}
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
 }
