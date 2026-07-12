@@ -331,6 +331,8 @@ function toItinerary(it: OtpItinerary): Itinerary {
       endPoint: { lat: leg.to.lat, lng: leg.to.lon },
       duration: Math.round(leg.duration),
       distance: Math.round(leg.distance),
+      fromName: leg.from.name,
+      toName: leg.to.name,
       polyline: leg.legGeometry?.points,
     };
     if (type === "mrt") {

@@ -30,76 +30,68 @@ describe("classify", () => {
 
 describe("bufferMinutes", () => {
   it("is minutes-until-bus minus walk minutes", () => {
-    // bus in 10 min, walk 4 min → 6 min buffer
     expect(bufferMinutes(inMinutes(10), 4 * 60, NOW)).toBeCloseTo(6, 5);
   });
 
   it("is negative when the bus leaves before you arrive", () => {
-    // bus in 2 min, walk 5 min → -3 min
     expect(bufferMinutes(inMinutes(2), 5 * 60, NOW)).toBeCloseTo(-3, 5);
   });
 });
 
 describe("computeBusFeasibility", () => {
-  it("classifies the target bus as ok with a comfortable buffer", () => {
+  const walk = (min: number) => min * 60;
+
+  it("recommends the soonest CATCHABLE interchangeable bus", () => {
+    // 157 arrives first but is unreachable (walk 3 > 1); 77 is the soonest catchable.
     const candidates: BusCandidate[] = [
-      { serviceNo: "187", eta: inMinutes(9) }, // walk 2 min → 7 buffer
+      { serviceNo: "157", eta: inMinutes(1) },
+      { serviceNo: "77", eta: inMinutes(6) },
+      { serviceNo: "961", eta: inMinutes(12) },
     ];
-    const f = computeBusFeasibility(2 * 60, candidates, "187", NOW);
+    const f = computeBusFeasibility(walk(3), candidates, NOW);
+    expect(f.serviceNo).toBe("77");
     expect(f.status).toBe("ok");
-    expect(f.buffer).toBeCloseTo(7, 1);
-    expect(f.eta).toBe(candidates[0].eta);
-    expect(f.walkMinutes).toBeCloseTo(2, 1);
+    expect(f.eta).toBe(candidates[1].eta);
+    // Remaining catchable buses become same-leg alternatives (misses dropped).
+    expect(f.alternatives.map((a) => a.serviceNo)).toEqual(["961"]);
   });
 
-  it("classifies a just-in-time target as tight", () => {
+  it("orders alternatives by arrival time and caps at four", () => {
     const candidates: BusCandidate[] = [
-      { serviceNo: "157", eta: inMinutes(3) }, // walk 2 min → 1 buffer
+      { serviceNo: "A", eta: inMinutes(4) },
+      { serviceNo: "B", eta: inMinutes(5) },
+      { serviceNo: "C", eta: inMinutes(6) },
+      { serviceNo: "D", eta: inMinutes(7) },
+      { serviceNo: "E", eta: inMinutes(8) },
+      { serviceNo: "F", eta: inMinutes(9) },
     ];
-    const f = computeBusFeasibility(2 * 60, candidates, "157", NOW);
-    expect(f.status).toBe("tight");
+    const f = computeBusFeasibility(walk(1), candidates, NOW);
+    expect(f.serviceNo).toBe("A"); // soonest catchable
+    expect(f.alternatives.map((a) => a.serviceNo)).toEqual(["B", "C", "D", "E"]);
   });
 
-  it("classifies an unreachable target as miss", () => {
+  it("falls back to the soonest bus when none are catchable", () => {
     const candidates: BusCandidate[] = [
-      { serviceNo: "157", eta: inMinutes(1) }, // walk 3 min → -2 buffer
+      { serviceNo: "10", eta: inMinutes(1) },
+      { serviceNo: "12", eta: inMinutes(2) },
     ];
-    const f = computeBusFeasibility(3 * 60, candidates, "157", NOW);
+    const f = computeBusFeasibility(walk(5), candidates, NOW);
+    expect(f.serviceNo).toBe("10");
     expect(f.status).toBe("miss");
     expect(f.buffer).toBeLessThan(0);
+    expect(f.alternatives).toHaveLength(0); // misses are not offered
   });
 
-  it("returns unknown when the target service has no live ETA", () => {
-    const f = computeBusFeasibility(3 * 60, [], "999", NOW);
+  it("is unknown with no live candidates", () => {
+    const f = computeBusFeasibility(walk(3), [], NOW);
     expect(f.status).toBe("unknown");
+    expect(f.serviceNo).toBeUndefined();
     expect(f.eta).toBeNull();
     expect(f.alternatives).toHaveLength(0);
   });
 
-  it("surfaces feasible alternatives sorted by soonest, dropping misses", () => {
-    const candidates: BusCandidate[] = [
-      { serviceNo: "157", eta: inMinutes(1) }, // target: miss (walk 3)
-      { serviceNo: "961", eta: inMinutes(12) }, // ok, later
-      { serviceNo: "77", eta: inMinutes(6) }, // ok, sooner
-      { serviceNo: "99", eta: inMinutes(2) }, // miss → dropped (walk 3)
-    ];
-    const f = computeBusFeasibility(3 * 60, candidates, "157", NOW);
-    expect(f.status).toBe("miss");
-    const nums = f.alternatives.map((a) => a.serviceNo);
-    expect(nums).toEqual(["77", "961"]); // sorted by ETA, misses removed
-    expect(f.alternatives.every((a) => a.feasibility !== "miss")).toBe(true);
-  });
-
-  it("caps alternatives at three", () => {
-    const candidates: BusCandidate[] = [
-      { serviceNo: "T", eta: inMinutes(20) },
-      { serviceNo: "A", eta: inMinutes(6) },
-      { serviceNo: "B", eta: inMinutes(7) },
-      { serviceNo: "C", eta: inMinutes(8) },
-      { serviceNo: "D", eta: inMinutes(9) },
-    ];
-    const f = computeBusFeasibility(60, candidates, "T", NOW);
-    expect(f.alternatives).toHaveLength(3);
-    expect(f.alternatives.map((a) => a.serviceNo)).toEqual(["A", "B", "C"]);
+  it("rounds walk minutes", () => {
+    const f = computeBusFeasibility(150, [{ serviceNo: "1", eta: inMinutes(10) }], NOW);
+    expect(f.walkMinutes).toBe(3); // 150s → 2.5 → 3
   });
 });

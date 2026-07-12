@@ -98,11 +98,20 @@ function LegCard({ leg }: { leg: RouteLeg }) {
             </div>
           )}
 
-          {leg.type === "walk" && (leg.startBusStop || leg.endStation) && (
+          {leg.type === "walk" && cleanName(leg.toName) && (
             <div className="mt-1 flex items-center gap-1 text-xs text-ripple-muted">
-              <span className="truncate">{leg.startStation ?? "Start"}</span>
               <ArrowRight size={10} className="shrink-0" />
-              <span className="truncate">{leg.endStation ?? "next stop"}</span>
+              <span className="truncate">to {cleanName(leg.toName)}</span>
+            </div>
+          )}
+
+          {leg.type === "bus" && leg.startBusStop && (
+            <div className="mt-1 text-xs text-ripple-muted">
+              Board at{" "}
+              <span className="font-medium text-[var(--fg)]">
+                {leg.startBusStop}
+              </span>
+              {leg.busStopCode ? ` · ${leg.busStopCode}` : ""}
             </div>
           )}
 
@@ -141,7 +150,7 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
     <div className="mt-2.5">
       {chosen && (
         <div className="mb-1.5 flex items-center justify-between gap-2 rounded-md bg-bus/10 px-2.5 py-1.5 text-xs text-bus">
-          <span className="font-medium">Re-routed to Bus {chosen.serviceNo}</span>
+          <span className="font-medium">Taking Bus {chosen.serviceNo} instead</span>
           <button
             onClick={() => setChosen(null)}
             className="inline-flex items-center gap-1 font-medium hover:underline"
@@ -183,8 +192,8 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
               size={14}
               className={cn("transition-transform", showAlts && "rotate-180")}
             />
-            {showAlts ? "Hide" : "Show"} {alts.length} alternative
-            {alts.length > 1 ? "s" : ""}
+            {showAlts ? "Hide" : "Show"} {alts.length} other bus
+            {alts.length > 1 ? "es" : ""}
           </Button>
         )}
       </div>
@@ -192,7 +201,7 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
       {showAlts && alts.length > 0 && (
         <div className="mt-2.5">
           <p className="mb-2 text-xs text-ripple-muted">
-            Same route or other buses to your stop — tap to re-route
+            Interchangeable buses for this leg, by arrival — tap to switch
           </p>
           <div className="flex flex-col gap-2">
             {alts.map((alt, i) => (
@@ -201,21 +210,9 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
                 className="flex items-center justify-between gap-3 p-3"
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-bold leading-none">
-                      Bus {alt.serviceNo}
-                    </span>
-                    <span
-                      className={cn(
-                        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-                        alt.reroute
-                          ? "bg-bus/10 text-bus"
-                          : "bg-ripple-muted/15 text-ripple-muted",
-                      )}
-                    >
-                      {alt.reroute ? "re-route" : "same bus"}
-                    </span>
-                  </div>
+                  <span className="text-base font-bold leading-none">
+                    Bus {alt.serviceNo}
+                  </span>
                   <div className="mt-1 text-xs text-ripple-muted">
                     ETA {fmtTime(alt.eta)}
                   </div>
@@ -234,7 +231,7 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
                     setChosen(alt);
                     setShowAlts(false);
                     toast.success(
-                      `Re-routed to Bus ${alt.serviceNo} — ETA ${fmtTime(alt.eta)}.`,
+                      `Switched to Bus ${alt.serviceNo} — ETA ${fmtTime(alt.eta)}.`,
                     );
                   }}
                 >
@@ -247,6 +244,33 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
       )}
     </div>
   );
+}
+
+/** Drop OTP's generic endpoint names ("Origin"/"Destination") from display. */
+function cleanName(n?: string): string | null {
+  if (!n) return null;
+  return /^(origin|destination|start|end)$/i.test(n.trim()) ? null : n;
+}
+
+interface ModeChip {
+  label: string;
+  color: string;
+  kind: "bus" | "mrt";
+}
+
+/** The transit legs of an itinerary as chips (the "path": e.g. 186 → CC). */
+function journeyModes(it: Itinerary): ModeChip[] {
+  return it.legs
+    .filter((l) => l.type !== "walk")
+    .map((l) =>
+      l.type === "bus"
+        ? { label: l.busNo ?? "Bus", color: "#3b82f6", kind: "bus" as const }
+        : {
+            label: l.lineCode ?? "MRT",
+            color: lineColor(l.lineCode),
+            kind: "mrt" as const,
+          },
+    );
 }
 
 function SummaryChip({
@@ -277,32 +301,71 @@ export function RouteResultsPanel({
 }) {
   if (itineraries.length === 0) return null;
   const active = itineraries[selected];
+  const fastest = Math.min(...itineraries.map((it) => it.duration));
 
   return (
     <div className="flex flex-col">
-      <div className="flex gap-2 overflow-x-auto p-3">
-        {itineraries.map((it, i) => (
-          <button
-            key={i}
-            onClick={() => onSelect(i)}
-            className={cn(
-              "flex shrink-0 flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors",
-              i === selected
-                ? "border-bus bg-bus/5"
-                : "border-[var(--border)] hover:bg-ripple-muted/5",
-            )}
-          >
-            <span className="text-base font-semibold">
-              {fmtDuration(it.duration)}
-            </span>
-            <span className="text-xs text-ripple-muted">
-              ${it.fare.toFixed(2)} ·{" "}
-              {it.transfers === 0
-                ? "direct"
-                : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
-            </span>
-          </button>
-        ))}
+      <div className="p-3">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+          {itineraries.length === 1
+            ? "Your route"
+            : `${itineraries.length} ways to your destination`}
+        </h3>
+        <div className="flex flex-col gap-2">
+          {itineraries.map((it, i) => {
+            const dev = Math.round((it.duration - fastest) / 60);
+            const modes = journeyModes(it);
+            return (
+              <button
+                key={i}
+                onClick={() => onSelect(i)}
+                className={cn(
+                  "flex flex-col gap-1.5 rounded-lg border p-3 text-left transition-colors",
+                  i === selected
+                    ? "border-bus bg-bus/5"
+                    : "border-[var(--border)] hover:bg-ripple-muted/5",
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-semibold">
+                    {fmtDuration(it.duration)}
+                  </span>
+                  {dev === 0 ? (
+                    <span className="text-xs font-semibold text-ok">Fastest</span>
+                  ) : (
+                    <span className="text-xs text-ripple-muted">+{dev} min</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {modes.map((m, j) => (
+                    <span key={j} className="inline-flex items-center gap-1">
+                      {j > 0 && (
+                        <ArrowRight size={10} className="text-ripple-muted" />
+                      )}
+                      <span
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
+                        style={{ background: m.color }}
+                      >
+                        {m.kind === "bus" ? (
+                          <Bus size={11} />
+                        ) : (
+                          <TrainFront size={11} />
+                        )}
+                        {m.label}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+                <span className="text-xs text-ripple-muted">
+                  ${it.fare.toFixed(2)} ·{" "}
+                  {it.transfers === 0
+                    ? "direct"
+                    : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex items-center gap-4 border-y border-[var(--border)] bg-ripple-muted/5 px-4 py-2.5">

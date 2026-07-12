@@ -33,7 +33,8 @@ export interface BusAlternative {
 export interface BusLegFeasibility {
   status: FeasibilityStatus;
   buffer: number; // minutes (negative = you miss it)
-  eta: string | null; // ISO timestamp of the targeted bus, if known
+  eta: string | null; // ISO timestamp of the recommended bus, if known
+  serviceNo?: string; // the soonest catchable interchangeable bus for this leg
   walkMinutes: number;
   alternatives: BusAlternative[];
 }
@@ -44,6 +45,10 @@ export interface RouteLeg {
   endPoint: LatLng;
   duration: number; // seconds
   distance: number; // meters
+
+  // where this leg starts/ends (stop, station, or place name)
+  fromName?: string;
+  toName?: string;
 
   // walk
   polyline?: string;

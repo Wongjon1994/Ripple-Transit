@@ -39,9 +39,10 @@ function todayParts() {
 }
 
 /**
- * Bus-leg feasibility. Only offers alternatives that keep you on the same
- * service OR that also stop at your alighting stop (a genuine re-route to the
- * same destination) — never unrelated buses that happen to share the stop.
+ * Bus-leg feasibility. The candidate set is every interchangeable bus for this
+ * leg — services that board at the same stop and reach the same alighting stop.
+ * The recommended bus becomes the soonest one you can catch (live timing); the
+ * leg's displayed service is updated to match.
  */
 async function enrichBusLeg(
   it: Itinerary,
@@ -58,8 +59,9 @@ async function enrichBusLeg(
     const candidates: BusCandidate[] = [];
     await Promise.all(
       services.map(async (s) => {
-        const sameRoute = s.serviceNo === leg.busNo;
-        let reaches = sameRoute;
+        // Keep the leg's own service, plus any service that also reaches the
+        // alighting stop (interchangeable for this leg).
+        let reaches = s.serviceNo === leg.busNo;
         if (!reaches && alight) {
           reaches = await serviceConnects(s.serviceNo, board, alight).catch(
             () => false,
@@ -71,17 +73,14 @@ async function enrichBusLeg(
             candidates.push({
               serviceNo: s.serviceNo,
               eta: nb.estimatedArrival,
-              reroute: !sameRoute,
             });
         }
       }),
     );
-    leg.busLegFeasibility = computeBusFeasibility(
-      walkSeconds,
-      candidates,
-      leg.busNo,
-      now,
-    );
+    const f = computeBusFeasibility(walkSeconds, candidates, now);
+    leg.busLegFeasibility = f;
+    // Recommend the soonest catchable interchangeable bus for this leg.
+    if (f.serviceNo) leg.busNo = f.serviceNo;
   } catch {
     leg.busLegFeasibility = {
       status: "unknown",
@@ -119,6 +118,35 @@ async function enrichMrtExit(
   } catch {
     /* no exit info — leave undefined */
   }
+}
+
+/**
+ * A path signature keyed by stops/lines, NOT bus number — so two itineraries
+ * that differ only by which interchangeable bus they name collapse into one
+ * option (e.g. 120 vs 64 vs 145, all boarding stop X → alighting stop Y).
+ */
+function pathKey(it: Itinerary): string {
+  return it.legs
+    .filter((l) => l.type !== "walk")
+    .map((l) =>
+      l.type === "bus"
+        ? `B:${l.busStopCode ?? l.startBusStop}>${l.endBusStopCode ?? l.endBusStop}`
+        : `M:${l.lineCode}:${l.startStation}>${l.endStation}`,
+    )
+    .join("|");
+}
+
+/** Keep one itinerary per distinct path (OneMap returns them fastest-first). */
+function dedupeItineraries(itineraries: Itinerary[]): Itinerary[] {
+  const seen = new Set<string>();
+  const out: Itinerary[] = [];
+  for (const it of itineraries) {
+    const key = pathKey(it);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
 }
 
 /** Attach live feasibility (bus) and exit guidance (MRT) to every leg. */
@@ -178,6 +206,7 @@ export const onemapRouter = router({
     }
 
     if (input.mode === "TRANSIT") {
+      itineraries = dedupeItineraries(itineraries);
       await enrichItineraries(itineraries);
     }
 

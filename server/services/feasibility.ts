@@ -49,56 +49,67 @@ export function bufferMinutes(
 /**
  * Build the feasibility summary for a bus leg.
  *
- * @param walkSeconds   time to walk from current position to the boarding stop
- * @param candidates    upcoming buses at the stop (target service + alternatives)
- * @param targetService the bus number the itinerary wants you to take
- * @param now           reference time in ms (defaults to Date.now())
+ * All `candidates` are interchangeable buses for this leg — services that board
+ * at the same stop and reach the same alighting stop. The recommended bus is
+ * the soonest one you can actually catch; the rest are same-leg alternatives
+ * ordered by arrival time.
+ *
+ * @param walkSeconds  time to walk from current position to the boarding stop
+ * @param candidates   interchangeable upcoming buses at the stop
+ * @param now          reference time in ms (defaults to Date.now())
  */
 export function computeBusFeasibility(
   walkSeconds: number,
   candidates: BusCandidate[],
-  targetService: string | undefined,
   now: number = Date.now(),
 ): BusLegFeasibility {
   const walkMinutes = Math.round(walkSeconds / 60);
 
-  // The primary bus: the target service's next arrival if present.
-  const target = candidates.find(
-    (c) => c.serviceNo === targetService && c.eta,
-  );
-
-  let status: FeasibilityStatus = "unknown";
-  let buffer = 0;
-  let eta: string | null = null;
-
-  if (target?.eta) {
-    buffer = Math.round(bufferMinutes(target.eta, walkSeconds, now));
-    status = classify(buffer);
-    eta = target.eta;
-  }
-
-  // Alternatives: later arrivals of the planned service and re-route options
-  // (different services that reach the same stop). Same-route first, then
-  // re-routes, each by soonest arrival; misses dropped; capped at 3.
-  const alternatives: BusAlternative[] = candidates
-    .filter((c) => c.eta && c.eta !== eta)
+  const scored = candidates
+    .filter((c) => c.eta)
     .map((c) => {
-      const b = Math.round(bufferMinutes(c.eta!, walkSeconds, now));
+      const buffer = Math.round(bufferMinutes(c.eta!, walkSeconds, now));
       return {
         serviceNo: c.serviceNo,
         eta: c.eta!,
-        buffer: b,
-        feasibility: classify(b),
-        reroute: c.reroute ?? false,
+        buffer,
+        feasibility: classify(buffer),
       };
     })
-    .filter((a) => a.feasibility !== "miss")
-    .sort(
-      (a, b) =>
-        Number(a.reroute) - Number(b.reroute) ||
-        new Date(a.eta).getTime() - new Date(b.eta).getTime(),
-    )
-    .slice(0, 3);
+    .sort((a, b) => new Date(a.eta).getTime() - new Date(b.eta).getTime());
 
-  return { status, buffer, eta, walkMinutes, alternatives };
+  if (scored.length === 0) {
+    return {
+      status: "unknown",
+      buffer: 0,
+      eta: null,
+      serviceNo: undefined,
+      walkMinutes,
+      alternatives: [],
+    };
+  }
+
+  // Recommended = soonest catchable (not a miss); fall back to the soonest.
+  const primary = scored.find((s) => s.feasibility !== "miss") ?? scored[0];
+
+  const alternatives: BusAlternative[] = scored
+    .filter((s) => !(s.serviceNo === primary.serviceNo && s.eta === primary.eta))
+    .filter((s) => s.feasibility !== "miss")
+    .slice(0, 4)
+    .map((s) => ({
+      serviceNo: s.serviceNo,
+      eta: s.eta,
+      buffer: s.buffer,
+      feasibility: s.feasibility,
+      reroute: s.serviceNo !== primary.serviceNo,
+    }));
+
+  return {
+    status: primary.feasibility,
+    buffer: primary.buffer,
+    eta: primary.eta,
+    serviceNo: primary.serviceNo,
+    walkMinutes,
+    alternatives,
+  };
 }
