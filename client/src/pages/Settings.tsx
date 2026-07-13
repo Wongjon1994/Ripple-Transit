@@ -1,12 +1,11 @@
 import { useLocation } from "wouter";
-import { Check, AlertTriangle, XCircle, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { useTheme } from "../lib/theme.js";
 import { useAuth } from "../lib/auth.js";
 import { Button, Card, PageShell } from "../components/ui.js";
 import { cn } from "../lib/utils.js";
-import { lineColor, lineName } from "../lib/transit.js";
 
 function Section({
   title,
@@ -31,7 +30,6 @@ export function Settings() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
 
-  const statuses = trpc.mrt.lineStatuses.useQuery();
   const usage = trpc.here.usageStats.useQuery();
 
   const logout = trpc.auth.logout.useMutation({
@@ -96,44 +94,6 @@ export function Settings() {
             </button>
           </div>
         </div>
-      </Section>
-
-      <Section title="Transit Status">
-        {statuses.isLoading ? (
-          <p className="text-sm text-ripple-muted">Loading…</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {statuses.data?.map((s) => {
-              const ok = s.status === "operational";
-              const Icon = ok
-                ? Check
-                : s.status === "suspended"
-                  ? XCircle
-                  : AlertTriangle;
-              return (
-                <li key={s.lineCode} className="flex items-center gap-2.5">
-                  <span
-                    className="flex h-6 w-8 items-center justify-center rounded text-[11px] font-bold text-white"
-                    style={{ background: lineColor(s.lineCode) }}
-                  >
-                    {s.lineCode}
-                  </span>
-                  <span className="flex-1 text-sm">
-                    {s.lineName ?? lineName(s.lineCode)}
-                  </span>
-                  <span
-                    className={cn(
-                      "flex items-center gap-1 text-xs font-medium capitalize",
-                      ok ? "text-ok" : "text-warning",
-                    )}
-                  >
-                    <Icon size={13} /> {s.status}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </Section>
 
       <Section title="API Usage — HERE">

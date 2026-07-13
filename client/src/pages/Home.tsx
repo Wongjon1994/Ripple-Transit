@@ -4,6 +4,7 @@ import { trpc } from "../lib/trpc.js";
 import { SearchPanel, type Place } from "../components/SearchPanel.js";
 import { RouteResultsPanel } from "../components/RouteResultsPanel.js";
 import { MapView } from "../components/MapView.js";
+import { MrtStatus } from "../components/MrtStatus.js";
 import type { LatLng } from "@shared/types.js";
 
 function nowParts() {
@@ -102,6 +103,7 @@ export function Home() {
         <div className="sticky top-0 z-10 flex shrink-0 justify-center bg-[var(--bg)] pb-1 pt-2 md:hidden">
           <span className="h-1 w-10 rounded-full bg-ripple-muted/40" />
         </div>
+        <MrtStatus />
         <div className="px-4 pb-4 pt-2 md:pt-4">
           <SearchPanel
             fromText={fromText}
