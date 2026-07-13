@@ -5,6 +5,7 @@ import { SearchPanel, type Place } from "../components/SearchPanel.js";
 import { RouteResultsPanel } from "../components/RouteResultsPanel.js";
 import { MapView } from "../components/MapView.js";
 import { MrtStatus } from "../components/MrtStatus.js";
+import { useAuth } from "../lib/auth.js";
 import type { LatLng } from "@shared/types.js";
 
 function nowParts() {
@@ -32,6 +33,31 @@ export function Home() {
   } | null>(null);
   const [resolving, setResolving] = useState(false);
   const utils = trpc.useUtils();
+  const { user } = useAuth();
+
+  const logTrip = trpc.sustainability.logTrip.useMutation({
+    onSuccess: () => toast.success("Trip logged — added to your impact."),
+    onError: (e) => toast.error(e.message),
+  });
+
+  function handleLogTrip() {
+    if (!user) {
+      toast.error("Sign in to track your carbon impact.");
+      return;
+    }
+    const it = itineraries[selected];
+    const cb = route.data?.carbon;
+    if (!it || it.co2Grams == null) return;
+    const distanceM = it.legs.reduce((s, l) => s + l.distance, 0);
+    logTrip.mutate({
+      origin: fromText || "Origin",
+      destination: toText || "Destination",
+      mode: "transit",
+      co2Grams: it.co2Grams,
+      savedGrams: Math.max(0, (cb?.taxiGrams ?? 0) - it.co2Grams),
+      distanceM: Math.round(distanceM),
+    });
+  }
 
   // Resolve a text field to coordinates: use the picked suggestion if we have
   // one, otherwise geocode the typed text via OneMap (first match wins).
@@ -168,7 +194,9 @@ export function Home() {
                 selected={selected}
                 onSelect={setSelected}
                 onSave={() => toast.success("Route saving comes in Phase 11.")}
+                onLogTrip={handleLogTrip}
                 weather={route.data?.weather}
+                carbon={route.data?.carbon}
               />
             )}
           </div>

@@ -9,6 +9,7 @@ import { Home } from "./pages/Home.js";
 import { Login } from "./pages/Login.js";
 import { SavedLocations } from "./pages/SavedLocations.js";
 import { FavouriteRoutes } from "./pages/FavouriteRoutes.js";
+import { Sustainability } from "./pages/Sustainability.js";
 import { Settings } from "./pages/Settings.js";
 import { Button } from "./components/ui.js";
 import { cn } from "./lib/utils.js";
@@ -35,6 +36,7 @@ function Header() {
     { href: "/", label: "Map" },
     { href: "/saved-locations", label: "Saved" },
     { href: "/favourite-routes", label: "Routes" },
+    { href: "/impact", label: "Impact" },
     { href: "/settings", label: "Settings" },
   ];
 
@@ -190,6 +192,11 @@ export function App() {
           <Route path="/favourite-routes">
             <RequireAuth>
               <FavouriteRoutes />
+            </RequireAuth>
+          </Route>
+          <Route path="/impact">
+            <RequireAuth>
+              <Sustainability />
             </RequireAuth>
           </Route>
           <Route path="/settings">

@@ -19,6 +19,7 @@ import {
   TriangleAlert,
   Droplets,
   Wind,
+  Leaf,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -27,6 +28,7 @@ import type {
   BusLegFeasibility,
   BusAlternative,
   WeatherContext,
+  CarbonBaseline,
   RiskLevel,
 } from "@shared/types.js";
 import { RISK_COLORS, RISK_LABELS } from "@shared/types.js";
@@ -357,6 +359,59 @@ function WeatherBanner({ weather }: { weather: WeatherContext }) {
   );
 }
 
+function fmtCo2(grams: number): string {
+  return grams >= 1000 ? `${(grams / 1000).toFixed(1)} kg` : `${Math.round(grams)} g`;
+}
+
+/** Carbon footprint of the selected route vs taxi / car (mockup 4). */
+function CarbonPanel({
+  routeGrams,
+  carbon,
+}: {
+  routeGrams: number;
+  carbon: CarbonBaseline;
+}) {
+  const saved = Math.max(0, carbon.taxiGrams - routeGrams);
+  const max = Math.max(routeGrams, carbon.taxiGrams, carbon.carGrams, 1);
+  const rows: [string, number, string][] = [
+    ["This route", routeGrams, "#10b981"],
+    ["Taxi", carbon.taxiGrams, "#6b7280"],
+    ["Car", carbon.carGrams, "#9ca3af"],
+  ];
+  return (
+    <div className="border-b border-[var(--border)] px-4 py-3">
+      <div className="flex items-center gap-2">
+        <Leaf size={15} className="text-ok" />
+        <span className="text-sm font-semibold text-ok">Eco choice</span>
+        {saved > 0 && (
+          <span className="text-xs text-ripple-muted">
+            you save {(saved / 1000).toFixed(2)} kg CO₂ vs a taxi
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex flex-col gap-1.5">
+        {rows.map(([label, grams, color]) => (
+          <div key={label}>
+            <div className="flex justify-between text-xs">
+              <span className="text-ripple-muted">{label}</span>
+              <span className="font-medium">{fmtCo2(grams)} CO₂</span>
+            </div>
+            <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-ripple-muted/15">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.max(3, (grams / max) * 100)}%`,
+                  background: color,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SummaryChip({
   icon: Icon,
   children,
@@ -377,13 +432,17 @@ export function RouteResultsPanel({
   selected,
   onSelect,
   onSave,
+  onLogTrip,
   weather,
+  carbon,
 }: {
   itineraries: Itinerary[];
   selected: number;
   onSelect: (i: number) => void;
   onSave?: () => void;
+  onLogTrip?: () => void;
   weather?: WeatherContext | null;
+  carbon?: CarbonBaseline | null;
 }) {
   if (itineraries.length === 0) return null;
   const active = itineraries[selected];
@@ -501,17 +560,28 @@ export function RouteResultsPanel({
         </div>
       )}
 
+      {carbon && active.co2Grams != null && (
+        <CarbonPanel routeGrams={active.co2Grams} carbon={carbon} />
+      )}
+
       <div className="flex flex-col gap-2 p-3">
         {active.legs.map((leg, i) => (
           <LegCard key={i} leg={leg} />
         ))}
       </div>
 
-      {onSave && (
-        <div className="px-3 pb-3">
-          <Button variant="outline" className="w-full" onClick={onSave}>
-            Save this route
-          </Button>
+      {(onSave || onLogTrip) && (
+        <div className="flex gap-2 px-3 pb-3">
+          {onSave && (
+            <Button variant="outline" className="flex-1" onClick={onSave}>
+              Save route
+            </Button>
+          )}
+          {onLogTrip && (
+            <Button variant="outline" className="flex-1" onClick={onLogTrip}>
+              <Leaf size={15} /> Log trip
+            </Button>
+          )}
         </div>
       )}
     </div>

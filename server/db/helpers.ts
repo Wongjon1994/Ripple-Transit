@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "./index.js";
 import {
   users,
@@ -9,6 +9,7 @@ import {
   cachedTokens,
   mrtLineStatuses,
   settings,
+  tripLog,
   type UserRole,
   type MrtStatus,
 } from "../../drizzle/schema.js";
@@ -267,4 +268,31 @@ export async function setSetting(
       target: [settings.userId, settings.key],
       set: { value },
     });
+}
+
+// ── Trip log (sustainability) ─────────────────────────────────
+export async function addTripLog(entry: {
+  userId: number;
+  origin: string;
+  destination: string;
+  mode: "transit" | "taxi" | "car";
+  co2Grams: number;
+  savedGrams: number;
+  distanceM: number;
+}) {
+  await db.insert(tripLog).values(entry);
+}
+
+/** Aggregate a user's trips since a cutoff date. */
+export async function getTripStats(userId: number, since: Date) {
+  const rows = await db
+    .select()
+    .from(tripLog)
+    .where(and(eq(tripLog.userId, userId), gte(tripLog.createdAt, since)));
+  return {
+    trips: rows.length,
+    totalCo2Grams: rows.reduce((s, r) => s + r.co2Grams, 0),
+    totalSavedGrams: rows.reduce((s, r) => s + r.savedGrams, 0),
+    totalDistanceM: rows.reduce((s, r) => s + r.distanceM, 0),
+  };
 }

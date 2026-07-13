@@ -126,6 +126,29 @@ export const mrtLineStatuses = sqliteTable("mrt_line_statuses", {
     .$onUpdate(() => new Date()),
 });
 
+// ── Trip log (sustainability) ─────────────────────────────────
+export const tripLog = sqliteTable(
+  "trip_log",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    origin: text("origin").notNull(),
+    destination: text("destination").notNull(),
+    mode: text("mode", { enum: ["transit", "taxi", "car"] })
+      .notNull()
+      .default("transit"),
+    co2Grams: integer("co2_grams").notNull(),
+    savedGrams: integer("saved_grams").notNull().default(0), // vs taxi
+    distanceM: integer("distance_m").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [index("trip_log_user_idx").on(t.userId)],
+);
+
 // ── Table 7: settings ─────────────────────────────────────────
 export const settings = sqliteTable(
   "settings",
@@ -150,6 +173,7 @@ export type ApiUsageCounter = typeof apiUsageCounters.$inferSelect;
 export type CachedToken = typeof cachedTokens.$inferSelect;
 export type MrtLineStatus = typeof mrtLineStatuses.$inferSelect;
 export type Setting = typeof settings.$inferSelect;
+export type TripLog = typeof tripLog.$inferSelect;
 
 export type UserRole = User["role"];
 export type MrtStatus = MrtLineStatus["status"];

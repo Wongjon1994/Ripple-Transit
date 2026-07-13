@@ -18,6 +18,10 @@ import {
 import { weatherAt } from "../services/weather.js";
 import { computeRouteRisk } from "../services/risk.js";
 import {
+  itineraryCo2Grams,
+  drivingCo2Grams,
+} from "../services/sustainability.js";
+import {
   getTrafficIncidents,
   incidentsOnPath,
   incidentLabel,
@@ -27,6 +31,7 @@ import type {
   Itinerary,
   RouteLeg,
   WeatherContext,
+  CarbonBaseline,
 } from "../../shared/types.js";
 
 const routeInput = z.object({
@@ -218,6 +223,7 @@ export const onemapRouter = router({
     }
 
     let weather: WeatherContext | null = null;
+    let carbon: CarbonBaseline | null = null;
     if (input.mode === "TRANSIT") {
       itineraries = dedupeItineraries(itineraries);
       await enrichItineraries(itineraries);
@@ -255,10 +261,16 @@ export const onemapRouter = router({
           disruptedLines,
           trafficAlerts,
         });
+        it.co2Grams = itineraryCo2Grams(it.legs);
       }
+
+      // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
+      const driveKm =
+        (haversineMeters(input.start, input.end) / 1000) * 1.35;
+      carbon = { driveKm, ...drivingCo2Grams(driveKm) };
     }
 
-    return { plan: { itineraries }, weather };
+    return { plan: { itineraries }, weather, carbon };
   }),
 
   reverseGeocode: publicProcedure

@@ -102,11 +102,20 @@ export interface Itinerary {
   transfers: number;
   legs: RouteLeg[];
   risk?: RouteRisk;
+  co2Grams?: number; // this route's carbon footprint
+}
+
+/** Driving-baseline carbon for the same origin→destination. */
+export interface CarbonBaseline {
+  driveKm: number;
+  taxiGrams: number;
+  carGrams: number;
 }
 
 export interface RoutePlan {
   plan: { itineraries: Itinerary[] };
   weather?: WeatherContext | null;
+  carbon?: CarbonBaseline | null;
 }
 
 export const RISK_COLORS: Record<RiskLevel, string> = {
