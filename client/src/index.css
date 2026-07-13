@@ -92,12 +92,15 @@ body {
 }
 
 /*
- * CARTO dark_all is near-black; lift the basemap so streets, water and labels
- * stay legible in dark mode. Only the tile pane is filtered — the route
- * polylines and markers live in the overlay/marker panes, so they're unaffected.
+ * Dark map: derive a dark theme from the colourful OSM tiles. invert + a 180°
+ * hue-rotate flips light→dark while restoring hues (water stays blue, parks
+ * green), giving a legible, Google-Maps-like dark map. Only the tile pane is
+ * filtered — route polylines and markers (overlay/marker panes) keep their
+ * true colours.
  */
 .dark .leaflet-tile-pane {
-  filter: brightness(1.9) contrast(1.05) saturate(1.15);
+  filter: invert(1) hue-rotate(183deg) brightness(0.9) contrast(0.86)
+    saturate(0.68);
 }
 
 /* Thin, unobtrusive scrollbars */

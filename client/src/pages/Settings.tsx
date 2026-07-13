@@ -173,8 +173,8 @@ export function Settings() {
         >
           OpenStreetMap
         </a>{" "}
-        contributors, © CARTO. Routing &amp; geocoding by OneMap. Bus &amp; rail
-        data by LTA DataMall.
+        contributors. Routing &amp; geocoding by OneMap. Bus &amp; rail data by
+        LTA DataMall.
       </p>
     </PageShell>
   );

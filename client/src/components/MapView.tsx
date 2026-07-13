@@ -20,22 +20,17 @@ const MIN_ZOOM = 10;
 const MAX_ZOOM = 19;
 const FIT_MAX_ZOOM = 16; // don't over-zoom short routes when fitting bounds
 
-// Modern OSM-based basemaps. Light = OpenStreetMap standard (colourful);
-// dark = CARTO dark_all (free, no key). Routing still uses OneMap.
-const TILES = {
-  light: {
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    subdomains: "abc",
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · Routing by OneMap',
-  },
-  dark: {
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-    subdomains: "abcd",
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Routing by OneMap',
-  },
+// OpenStreetMap tiles for both themes. Dark mode is derived from the same
+// colourful tiles via a CSS invert+hue-rotate filter (see index.css), which
+// keeps OSM's colour hierarchy — blue water, green parks, legible roads — on a
+// dark base, closer to Google Maps dark than a flat monochrome basemap.
+const OSM = {
+  url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  subdomains: "abc",
+  attribution:
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · Routing by OneMap',
 } as const;
+const TILES = { light: OSM, dark: OSM } as const;
 
 /** Decode an encoded polyline (precision 5) into lat/lng pairs. */
 function decodePolyline(str: string): [number, number][] {
