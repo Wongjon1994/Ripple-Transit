@@ -6,6 +6,8 @@ import { RouteResultsPanel } from "../components/RouteResultsPanel.js";
 import { MapView } from "../components/MapView.js";
 import { MrtStatus } from "../components/MrtStatus.js";
 import { useAuth } from "../lib/auth.js";
+import { useJourney } from "../lib/journey.js";
+import { useLocation } from "wouter";
 import type { LatLng } from "@shared/types.js";
 
 function nowParts() {
@@ -34,6 +36,21 @@ export function Home() {
   const [resolving, setResolving] = useState(false);
   const utils = trpc.useUtils();
   const { user } = useAuth();
+  const journeyCtx = useJourney();
+  const [, navigate] = useLocation();
+
+  function handleStartJourney() {
+    const it = itineraries[selected];
+    if (!it || !routeParams) return;
+    journeyCtx.start({
+      itinerary: it,
+      originText: fromText,
+      destText: toText,
+      origin: routeParams.start,
+      destination: routeParams.end,
+    });
+    navigate("/journey");
+  }
 
   const logTrip = trpc.sustainability.logTrip.useMutation({
     onSuccess: () => toast.success("Trip logged — added to your impact."),
@@ -202,6 +219,7 @@ export function Home() {
                 onSelect={setSelected}
                 onSave={() => toast.success("Route saving comes in Phase 11.")}
                 onLogTrip={handleLogTrip}
+                onStartJourney={handleStartJourney}
                 weather={route.data?.weather}
                 carbon={route.data?.carbon}
                 taxi={taxi.data}

@@ -20,6 +20,7 @@ import {
   Droplets,
   Wind,
   Leaf,
+  Navigation,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -444,6 +445,7 @@ export function RouteResultsPanel({
   onSelect,
   onSave,
   onLogTrip,
+  onStartJourney,
   weather,
   carbon,
   taxi,
@@ -453,6 +455,7 @@ export function RouteResultsPanel({
   onSelect: (i: number) => void;
   onSave?: () => void;
   onLogTrip?: () => void;
+  onStartJourney?: () => void;
   weather?: WeatherContext | null;
   carbon?: CarbonBaseline | null;
   taxi?: TaxiEstimate | null;
@@ -584,17 +587,30 @@ export function RouteResultsPanel({
         ))}
       </div>
 
-      {(onSave || onLogTrip) && (
-        <div className="flex gap-2 px-3 pb-3">
-          {onSave && (
-            <Button variant="outline" className="flex-1" onClick={onSave}>
-              Save route
+      {(onSave || onLogTrip || onStartJourney) && (
+        <div className="flex flex-col gap-2 px-3 pb-3">
+          {onStartJourney && (
+            <Button
+              variant="accent"
+              className="w-full"
+              onClick={onStartJourney}
+            >
+              <Navigation size={16} /> Start journey
             </Button>
           )}
-          {onLogTrip && (
-            <Button variant="outline" className="flex-1" onClick={onLogTrip}>
-              <Leaf size={15} /> Log trip
-            </Button>
+          {(onSave || onLogTrip) && (
+            <div className="flex gap-2">
+              {onSave && (
+                <Button variant="outline" className="flex-1" onClick={onSave}>
+                  Save route
+                </Button>
+              )}
+              {onLogTrip && (
+                <Button variant="outline" className="flex-1" onClick={onLogTrip}>
+                  <Leaf size={15} /> Log trip
+                </Button>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -71,6 +71,15 @@ function pinIcon(color: string, label: string) {
   });
 }
 
+function liveIcon() {
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,.3),0 1px 4px rgba(0,0,0,.4);"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+}
+
 function FitBounds({
   points,
 }: {
@@ -100,10 +109,12 @@ export function MapView({
   origin,
   destination,
   itinerary,
+  livePosition,
 }: {
   origin: LatLng | null;
   destination: LatLng | null;
   itinerary: Itinerary | null;
+  livePosition?: LatLng | null;
 }) {
   const legLines =
     itinerary?.legs
@@ -122,6 +133,9 @@ export function MapView({
     ...(origin ? ([[origin.lat, origin.lng]] as [number, number][]) : []),
     ...(destination
       ? ([[destination.lat, destination.lng]] as [number, number][])
+      : []),
+    ...(livePosition
+      ? ([[livePosition.lat, livePosition.lng]] as [number, number][])
       : []),
     ...legLines.flatMap((l) => l.coords),
   ];
@@ -168,6 +182,13 @@ export function MapView({
         <Marker
           position={[destination.lat, destination.lng]}
           icon={pinIcon(TRANSIT_COLORS.mrt, "B")}
+        />
+      )}
+      {livePosition && (
+        <Marker
+          position={[livePosition.lat, livePosition.lng]}
+          icon={liveIcon()}
+          zIndexOffset={1000}
         />
       )}
       <FitBounds points={allPoints} />

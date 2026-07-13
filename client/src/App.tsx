@@ -10,6 +10,7 @@ import { Login } from "./pages/Login.js";
 import { SavedLocations } from "./pages/SavedLocations.js";
 import { FavouriteRoutes } from "./pages/FavouriteRoutes.js";
 import { Sustainability } from "./pages/Sustainability.js";
+import { LiveJourney } from "./pages/LiveJourney.js";
 import { Settings } from "./pages/Settings.js";
 import { Button } from "./components/ui.js";
 import { cn } from "./lib/utils.js";
@@ -183,6 +184,7 @@ export function App() {
       <div className="min-h-0 flex-1">
         <Switch>
           <Route path="/" component={Home} />
+          <Route path="/journey" component={LiveJourney} />
           <Route path="/login" component={Login} />
           <Route path="/saved-locations">
             <RequireAuth>
