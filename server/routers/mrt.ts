@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
 import { getAllLineStatuses } from "../db/helpers.js";
+import { mrtStationExits } from "../services/onemap.js";
+import { haversineMeters } from "../services/lta.js";
 
 // Static reference data — Singapore MRT operating hours (approximate).
 const OPERATING_HOURS: Record<
@@ -36,6 +38,35 @@ export const mrtRouter = router({
       return codes
         .filter((c) => OPERATING_HOURS[c])
         .map((c) => ({ lineCode: c, ...OPERATING_HOURS[c] }));
+    }),
+
+  exits: publicProcedure
+    .input(z.object({ stationName: z.string().min(1) }))
+    .query(({ input }) => mrtStationExits(input.stationName)),
+
+  nearestExit: publicProcedure
+    .input(
+      z.object({
+        stationName: z.string().min(1),
+        destLat: z.number(),
+        destLng: z.number(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const exits = await mrtStationExits(input.stationName);
+      const dest = { lat: input.destLat, lng: input.destLng };
+      const ranked = exits
+        .map((e) => ({
+          name: e.name,
+          distanceM: Math.round(haversineMeters(dest, { lat: e.lat, lng: e.lng })),
+        }))
+        .sort((a, b) => a.distanceM - b.distanceM);
+      if (!ranked.length) return null;
+      return {
+        exitCode: ranked[0].name,
+        distanceM: ranked[0].distanceM,
+        alternatives: ranked.slice(1, 3),
+      };
     }),
 
   serviceAlerts: publicProcedure.query(async () => {

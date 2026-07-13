@@ -122,16 +122,19 @@ async function enrichMrtExit(
   try {
     const exits = await mrtStationExits(leg.endStation);
     if (!exits.length) return;
-    let best = exits[0];
-    let bestD = Infinity;
-    for (const e of exits) {
-      const d = haversineMeters(aim, { lat: e.lat, lng: e.lng });
-      if (d < bestD) {
-        bestD = d;
-        best = e;
-      }
-    }
-    leg.exitName = best.name;
+    const ranked = exits
+      .map((e) => ({
+        name: e.name,
+        distanceM: Math.round(haversineMeters(aim, { lat: e.lat, lng: e.lng })),
+      }))
+      .sort((a, b) => a.distanceM - b.distanceM);
+    leg.exitName = ranked[0].name;
+    leg.exitDistanceM = ranked[0].distanceM;
+    // Offer up to two other exits that are within ~150m of the best.
+    leg.exitAlternatives = ranked
+      .slice(1)
+      .filter((e) => e.distanceM - ranked[0].distanceM <= 150)
+      .slice(0, 2);
   } catch {
     /* no exit info — leave undefined */
   }

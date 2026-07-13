@@ -60,6 +60,8 @@ export interface RouteLeg {
   endStation?: string;
   numStops?: number;
   exitName?: string; // e.g. "Exit B" — best exit for the onward journey
+  exitDistanceM?: number; // distance from that exit to the onward point/destination
+  exitAlternatives?: { name: string; distanceM: number }[];
 
   // bus
   busNo?: string;

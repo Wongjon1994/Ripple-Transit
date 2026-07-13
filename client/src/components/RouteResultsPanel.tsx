@@ -108,8 +108,17 @@ function LegCard({ leg }: { leg: RouteLeg }) {
           )}
 
           {leg.type === "mrt" && leg.exitName && (
-            <div className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
-              <DoorOpen size={12} /> Alight and take {leg.exitName}
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
+                <DoorOpen size={12} /> Alight and take {leg.exitName}
+                {leg.exitDistanceM != null &&
+                  ` · ${fmtDistance(leg.exitDistanceM)} to go`}
+              </span>
+              {leg.exitAlternatives && leg.exitAlternatives.length > 0 && (
+                <span className="text-xs text-ripple-muted">
+                  or {leg.exitAlternatives.map((e) => e.name).join(", ")}
+                </span>
+              )}
             </div>
           )}
 
