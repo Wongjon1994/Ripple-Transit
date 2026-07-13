@@ -17,6 +17,8 @@ import {
   Sun,
   Zap,
   TriangleAlert,
+  Droplets,
+  Wind,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -302,20 +304,55 @@ function RiskPill({ level }: { level: RiskLevel }) {
 }
 
 function WeatherBanner({ weather }: { weather: WeatherContext }) {
-  const Icon = weather.wet ? CloudRain : /cloud/i.test(weather.forecast) ? Cloud : Sun;
+  const Icon = weather.wet
+    ? CloudRain
+    : /cloud/i.test(weather.forecast)
+      ? Cloud
+      : Sun;
+  const adv = weather.advisory;
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2 px-4 py-2 text-xs",
-        weather.wet ? "bg-warning/10 text-warning" : "bg-ripple-muted/8 text-ripple-muted",
+    <div>
+      {/* Conditions strip */}
+      <div className="flex items-center gap-2 px-4 py-2 text-xs text-ripple-muted">
+        <Icon size={15} className="shrink-0" />
+        <span className="font-medium text-[var(--fg)]">
+          {weather.temperature != null
+            ? `${Math.round(weather.temperature)}°C · `
+            : ""}
+          {weather.forecast}
+        </span>
+        <span className="truncate">near {weather.area}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-2.5">
+          {weather.humidity != null && (
+            <span className="inline-flex items-center gap-0.5">
+              <Droplets size={12} /> {Math.round(weather.humidity)}%
+            </span>
+          )}
+          {weather.windSpeed != null && (
+            <span className="inline-flex items-center gap-0.5">
+              <Wind size={12} /> {weather.windSpeed}
+            </span>
+          )}
+        </span>
+      </div>
+      {/* Advisory */}
+      {adv && (
+        <div
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 text-xs font-medium",
+            adv.level === "warning"
+              ? "bg-warning/10 text-warning"
+              : "bg-bus/10 text-bus",
+          )}
+        >
+          {adv.level === "warning" ? (
+            <CloudRain size={14} className="shrink-0" />
+          ) : (
+            <Sun size={14} className="shrink-0" />
+          )}
+          {adv.message}
+        </div>
       )}
-    >
-      <Icon size={14} />
-      <span>
-        <span className="font-medium">{weather.forecast}</span> near{" "}
-        {weather.area}
-        {weather.wet ? " — bring an umbrella and allow extra time" : ""}
-      </span>
     </div>
   );
 }

@@ -81,10 +81,19 @@ export interface RouteRisk {
   reasons: string[];
 }
 
+export interface WeatherAdvisory {
+  level: "info" | "warning";
+  message: string;
+}
+
 export interface WeatherContext {
   area: string;
   forecast: string; // e.g. "Light Rain", "Cloudy"
   wet: boolean;
+  temperature?: number; // °C
+  humidity?: number; // %
+  windSpeed?: number; // km/h
+  advisory?: WeatherAdvisory | null;
 }
 
 export interface Itinerary {
