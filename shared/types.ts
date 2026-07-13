@@ -118,6 +118,18 @@ export interface RoutePlan {
   carbon?: CarbonBaseline | null;
 }
 
+// ── Taxi ──────────────────────────────────────────────────────
+export type TaxiAvailability = "available" | "limited" | "unavailable";
+
+export interface TaxiEstimate {
+  fare: number; // SGD (estimate)
+  durationMin: number;
+  distanceKm: number;
+  availability: TaxiAvailability;
+  nearbyCount: number;
+  waitMin: number;
+}
+
 export const RISK_COLORS: Record<RiskLevel, string> = {
   low: "#10b981",
   moderate: "#f59e0b",

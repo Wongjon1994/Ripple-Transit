@@ -344,6 +344,40 @@ export async function oneMapRoute(params: {
   return itineraries.map((it) => toItinerary(it));
 }
 
+/** Driving distance (m) + time (s) between two points, via OneMap drive route. */
+export async function oneMapDrive(
+  start: LatLng,
+  end: LatLng,
+): Promise<{ distanceM: number; durationS: number } | null> {
+  const token = await getOneMapToken();
+  if (!token) return null;
+  const url = new URL(`${BASE}/api/public/routingsvc/route`);
+  url.searchParams.set("start", `${start.lat},${start.lng}`);
+  url.searchParams.set("end", `${end.lat},${end.lng}`);
+  url.searchParams.set("routeType", "drive");
+
+  let res = await fetch(url, {
+    headers: { Authorization: token },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (res.status === 401) {
+    const fresh = await getOneMapToken(true);
+    if (fresh && fresh !== token) {
+      res = await fetch(url, {
+        headers: { Authorization: fresh },
+        signal: AbortSignal.timeout(12_000),
+      });
+    }
+  }
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    route_summary?: { total_time?: number; total_distance?: number };
+  };
+  const s = data.route_summary;
+  if (!s?.total_distance) return null;
+  return { distanceM: s.total_distance, durationS: s.total_time ?? 0 };
+}
+
 function toItinerary(it: OtpItinerary): Itinerary {
   const legs: RouteLeg[] = it.legs.map((leg) => {
     const type = mapMode(leg.mode);

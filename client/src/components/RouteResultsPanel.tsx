@@ -35,7 +35,9 @@ import { RISK_COLORS, RISK_LABELS } from "@shared/types.js";
 import { fmtDuration, fmtDistance, fmtTime, cn } from "../lib/utils.js";
 import { lineColor, lineName } from "../lib/transit.js";
 import { FeasibilityBadge, FeasibilityCallout } from "./FeasibilityBadge.js";
+import { TaxiCard } from "./TaxiCard.js";
 import { Button, Card } from "./ui.js";
+import type { TaxiEstimate } from "@shared/types.js";
 
 function LegIconCircle({ leg }: { leg: RouteLeg }) {
   const bg =
@@ -435,6 +437,7 @@ export function RouteResultsPanel({
   onLogTrip,
   weather,
   carbon,
+  taxi,
 }: {
   itineraries: Itinerary[];
   selected: number;
@@ -443,6 +446,7 @@ export function RouteResultsPanel({
   onLogTrip?: () => void;
   weather?: WeatherContext | null;
   carbon?: CarbonBaseline | null;
+  taxi?: TaxiEstimate | null;
 }) {
   if (itineraries.length === 0) return null;
   const active = itineraries[selected];
@@ -540,6 +544,7 @@ export function RouteResultsPanel({
               </button>
             );
           })}
+          {taxi && <TaxiCard taxi={taxi} />}
         </div>
       </div>
 

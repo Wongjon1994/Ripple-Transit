@@ -74,7 +74,8 @@
       "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{try{const j=JSON.parse\\(d\\);const its=j.result?.data?.json?.plan?.itineraries;if\\(its\\){console.log\\(\"✓ OK — options:\",its.length,\"| first:\",Math.round\\(its[0].duration/60\\)+\"min\"\\);}else{console.log\\(\"✗ error:\",JSON.stringify\\(j.error?.json?.message||j\\).slice\\(0,160\\)\\);}}catch\\(e\\){console.log\\(\"resp:\",d.slice\\(0,160\\)\\);}}\\)')",
       "Bash(curl -s -G 'http://localhost:5173/api/trpc/weather.current' --data-urlencode 'input={\"json\":{\"lat\":1.2834,\"lng\":103.8607}}')",
       "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(d\\).result?.data?.json;console.log\\(JSON.stringify\\(j\\)\\);}\\)')",
-      "Bash(npx drizzle-kit *)"
+      "Bash(npx drizzle-kit *)",
+      "Bash(curl -s -G 'http://localhost:5173/api/trpc/taxi.estimate' --data-urlencode 'input={\"json\":{\"origin\":{\"lat\":1.2834,\"lng\":103.8607},\"destination\":{\"lat\":1.3006,\"lng\":103.9020}}}')"
     ]
   }
 }

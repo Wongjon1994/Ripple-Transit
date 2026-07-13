@@ -87,6 +87,13 @@ export function Home() {
 
   const itineraries = route.data?.plan.itineraries ?? [];
 
+  const taxi = trpc.taxi.estimate.useQuery(
+    routeParams
+      ? { origin: routeParams.start, destination: routeParams.end }
+      : (undefined as never),
+    { enabled: !!routeParams, retry: false, staleTime: 60_000 },
+  );
+
   async function handleSearch() {
     if (!fromText.trim() || !toText.trim()) {
       toast.error("Enter both a From and To location.");
@@ -197,6 +204,7 @@ export function Home() {
                 onLogTrip={handleLogTrip}
                 weather={route.data?.weather}
                 carbon={route.data?.carbon}
+                taxi={taxi.data}
               />
             )}
           </div>
