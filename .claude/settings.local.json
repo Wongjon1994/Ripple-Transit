@@ -75,7 +75,10 @@
       "Bash(curl -s -G 'http://localhost:5173/api/trpc/weather.current' --data-urlencode 'input={\"json\":{\"lat\":1.2834,\"lng\":103.8607}}')",
       "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(d\\).result?.data?.json;console.log\\(JSON.stringify\\(j\\)\\);}\\)')",
       "Bash(npx drizzle-kit *)",
-      "Bash(curl -s -G 'http://localhost:5173/api/trpc/taxi.estimate' --data-urlencode 'input={\"json\":{\"origin\":{\"lat\":1.2834,\"lng\":103.8607},\"destination\":{\"lat\":1.3006,\"lng\":103.9020}}}')"
+      "Bash(curl -s -G 'http://localhost:5173/api/trpc/taxi.estimate' --data-urlencode 'input={\"json\":{\"origin\":{\"lat\":1.2834,\"lng\":103.8607},\"destination\":{\"lat\":1.3006,\"lng\":103.9020}}}')",
+      "Bash(cd \"/Users/jonathan/Documents/Ripple Transit\")",
+      "Bash(grep '^HERE_API_KEY=' .env)",
+      "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{try{const j=JSON.parse\\(d\\);console.log\\(\\(j.items||[]\\).map\\(i=>i.title+\" \\(\"+Math.round\\(i.distance\\)+\"m\\)\"\\).join\\(\" | \"\\)||\"none / \"+JSON.stringify\\(j\\).slice\\(0,120\\)\\);}catch\\(e\\){console.log\\(\"err\",d.slice\\(0,120\\)\\)}}\\)')"
     ]
   }
 }

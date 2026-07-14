@@ -10,17 +10,22 @@ import {
   Check,
   Share2,
   DoorOpen,
+  Clock,
+  TriangleAlert,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useJourney, type ActiveJourney } from "../lib/journey.js";
 import { useGeolocation } from "../lib/useGeolocation.js";
 import { useAuth } from "../lib/auth.js";
 import { trpc } from "../lib/trpc.js";
 import { MapView } from "../components/MapView.js";
-import { Button, Card } from "../components/ui.js";
+import { Button, Card, Modal } from "../components/ui.js";
 import { lineColor, lineName } from "../lib/transit.js";
 import { fmtDistance, fmtDuration, haversineMeters, cn } from "../lib/utils.js";
-import type { RouteLeg } from "@shared/types.js";
+import type { RouteLeg, Itinerary, LatLng } from "@shared/types.js";
 
 const ARRIVE_THRESHOLD_M = 35;
 
@@ -48,7 +53,7 @@ function instruction(leg: RouteLeg): { title: string; detail: string } {
 }
 
 export function LiveJourney() {
-  const { journey, advance, back, end } = useJourney();
+  const { journey, advance, back, end, start: startJourney } = useJourney();
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const active = !!journey && journey.status === "active";
@@ -58,6 +63,32 @@ export function LiveJourney() {
 
   const legs = journey?.itinerary.legs ?? [];
   const leg = journey ? legs[journey.currentLeg] : undefined;
+  const upcoming = journey ? legs[journey.currentLeg + 1] : undefined;
+
+  // Live transit alerts: watch the bus you're heading to / boarding, and flag
+  // MRT disruptions on the current or next leg.
+  const busLeg =
+    leg?.type === "bus" ? leg : upcoming?.type === "bus" ? upcoming : undefined;
+  const mrtLeg =
+    leg?.type === "mrt" ? leg : upcoming?.type === "mrt" ? upcoming : undefined;
+
+  const arrivals = trpc.lta.busArrivals.useQuery(
+    busLeg?.busStopCode
+      ? { busStopCode: busLeg.busStopCode, serviceNo: busLeg.busNo }
+      : (undefined as never),
+    { enabled: active && !!busLeg?.busStopCode, refetchInterval: 15_000 },
+  );
+  const lineStatuses = trpc.mrt.lineStatuses.useQuery(undefined, {
+    enabled: active && !!mrtLeg,
+    staleTime: 60_000,
+  });
+
+  const utils = trpc.useUtils();
+  const [reroute, setReroute] = useState<{
+    itinerary: Itinerary;
+    start: LatLng;
+  } | null>(null);
+  const [rerouteLoading, setRerouteLoading] = useState(false);
 
   // Auto-advance a walk leg once you're within threshold of its end point.
   useEffect(() => {
@@ -133,6 +164,59 @@ export function LiveJourney() {
         ? "#3b82f6"
         : lineColor(leg?.lineCode);
 
+  const busEta = arrivals.data?.services.find(
+    (s) => s.serviceNo === busLeg?.busNo,
+  )?.nextBus?.estimatedArrival;
+  const busMin =
+    busEta != null
+      ? Math.max(0, Math.round((new Date(busEta).getTime() - Date.now()) / 60000))
+      : null;
+  const mrtDisrupted = mrtLeg
+    ? lineStatuses.data?.find(
+        (l) => l.lineCode === mrtLeg.lineCode && l.status !== "operational",
+      )
+    : undefined;
+
+  // Remaining time on the original plan (from the current leg onward).
+  const remainingMin = Math.round(
+    legs.slice(journey.currentLeg).reduce((s, l) => s + l.duration, 0) / 60,
+  );
+  // The watched bus looks gone if its ETA has already passed.
+  const busDeparted =
+    busLeg != null && busEta != null && new Date(busEta).getTime() < Date.now();
+
+  async function handleReroute() {
+    const start = geo.position ?? leg?.startPoint ?? journey!.origin;
+    setRerouteLoading(true);
+    try {
+      const res = await utils.onemap.route.fetch({
+        start,
+        end: journey!.destination,
+        mode: "TRANSIT",
+      });
+      const best = res.plan.itineraries[0];
+      if (best) setReroute({ itinerary: best, start });
+      else toast.error("No alternative route found from here.");
+    } catch {
+      toast.error("Couldn't recalculate — try again.");
+    } finally {
+      setRerouteLoading(false);
+    }
+  }
+
+  function acceptReroute() {
+    if (!reroute) return;
+    startJourney({
+      itinerary: reroute.itinerary,
+      originText: "Current location",
+      destText: journey!.destText,
+      origin: reroute.start,
+      destination: journey!.destination,
+    });
+    setReroute(null);
+    toast.success("Re-routed from your current location.");
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="relative min-h-0 flex-1">
@@ -190,6 +274,25 @@ export function LiveJourney() {
           </div>
         </div>
 
+        {busLeg && busMin != null && (
+          <div className="mt-2.5 flex items-center gap-2 rounded-md bg-bus/10 px-3 py-2 text-xs text-bus">
+            <Clock size={14} className="shrink-0" />
+            <span>
+              <span className="font-semibold">Bus {busLeg.busNo}</span>{" "}
+              {busMin === 0 ? "arriving now" : `arrives in ${busMin} min`}
+              {busLeg.startBusStop ? ` at ${busLeg.startBusStop}` : ""}
+            </span>
+          </div>
+        )}
+
+        {mrtDisrupted && (
+          <div className="mt-2 flex items-center gap-2 rounded-md bg-warning/10 px-3 py-2 text-xs font-medium text-warning">
+            <TriangleAlert size={14} className="shrink-0" />
+            {mrtDisrupted.lineCode} line {mrtDisrupted.status}
+            {mrtDisrupted.message ? `: ${mrtDisrupted.message}` : ""}
+          </div>
+        )}
+
         {nextLeg && (
           <div className="mt-2.5 flex items-center gap-2 rounded-md bg-ripple-muted/5 px-3 py-1.5 text-xs text-ripple-muted">
             <span className="font-medium">Next:</span>
@@ -209,7 +312,70 @@ export function LiveJourney() {
             {!isLast && <ArrowRight size={16} />}
           </Button>
         </div>
+
+        {(busLeg || mrtLeg) && (
+          <Button
+            variant="outline"
+            className={cn(
+              "mt-2 w-full",
+              busDeparted && "border-warning/50 text-warning",
+            )}
+            onClick={handleReroute}
+            disabled={rerouteLoading}
+          >
+            {rerouteLoading ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <RotateCcw size={15} />
+            )}
+            {busDeparted ? "Missed it? Find a better route" : "Re-route from here"}
+          </Button>
+        )}
       </div>
+
+      <Modal
+        open={!!reroute}
+        onClose={() => setReroute(null)}
+        title="Better route from here"
+      >
+        {reroute && (
+          <div className="flex flex-col gap-3">
+            <div className="rounded-lg border border-[var(--border)] p-3">
+              <div className="text-base font-semibold">
+                {fmtDuration(reroute.itinerary.duration)}
+              </div>
+              <div className="mt-1 text-xs text-ripple-muted">
+                {reroute.itinerary.legs
+                  .filter((l) => l.type !== "walk")
+                  .map((l) => l.busNo ?? l.lineCode ?? l.type)
+                  .join(" → ") || "Walking route"}
+                {" · "}${reroute.itinerary.fare.toFixed(2)} ·{" "}
+                {reroute.itinerary.transfers} transfer
+                {reroute.itinerary.transfers === 1 ? "" : "s"}
+              </div>
+            </div>
+            <p className="text-xs text-ripple-muted">
+              Your original plan had about {remainingMin} min left.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setReroute(null)}
+              >
+                Keep original
+              </Button>
+              <Button
+                variant="accent"
+                className="flex-1"
+                onClick={acceptReroute}
+              >
+                Take new route
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
