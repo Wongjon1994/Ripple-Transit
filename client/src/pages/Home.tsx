@@ -5,7 +5,6 @@ import { SearchPanel, type Place } from "../components/SearchPanel.js";
 import { RouteResultsPanel } from "../components/RouteResultsPanel.js";
 import { MapView } from "../components/MapView.js";
 import { MrtStatus } from "../components/MrtStatus.js";
-import { useAuth } from "../lib/auth.js";
 import { useJourney } from "../lib/journey.js";
 import { useLocation } from "wouter";
 import type { LatLng } from "@shared/types.js";
@@ -35,7 +34,6 @@ export function Home() {
   } | null>(null);
   const [resolving, setResolving] = useState(false);
   const utils = trpc.useUtils();
-  const { user } = useAuth();
   const journeyCtx = useJourney();
   const [, navigate] = useLocation();
 
@@ -50,30 +48,6 @@ export function Home() {
       destination: routeParams.end,
     });
     navigate("/journey");
-  }
-
-  const logTrip = trpc.sustainability.logTrip.useMutation({
-    onSuccess: () => toast.success("Trip logged — added to your impact."),
-    onError: (e) => toast.error(e.message),
-  });
-
-  function handleLogTrip() {
-    if (!user) {
-      toast.error("Sign in to track your carbon impact.");
-      return;
-    }
-    const it = itineraries[selected];
-    const cb = route.data?.carbon;
-    if (!it || it.co2Grams == null) return;
-    const distanceM = it.legs.reduce((s, l) => s + l.distance, 0);
-    logTrip.mutate({
-      origin: fromText || "Origin",
-      destination: toText || "Destination",
-      mode: "transit",
-      co2Grams: it.co2Grams,
-      savedGrams: Math.max(0, (cb?.taxiGrams ?? 0) - it.co2Grams),
-      distanceM: Math.round(distanceM),
-    });
   }
 
   // Resolve a text field to coordinates: use the picked suggestion if we have
@@ -153,7 +127,6 @@ export function Home() {
         <div className="sticky top-0 z-10 flex shrink-0 justify-center bg-[var(--bg)] pb-1 pt-2 md:hidden">
           <span className="h-1 w-10 rounded-full bg-ripple-muted/40" />
         </div>
-        <MrtStatus />
         <div className="px-4 pb-4 pt-2 md:pt-4">
           <SearchPanel
             fromText={fromText}
@@ -196,6 +169,8 @@ export function Home() {
           />
         </div>
 
+        <MrtStatus />
+
         {route.isError && (
           <div className="mx-4 rounded-md border border-error/30 bg-error/10 p-3 text-sm text-error">
             Couldn’t calculate a route. {route.error.message}
@@ -218,7 +193,6 @@ export function Home() {
                 selected={selected}
                 onSelect={setSelected}
                 onSave={() => toast.success("Route saving comes in Phase 11.")}
-                onLogTrip={handleLogTrip}
                 onStartJourney={handleStartJourney}
                 weather={route.data?.weather}
                 carbon={route.data?.carbon}

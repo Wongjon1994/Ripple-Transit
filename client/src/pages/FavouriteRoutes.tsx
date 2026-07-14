@@ -40,7 +40,7 @@ export function FavouriteRoutes() {
 
   return (
     <PageShell
-      title="Favourite Routes"
+      title="Favourites"
       action={
         <Button size="sm" variant="accent" onClick={() => setAdding(true)}>
           <Plus size={15} /> Add

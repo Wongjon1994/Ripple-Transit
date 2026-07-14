@@ -7,40 +7,37 @@ const AVAIL: Record<TaxiAvailability, { label: string; color: string }> = {
   unavailable: { label: "Few nearby", color: "#dc2626" },
 };
 
-/** Taxi comparison card — an alternative to the transit options. */
+/** Slim taxi comparison row, consistent with the transit option cards. */
 export function TaxiCard({ taxi }: { taxi: TaxiEstimate }) {
   const a = AVAIL[taxi.availability];
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-warning/5 p-3">
+    <div className="rounded-lg border border-[var(--border)] p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-warning/20">
-            <Car size={18} className="text-warning" />
+        <div className="flex items-center gap-2">
+          <Car size={16} className="text-warning" />
+          <span className="text-sm font-semibold">Taxi</span>
+          <span
+            className="ml-1 inline-flex items-center gap-1 text-xs font-medium"
+            style={{ color: a.color }}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: a.color }}
+            />
+            {a.label}
           </span>
-          <div>
-            <div className="text-sm font-semibold">Taxi</div>
-            <div
-              className="flex items-center gap-1 text-xs font-medium"
-              style={{ color: a.color }}
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: a.color }}
-              />
-              {a.label}
-            </div>
-          </div>
         </div>
         <div className="text-right">
-          <div className="text-lg font-bold">${taxi.fare.toFixed(2)}</div>
-          <div className="text-xs text-ripple-muted">
-            {taxi.durationMin} min · {taxi.distanceKm} km
-          </div>
+          <span className="text-base font-semibold">
+            ${taxi.fare.toFixed(2)}
+          </span>
+          <span className="ml-1.5 text-xs text-ripple-muted">
+            {taxi.durationMin} min
+          </span>
         </div>
       </div>
-      <div className="mt-1.5 text-[11px] text-ripple-muted">
-        Estimate based on LTA regulated rates · ~{taxi.waitMin} min wait ·{" "}
-        {taxi.nearbyCount} taxis nearby
+      <div className="mt-1 text-[11px] text-ripple-muted">
+        LTA-rate estimate · ~{taxi.waitMin} min wait
       </div>
     </div>
   );

@@ -42,7 +42,7 @@ export function SavedLocations() {
 
   return (
     <PageShell
-      title="Saved Locations"
+      title="Places"
       action={
         <Button size="sm" variant="accent" onClick={() => setAdding(true)}>
           <Plus size={15} /> Add

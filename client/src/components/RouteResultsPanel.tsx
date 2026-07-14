@@ -5,9 +5,6 @@ import {
   Bus,
   ChevronDown,
   ArrowRight,
-  Clock,
-  Wallet,
-  Repeat,
   BarChart3,
   DoorOpen,
   RotateCcw,
@@ -17,10 +14,9 @@ import {
   Sun,
   Zap,
   TriangleAlert,
-  Droplets,
-  Wind,
   Leaf,
   Navigation,
+  Bookmark,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -317,7 +313,11 @@ function RiskPill({ level }: { level: RiskLevel }) {
   );
 }
 
-function WeatherBanner({ weather }: { weather: WeatherContext }) {
+/**
+ * One compact weather line. Plain/muted when conditions are unremarkable;
+ * coloured and prominent only when there's an advisory (rain / heat).
+ */
+function WeatherStrip({ weather }: { weather: WeatherContext }) {
   const Icon = weather.wet
     ? CloudRain
     : /cloud/i.test(weather.forecast)
@@ -325,47 +325,25 @@ function WeatherBanner({ weather }: { weather: WeatherContext }) {
       : Sun;
   const adv = weather.advisory;
   return (
-    <div>
-      {/* Conditions strip */}
-      <div className="flex items-center gap-2 px-4 py-2 text-xs text-ripple-muted">
-        <Icon size={15} className="shrink-0" />
-        <span className="font-medium text-[var(--fg)]">
-          {weather.temperature != null
-            ? `${Math.round(weather.temperature)}°C · `
-            : ""}
-          {weather.forecast}
-        </span>
-        <span className="truncate">near {weather.area}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-2.5">
-          {weather.humidity != null && (
-            <span className="inline-flex items-center gap-0.5">
-              <Droplets size={12} /> {Math.round(weather.humidity)}%
-            </span>
-          )}
-          {weather.windSpeed != null && (
-            <span className="inline-flex items-center gap-0.5">
-              <Wind size={12} /> {weather.windSpeed}
-            </span>
-          )}
-        </span>
-      </div>
-      {/* Advisory */}
-      {adv && (
-        <div
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 text-xs font-medium",
-            adv.level === "warning"
-              ? "bg-warning/10 text-warning"
-              : "bg-bus/10 text-bus",
-          )}
-        >
-          {adv.level === "warning" ? (
-            <CloudRain size={14} className="shrink-0" />
-          ) : (
-            <Sun size={14} className="shrink-0" />
-          )}
-          {adv.message}
-        </div>
+    <div
+      className={cn(
+        "flex items-center gap-2 px-4 py-2 text-xs",
+        adv?.level === "warning"
+          ? "bg-warning/10 text-warning"
+          : adv
+            ? "bg-bus/10 text-bus"
+            : "text-ripple-muted",
+      )}
+    >
+      <Icon size={14} className="shrink-0" />
+      <span className={cn("font-medium", !adv && "text-[var(--fg)]")}>
+        {weather.temperature != null ? `${Math.round(weather.temperature)}° · ` : ""}
+        {weather.forecast}
+      </span>
+      {adv ? (
+        <span className="truncate">— {adv.message}</span>
+      ) : (
+        <span className="truncate text-ripple-muted">near {weather.area}</span>
       )}
     </div>
   );
@@ -375,14 +353,15 @@ function fmtCo2(grams: number): string {
   return grams >= 1000 ? `${(grams / 1000).toFixed(1)} kg` : `${Math.round(grams)} g`;
 }
 
-/** Carbon footprint of the selected route vs taxi / car (mockup 4). */
-function CarbonPanel({
+/** Carbon one-liner that expands to a route-vs-taxi-vs-car breakdown on tap. */
+function CarbonInline({
   routeGrams,
   carbon,
 }: {
   routeGrams: number;
   carbon: CarbonBaseline;
 }) {
+  const [open, setOpen] = useState(false);
   const saved = Math.max(0, carbon.taxiGrams - routeGrams);
   const max = Math.max(routeGrams, carbon.taxiGrams, carbon.carGrams, 1);
   const rows: [string, number, string][] = [
@@ -391,51 +370,49 @@ function CarbonPanel({
     ["Car", carbon.carGrams, "#9ca3af"],
   ];
   return (
-    <div className="border-b border-[var(--border)] px-4 py-3">
-      <div className="flex items-center gap-2">
-        <Leaf size={15} className="text-ok" />
-        <span className="text-sm font-semibold text-ok">Eco choice</span>
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-1.5 text-xs"
+        aria-expanded={open}
+      >
+        <Leaf size={13} className="shrink-0 text-ok" />
+        <span className="font-medium text-ok">{fmtCo2(routeGrams)} CO₂</span>
         {saved > 0 && (
-          <span className="text-xs text-ripple-muted">
-            you save {(saved / 1000).toFixed(2)} kg CO₂ vs a taxi
+          <span className="text-ripple-muted">
+            · save {(saved / 1000).toFixed(2)} kg vs taxi
           </span>
         )}
-      </div>
-      <div className="mt-2 flex flex-col gap-1.5">
-        {rows.map(([label, grams, color]) => (
-          <div key={label}>
-            <div className="flex justify-between text-xs">
-              <span className="text-ripple-muted">{label}</span>
-              <span className="font-medium">{fmtCo2(grams)} CO₂</span>
+        <ChevronDown
+          size={12}
+          className={cn(
+            "ml-auto text-ripple-muted transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {rows.map(([label, grams, color]) => (
+            <div key={label}>
+              <div className="flex justify-between text-xs">
+                <span className="text-ripple-muted">{label}</span>
+                <span className="font-medium">{fmtCo2(grams)}</span>
+              </div>
+              <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-ripple-muted/15">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${Math.max(3, (grams / max) * 100)}%`,
+                    background: color,
+                  }}
+                />
+              </div>
             </div>
-            <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-ripple-muted/15">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.max(3, (grams / max) * 100)}%`,
-                  background: color,
-                }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
-  );
-}
-
-function SummaryChip({
-  icon: Icon,
-  children,
-}: {
-  icon: typeof Clock;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1 text-sm">
-      <Icon size={14} className="text-ripple-muted" />
-      {children}
-    </span>
   );
 }
 
@@ -444,7 +421,6 @@ export function RouteResultsPanel({
   selected,
   onSelect,
   onSave,
-  onLogTrip,
   onStartJourney,
   weather,
   carbon,
@@ -454,14 +430,12 @@ export function RouteResultsPanel({
   selected: number;
   onSelect: (i: number) => void;
   onSave?: () => void;
-  onLogTrip?: () => void;
   onStartJourney?: () => void;
   weather?: WeatherContext | null;
   carbon?: CarbonBaseline | null;
   taxi?: TaxiEstimate | null;
 }) {
   if (itineraries.length === 0) return null;
-  const active = itineraries[selected];
   const fastest = Math.min(...itineraries.map((it) => it.duration));
 
   // Decision aids: which option is quickest vs most reliable.
@@ -471,7 +445,6 @@ export function RouteResultsPanel({
     (best, it, i) => (riskScore(it) < riskScore(itineraries[best]) ? i : best),
     0,
   );
-  // Only surface a "Most reliable" tag when it's a genuinely safer, different pick.
   const showReliableTag =
     itineraries.length > 1 &&
     mostReliableIdx !== fastestIdx &&
@@ -479,7 +452,7 @@ export function RouteResultsPanel({
 
   return (
     <div className="flex flex-col">
-      {weather && <WeatherBanner weather={weather} />}
+      {weather && <WeatherStrip weather={weather} />}
 
       <div className="p-3">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ripple-muted">
@@ -491,129 +464,140 @@ export function RouteResultsPanel({
           {itineraries.map((it, i) => {
             const dev = Math.round((it.duration - fastest) / 60);
             const modes = journeyModes(it);
+            const isSel = i === selected;
             return (
-              <button
+              <div
                 key={i}
-                onClick={() => onSelect(i)}
                 className={cn(
-                  "flex flex-col gap-1.5 rounded-lg border p-3 text-left transition-colors",
-                  i === selected
-                    ? "border-bus bg-bus/5"
-                    : "border-[var(--border)] hover:bg-ripple-muted/5",
+                  "overflow-hidden rounded-lg border transition-colors",
+                  isSel ? "border-bus" : "border-[var(--border)]",
                 )}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-base font-semibold">
-                    {fmtDuration(it.duration)}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {i === fastestIdx && (
-                      <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-ok">
-                        <Zap size={12} /> Fastest
+                {/* Summary row — tap to select/expand */}
+                <button
+                  onClick={() => onSelect(i)}
+                  aria-expanded={isSel}
+                  className={cn(
+                    "flex w-full flex-col gap-1.5 p-3 text-left",
+                    isSel ? "bg-bus/5" : "hover:bg-ripple-muted/5",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-base font-semibold">
+                      {fmtDuration(it.duration)}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {i === fastestIdx && (
+                        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-ok">
+                          <Zap size={12} /> Fastest
+                        </span>
+                      )}
+                      {dev > 0 && (
+                        <span className="text-xs text-ripple-muted">+{dev} min</span>
+                      )}
+                      {showReliableTag && i === mostReliableIdx && (
+                        <span className="text-xs font-semibold text-bus">
+                          Most reliable
+                        </span>
+                      )}
+                      <ChevronDown
+                        size={15}
+                        className={cn(
+                          "text-ripple-muted transition-transform",
+                          isSel && "rotate-180",
+                        )}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {modes.map((m, j) => (
+                      <span key={j} className="inline-flex items-center gap-1">
+                        {j > 0 && (
+                          <ArrowRight size={10} className="text-ripple-muted" />
+                        )}
+                        <span
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
+                          style={{ background: m.color }}
+                        >
+                          {m.kind === "bus" ? (
+                            <Bus size={11} />
+                          ) : (
+                            <TrainFront size={11} />
+                          )}
+                          {m.label}
+                        </span>
                       </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-ripple-muted">
+                      ${it.fare.toFixed(2)} ·{" "}
+                      {it.transfers === 0
+                        ? "direct"
+                        : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
+                    </span>
+                    {it.risk && <RiskPill level={it.risk.level} />}
+                  </div>
+                </button>
+
+                {/* Details — only for the expanded option */}
+                {isSel && (
+                  <div className="border-t border-[var(--border)]">
+                    {it.risk && it.risk.reasons.length > 0 && (
+                      <div className="border-b border-[var(--border)] px-3 py-2 text-xs text-ripple-muted">
+                        <span
+                          className="font-medium"
+                          style={{ color: RISK_COLORS[it.risk.level] }}
+                        >
+                          {RISK_LABELS[it.risk.level]}
+                        </span>{" "}
+                        · {it.risk.reasons.join(" · ")}
+                      </div>
                     )}
-                    {dev > 0 && (
-                      <span className="text-xs text-ripple-muted">
-                        +{dev} min
-                      </span>
+
+                    {carbon && it.co2Grams != null && (
+                      <div className="border-b border-[var(--border)] px-3 py-2.5">
+                        <CarbonInline routeGrams={it.co2Grams} carbon={carbon} />
+                      </div>
                     )}
-                    {showReliableTag && i === mostReliableIdx && (
-                      <span className="text-xs font-semibold text-bus">
-                        Most reliable
-                      </span>
+
+                    <div className="flex flex-col gap-2 p-3">
+                      {it.legs.map((leg, k) => (
+                        <LegCard key={k} leg={leg} />
+                      ))}
+                    </div>
+
+                    {(onStartJourney || onSave) && (
+                      <div className="flex gap-2 px-3 pb-3">
+                        {onStartJourney && (
+                          <Button
+                            variant="accent"
+                            className="flex-1"
+                            onClick={onStartJourney}
+                          >
+                            <Navigation size={16} /> Start journey
+                          </Button>
+                        )}
+                        {onSave && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label="Save route"
+                            onClick={onSave}
+                          >
+                            <Bookmark size={16} />
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-1">
-                  {modes.map((m, j) => (
-                    <span key={j} className="inline-flex items-center gap-1">
-                      {j > 0 && (
-                        <ArrowRight size={10} className="text-ripple-muted" />
-                      )}
-                      <span
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
-                        style={{ background: m.color }}
-                      >
-                        {m.kind === "bus" ? (
-                          <Bus size={11} />
-                        ) : (
-                          <TrainFront size={11} />
-                        )}
-                        {m.label}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-ripple-muted">
-                    ${it.fare.toFixed(2)} ·{" "}
-                    {it.transfers === 0
-                      ? "direct"
-                      : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
-                  </span>
-                  {it.risk && <RiskPill level={it.risk.level} />}
-                </div>
-              </button>
+                )}
+              </div>
             );
           })}
           {taxi && <TaxiCard taxi={taxi} />}
         </div>
       </div>
-
-      <div className="flex items-center gap-4 border-y border-[var(--border)] bg-ripple-muted/5 px-4 py-2.5">
-        <SummaryChip icon={Clock}>{fmtDuration(active.duration)}</SummaryChip>
-        <SummaryChip icon={Wallet}>${active.fare.toFixed(2)}</SummaryChip>
-        <SummaryChip icon={Repeat}>
-          {active.transfers} transfer{active.transfers === 1 ? "" : "s"}
-        </SummaryChip>
-      </div>
-
-      {active.risk && active.risk.reasons.length > 0 && (
-        <div className="border-b border-[var(--border)] px-4 py-2 text-xs text-ripple-muted">
-          <span className="font-medium" style={{ color: RISK_COLORS[active.risk.level] }}>
-            {RISK_LABELS[active.risk.level]}
-          </span>{" "}
-          · {active.risk.reasons.join(" · ")}
-        </div>
-      )}
-
-      {carbon && active.co2Grams != null && (
-        <CarbonPanel routeGrams={active.co2Grams} carbon={carbon} />
-      )}
-
-      <div className="flex flex-col gap-2 p-3">
-        {active.legs.map((leg, i) => (
-          <LegCard key={i} leg={leg} />
-        ))}
-      </div>
-
-      {(onSave || onLogTrip || onStartJourney) && (
-        <div className="flex flex-col gap-2 px-3 pb-3">
-          {onStartJourney && (
-            <Button
-              variant="accent"
-              className="w-full"
-              onClick={onStartJourney}
-            >
-              <Navigation size={16} /> Start journey
-            </Button>
-          )}
-          {(onSave || onLogTrip) && (
-            <div className="flex gap-2">
-              {onSave && (
-                <Button variant="outline" className="flex-1" onClick={onSave}>
-                  Save route
-                </Button>
-              )}
-              {onLogTrip && (
-                <Button variant="outline" className="flex-1" onClick={onLogTrip}>
-                  <Leaf size={15} /> Log trip
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

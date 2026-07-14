@@ -35,8 +35,8 @@ function Header() {
 
   const nav = [
     { href: "/", label: "Map" },
-    { href: "/saved-locations", label: "Saved" },
-    { href: "/favourite-routes", label: "Routes" },
+    { href: "/saved-locations", label: "Places" },
+    { href: "/favourite-routes", label: "Favourites" },
     { href: "/impact", label: "Impact" },
     { href: "/settings", label: "Settings" },
   ];

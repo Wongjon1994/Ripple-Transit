@@ -95,10 +95,7 @@ function headline(status: FeasibilityStatus, buffer: number): string {
 function messageLines(status: FeasibilityStatus, buffer: number): string[] {
   switch (status) {
     case "ok":
-      return [
-        "You'll arrive at the stop with time to spare.",
-        `Comfortable connection — about ${buffer} min of slack.`,
-      ];
+      return [`Comfortable — about ${buffer} min of slack.`];
     case "tight":
       return [
         "You might make it, but it's risky.",
