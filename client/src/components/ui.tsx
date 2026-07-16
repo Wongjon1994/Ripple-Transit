@@ -10,12 +10,13 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../lib/utils.js";
 
 const button = cva(
-  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ripple-fg/40 disabled:opacity-50 disabled:pointer-events-none",
+  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:opacity-50 disabled:pointer-events-none",
   {
     variants: {
       variant: {
         primary: "bg-ripple-fg text-white hover:bg-ripple-fg/90 dark:bg-white dark:text-ripple-fg",
-        accent: "bg-bus text-white hover:bg-bus/90",
+        accent:
+          "bg-brand text-white hover:bg-brand/90 dark:text-[#0f1419] dark:font-semibold",
         outline:
           "border border-[var(--border)] bg-[var(--surface)] hover:bg-ripple-muted/10",
         ghost: "hover:bg-ripple-muted/10",
@@ -50,7 +51,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        "h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--fg)] placeholder:text-ripple-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ripple-fg/30",
+        "h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--fg)] placeholder:text-ripple-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
         className,
       )}
       {...props}
@@ -102,7 +103,7 @@ export function Modal({
       aria-label={title}
     >
       <Card
-        className="w-full max-w-md p-5 shadow-xl"
+        className="w-full max-w-md p-5 shadow-[var(--shadow-card)]"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -134,9 +135,7 @@ export function PageShell({
   return (
     <div className="mx-auto h-full w-full max-w-2xl overflow-y-auto px-4 py-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-sm font-semibold uppercase tracking-wide text-ripple-muted">
-          {title}
-        </h1>
+        <h1 className="eyebrow text-brand">{title}</h1>
         {action}
       </div>
       {children}

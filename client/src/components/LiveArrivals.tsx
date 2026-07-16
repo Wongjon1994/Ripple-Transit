@@ -29,7 +29,7 @@ function LoadChip({ load }: { load: BusLoad }) {
 function EtaBadge({ min }: { min: number | null }) {
   if (min == null) return <span className="text-xs text-ripple-muted">—</span>;
   return (
-    <span className="text-xs font-semibold text-[var(--fg)]">
+    <span className="data-voice text-xs font-semibold text-[var(--fg)]">
       {min === 0 ? "Now" : `${min}m`}
     </span>
   );
@@ -85,7 +85,7 @@ export function LiveArrivals({
   return (
     <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
       <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+        <span className="eyebrow text-ripple-muted">
           Live board · stop {busStopCode}
         </span>
         {q.isFetching && (
@@ -106,7 +106,7 @@ export function LiveArrivals({
             >
               <span
                 className={cn(
-                  "inline-flex min-w-[3rem] items-center gap-1 text-sm font-bold",
+                  "data-voice inline-flex min-w-[3rem] items-center gap-1 text-sm font-bold",
                   isMine ? "text-bus" : "text-[var(--fg)]",
                 )}
               >

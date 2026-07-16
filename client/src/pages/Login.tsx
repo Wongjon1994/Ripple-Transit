@@ -41,7 +41,7 @@ export function Login() {
     <div className="flex h-full items-center justify-center p-4">
       <Card className="w-full max-w-sm p-6">
         <div className="mb-5 flex flex-col items-center gap-2 text-center">
-          <Waves size={28} className="text-bus" />
+          <Waves size={28} className="text-brand" />
           <h1 className="text-xl font-semibold">
             {mode === "login" ? "Welcome back" : "Create your account"}
           </h1>
@@ -90,7 +90,7 @@ export function Login() {
         <p className="mt-4 text-center text-sm text-ripple-muted">
           {mode === "login" ? "New to Ripple?" : "Already have an account?"}{" "}
           <button
-            className="font-semibold text-bus hover:underline"
+            className="font-semibold text-brand hover:underline"
             onClick={() => setMode(mode === "login" ? "register" : "login")}
           >
             {mode === "login" ? "Create an account" : "Sign in"}

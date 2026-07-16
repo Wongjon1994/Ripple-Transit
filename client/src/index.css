@@ -5,7 +5,11 @@
  * minimalist, typography-driven, data-focused. Tokens map to the spec palette.
  */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Ripple suite type system (matches The Daily Ripple):
+     serif display · sans body · mono "data voice" for every number. */
+  --font-sans: "Source Sans 3", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --color-ripple-bg: #f8f9fa;
   --color-ripple-fg: #1f2937;
@@ -16,9 +20,18 @@
   --color-warning: #f59e0b;
   --color-error: #dc2626;
 
+  /* Wayfinding colours — semantic, never used as brand chrome. */
   --color-bus: #3b82f6;
   --color-mrt: #ef4444;
   --color-walk: #22c55e;
+}
+
+/* Brand chrome (theme-aware): Ripple cyan is the current that runs through the
+   suite; merlion-cream gold marks the confidence moments (Fastest, saved,
+   Impact). Referenced inline so light/dark swap at runtime. */
+@theme inline {
+  --color-brand: var(--brand);
+  --color-gold: var(--gold);
 }
 
 /* Dark mode: activated by `.dark` on <html>. */
@@ -30,6 +43,11 @@
   --fg: #1f2937;
   --muted: #6b7280;
   --border: #e5e7eb;
+  --brand: #0d8ea1; /* Ripple cyan, ink-strength for light ground */
+  --gold: #a97f2e; /* merlion-cream gold, rich */
+  --shadow-card:
+    0 18px 40px -22px rgba(15, 40, 50, 0.28),
+    0 3px 10px -6px rgba(15, 40, 50, 0.16);
 }
 
 .dark {
@@ -38,6 +56,11 @@
   --fg: #e5e7eb;
   --muted: #9ca3af;
   --border: #2a3038;
+  --brand: #34c3d8; /* brighter cyan holds contrast on dark */
+  --gold: #e0bd6e;
+  --shadow-card:
+    0 22px 48px -24px rgba(0, 0, 0, 0.7),
+    0 4px 14px -8px rgba(0, 0, 0, 0.55);
 }
 
 html,
@@ -54,6 +77,26 @@ body {
   font-size: 14px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  /* Same dawn/dusk ease as The Daily Ripple's time-of-day shift. */
+  transition:
+    background-color 0.6s ease,
+    color 0.6s ease;
+}
+
+/* Uppercase mono eyebrow — the suite's section label (0.15em tracking). */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* The data voice: every number reads as an instrument. */
+.data-voice {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* MapLibre GL controls should respect the theme */

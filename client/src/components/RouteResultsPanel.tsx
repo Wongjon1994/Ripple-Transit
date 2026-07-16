@@ -3,9 +3,9 @@ import {
   Footprints,
   TrainFront,
   Bus,
+  Check,
   ChevronDown,
   ArrowRight,
-  BarChart3,
   DoorOpen,
   RotateCcw,
   ShieldCheck,
@@ -37,116 +37,104 @@ import { TaxiCard } from "./TaxiCard.js";
 import { Button, Card } from "./ui.js";
 import type { TaxiEstimate } from "@shared/types.js";
 
-function LegIconCircle({ leg }: { leg: RouteLeg }) {
-  const bg =
-    leg.type === "walk"
-      ? "#22c55e"
-      : leg.type === "bus"
-        ? "#3b82f6"
-        : lineColor(leg.lineCode);
-  const Icon =
-    leg.type === "walk" ? Footprints : leg.type === "bus" ? Bus : TrainFront;
-  return (
-    <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white"
-      style={{ background: bg }}
-    >
-      <Icon size={17} />
-    </span>
-  );
+function legColor(leg: RouteLeg): string {
+  if (leg.type === "walk") return "#22c55e";
+  if (leg.type === "bus") return "#3b82f6";
+  return lineColor(leg.lineCode);
 }
 
 function legTitle(leg: RouteLeg): string {
-  if (leg.type === "walk")
-    return `${leg.startBusStop ?? leg.startStation ?? "Walk"} → ${leg.endBusStop ?? leg.endStation ?? "destination"}`;
+  if (leg.type === "walk") {
+    const to =
+      cleanName(leg.toName) ?? leg.endBusStop ?? leg.endStation ?? null;
+    return to ? `Walk to ${to}` : "Walk";
+  }
   if (leg.type === "mrt")
     return `${leg.startStation ?? "Board"} → ${leg.endStation ?? "Alight"}`;
   return `Bus ${leg.busNo ?? ""} → ${leg.endBusStop ?? "stop"}`;
 }
 
-function LegCard({ leg }: { leg: RouteLeg }) {
+/**
+ * One leg of the journey as a stepper row: coloured dot + connecting spine,
+ * so the whole route reads as one path instead of a stack of cards.
+ */
+function LegStep({ leg, isLast }: { leg: RouteLeg; isLast: boolean }) {
+  const color = legColor(leg);
+  const Icon =
+    leg.type === "walk" ? Footprints : leg.type === "bus" ? Bus : TrainFront;
   const f = leg.busLegFeasibility;
 
   return (
-    <Card className="p-4">
-      <div className="flex gap-3">
-        <LegIconCircle leg={leg} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-sm font-semibold leading-snug text-[var(--fg)]">
-              {leg.type === "walk" ? "Walk" : legTitle(leg)}
-            </span>
+    <div className="relative flex gap-3 pb-4 last:pb-0">
+      {!isLast && (
+        <span
+          aria-hidden
+          className="absolute bottom-0 left-[15px] top-8 w-[3px] -translate-x-1/2 rounded-full"
+          style={{ background: `${color}59` }}
+        />
+      )}
+      <span
+        className="relative z-[1] flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
+        style={{ background: color }}
+      >
+        <Icon size={15} />
+      </span>
+
+      <div className="min-w-0 flex-1 pt-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="min-w-0 truncate text-sm font-semibold leading-snug text-[var(--fg)]">
+            {legTitle(leg)}
             {leg.type === "mrt" && leg.lineCode && (
               <span
-                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
+                className="ml-1.5 inline-block translate-y-[-1px] rounded px-1 py-px align-middle font-mono text-[10px] font-bold text-white"
                 style={{ background: lineColor(leg.lineCode) }}
               >
                 {leg.lineCode}
               </span>
             )}
-          </div>
-
-          <div className="mt-0.5 text-xs text-ripple-muted">
+          </span>
+          <span className="data-voice shrink-0 whitespace-nowrap text-xs text-ripple-muted">
             {fmtDuration(leg.duration)} · {fmtDistance(leg.distance)}
             {leg.type === "mrt" && leg.numStops ? ` · ${leg.numStops} stops` : ""}
-          </div>
-
-          {leg.type === "mrt" && (
-            <div className="mt-1 text-xs text-ripple-muted">
-              {lineName(leg.lineCode)}
-              {leg.startStation && leg.endStation ? (
-                <span className="inline-flex items-center gap-1">
-                  {" · "}
-                  {leg.startStation}
-                  <ArrowRight size={10} />
-                  {leg.endStation}
-                </span>
-              ) : null}
-            </div>
-          )}
-
-          {leg.type === "mrt" && leg.exitName && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
-                <DoorOpen size={12} /> Alight and take {leg.exitName}
-                {leg.exitDistanceM != null &&
-                  ` · ${fmtDistance(leg.exitDistanceM)} to go`}
-              </span>
-              {leg.exitAlternatives && leg.exitAlternatives.length > 0 && (
-                <span className="text-xs text-ripple-muted">
-                  or {leg.exitAlternatives.map((e) => e.name).join(", ")}
-                </span>
-              )}
-            </div>
-          )}
-
-          {leg.type === "walk" && cleanName(leg.toName) && (
-            <div className="mt-1 flex items-center gap-1 text-xs text-ripple-muted">
-              <ArrowRight size={10} className="shrink-0" />
-              <span className="truncate">to {cleanName(leg.toName)}</span>
-            </div>
-          )}
-
-          {leg.type === "bus" && leg.startBusStop && (
-            <div className="mt-1 text-xs text-ripple-muted">
-              Board at{" "}
-              <span className="font-medium text-[var(--fg)]">
-                {leg.startBusStop}
-              </span>
-              {leg.busStopCode ? ` · ${leg.busStopCode}` : ""}
-            </div>
-          )}
-
-          {leg.type === "bus" && leg.trafficAlert && (
-            <div className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
-              <TriangleAlert size={12} /> {leg.trafficAlert} — allow extra time
-            </div>
-          )}
-
-          {f && <BusFeasibility leg={leg} f={f} />}
+          </span>
         </div>
+
+        {leg.type === "bus" && leg.startBusStop && (
+          <div className="mt-0.5 text-xs text-ripple-muted">
+            Board{" "}
+            <span className="font-medium text-[var(--fg)]">
+              {leg.startBusStop}
+            </span>
+            {leg.busStopCode ? (
+              <span className="data-voice"> · {leg.busStopCode}</span>
+            ) : null}
+          </div>
+        )}
+
+        {leg.type === "mrt" && leg.exitName && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
+              <DoorOpen size={12} /> {leg.exitName}
+              {leg.exitDistanceM != null &&
+                ` · ${fmtDistance(leg.exitDistanceM)}`}
+            </span>
+            {leg.exitAlternatives && leg.exitAlternatives.length > 0 && (
+              <span className="text-xs text-ripple-muted">
+                or {leg.exitAlternatives.map((e) => e.name).join(", ")}
+              </span>
+            )}
+          </div>
+        )}
+
+        {leg.type === "bus" && leg.trafficAlert && (
+          <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+            <TriangleAlert size={12} /> {leg.trafficAlert} — allow extra time
+          </div>
+        )}
+
+        {f && <BusFeasibility leg={leg} f={f} />}
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -193,39 +181,42 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
         </div>
       )}
 
-      <FeasibilityCallout status={active.status} buffer={active.buffer} />
+      {/* A comfortable catch collapses to a one-line pill; the verbose coloured
+          callout only appears for tight/miss/unknown, where it earns its space. */}
+      {active.status === "ok" ? (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-ok/10 px-2.5 py-0.5 text-xs font-semibold text-ok">
+          <Check size={12} strokeWidth={2.75} /> OK · {active.buffer} min buffer
+        </span>
+      ) : (
+        <FeasibilityCallout status={active.status} buffer={active.buffer} />
+      )}
       {active.eta && (
-        <div className="mt-1.5 text-xs text-ripple-muted">
+        <div className="data-voice mt-1.5 text-xs text-ripple-muted">
           Bus at {fmtTime(active.eta)} · ~{f.walkMinutes} min walk
           {waitMin > 0 && ` + ~${waitMin} min wait`}
         </div>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
         {leg.busStopCode && (
-          <Button
-            variant="outline"
-            size="sm"
+          <button
             onClick={() => setShowArrivals((s) => !s)}
             aria-expanded={showArrivals}
+            className="text-xs font-semibold text-brand hover:underline"
           >
-            <BarChart3 size={14} /> {showArrivals ? "Hide" : "View"} arrivals
-          </Button>
+            {showArrivals ? "Hide live board" : "Live board"}
+          </button>
         )}
         {alts.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
+          <button
             onClick={() => setShowAlts((s) => !s)}
             aria-expanded={showAlts}
+            className="text-xs font-semibold text-brand hover:underline"
           >
-            <ChevronDown
-              size={14}
-              className={cn("transition-transform", showAlts && "rotate-180")}
-            />
-            {showAlts ? "Hide" : "Show"} {alts.length} other bus
-            {alts.length > 1 ? "es" : ""}
-          </Button>
+            {showAlts
+              ? "Hide other buses"
+              : `${alts.length} other bus${alts.length > 1 ? "es" : ""}`}
+          </button>
         )}
       </div>
 
@@ -248,10 +239,10 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
                 className="flex items-center justify-between gap-3 p-3"
               >
                 <div className="min-w-0">
-                  <span className="text-base font-bold leading-none">
+                  <span className="font-mono text-base font-bold leading-none">
                     Bus {alt.serviceNo}
                   </span>
-                  <div className="mt-1 text-xs text-ripple-muted">
+                  <div className="data-voice mt-1 text-xs text-ripple-muted">
                     ETA {fmtTime(alt.eta)}
                   </div>
                   <div className="mt-1.5">
@@ -342,7 +333,7 @@ function WeatherStrip({ weather }: { weather: WeatherContext }) {
         adv?.level === "warning"
           ? "bg-warning/10 text-warning"
           : adv
-            ? "bg-bus/10 text-bus"
+            ? "bg-brand/10 text-brand"
             : "text-ripple-muted",
       )}
     >
@@ -466,10 +457,10 @@ export function RouteResultsPanel({
       {weather && <WeatherStrip weather={weather} />}
 
       <div className="p-3">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+        <h3 className="eyebrow mb-2 text-ripple-muted">
           {itineraries.length === 1
             ? "Your route"
-            : `${itineraries.length} ways to your destination`}
+            : `${itineraries.length} ways there`}
         </h3>
         <div className="flex flex-col gap-2">
           {itineraries.map((it, i) => {
@@ -481,7 +472,9 @@ export function RouteResultsPanel({
                 key={i}
                 className={cn(
                   "overflow-hidden rounded-lg border transition-colors",
-                  isSel ? "border-bus" : "border-[var(--border)]",
+                  isSel
+                    ? "border-brand shadow-[var(--shadow-card)]"
+                    : "border-[var(--border)]",
                 )}
               >
                 {/* Summary row — tap to select/expand */}
@@ -490,24 +483,26 @@ export function RouteResultsPanel({
                   aria-expanded={isSel}
                   className={cn(
                     "flex w-full flex-col gap-1.5 p-3 text-left",
-                    isSel ? "bg-bus/5" : "hover:bg-ripple-muted/5",
+                    isSel ? "bg-brand/5" : "hover:bg-ripple-muted/5",
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-base font-semibold">
+                    <span className="font-serif text-[22px] font-bold leading-none tracking-tight">
                       {fmtDuration(it.duration)}
                     </span>
                     <div className="flex items-center gap-1.5">
                       {i === fastestIdx && (
-                        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-ok">
-                          <Zap size={12} /> Fastest
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-gold">
+                          <Zap size={11} /> Fastest
                         </span>
                       )}
                       {dev > 0 && (
-                        <span className="text-xs text-ripple-muted">+{dev} min</span>
+                        <span className="data-voice text-xs text-ripple-muted">
+                          +{dev} min
+                        </span>
                       )}
                       {showReliableTag && i === mostReliableIdx && (
-                        <span className="text-xs font-semibold text-bus">
+                        <span className="text-xs font-semibold text-brand">
                           Most reliable
                         </span>
                       )}
@@ -527,7 +522,7 @@ export function RouteResultsPanel({
                           <ArrowRight size={10} className="text-ripple-muted" />
                         )}
                         <span
-                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] font-bold text-white"
                           style={{ background: m.color }}
                         >
                           {m.kind === "bus" ? (
@@ -541,11 +536,12 @@ export function RouteResultsPanel({
                     ))}
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-ripple-muted">
+                    <span className="data-voice text-xs text-ripple-muted">
                       ${it.fare.toFixed(2)} ·{" "}
                       {it.transfers === 0
                         ? "direct"
                         : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
+                      {it.co2Grams != null && ` · ${fmtCo2(it.co2Grams)} CO₂`}
                     </span>
                     {it.risk && <RiskPill level={it.risk.level} />}
                   </div>
@@ -572,9 +568,13 @@ export function RouteResultsPanel({
                       </div>
                     )}
 
-                    <div className="flex flex-col gap-2 p-3">
+                    <div className="p-3 pt-3.5">
                       {it.legs.map((leg, k) => (
-                        <LegCard key={k} leg={leg} />
+                        <LegStep
+                          key={k}
+                          leg={leg}
+                          isLast={k === it.legs.length - 1}
+                        />
                       ))}
                     </div>
 

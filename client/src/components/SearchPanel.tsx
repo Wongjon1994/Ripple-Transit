@@ -68,7 +68,7 @@ function LocationInput({
   return (
     <div ref={boxRef} className="relative">
       <div className="mb-1 flex items-center justify-between">
-        <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+        <label className="flex items-center gap-1.5 eyebrow text-ripple-muted">
           <span
             className="inline-block h-2 w-2 rounded-full"
             style={{ background: accent }}
@@ -120,7 +120,7 @@ function LocationInput({
                 {r.address}
               </span>
               {r.source === "here" && (
-                <span className="text-[10px] font-semibold uppercase text-bus">
+                <span className="text-[10px] font-semibold uppercase text-brand">
                   via HERE
                 </span>
               )}
@@ -227,7 +227,7 @@ export function SearchPanel({
               type="button"
               onClick={useCurrentLocation}
               disabled={locating}
-              className="flex items-center gap-1 text-xs font-medium text-bus hover:underline disabled:opacity-60"
+              className="flex items-center gap-1 text-xs font-medium text-brand hover:underline disabled:opacity-60"
             >
               {locating ? (
                 <Loader2 size={12} className="animate-spin" />
@@ -256,7 +256,7 @@ export function SearchPanel({
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+          <label className="mb-1 block eyebrow text-ripple-muted">
             Depart date
           </label>
           <Input
@@ -266,7 +266,7 @@ export function SearchPanel({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+          <label className="mb-1 block eyebrow text-ripple-muted">
             Time
           </label>
           <Input
@@ -308,7 +308,7 @@ export function SearchPanel({
                     }
                     className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ripple-muted/10"
                   >
-                    <MapPin size={15} className="shrink-0 text-bus" />
+                    <MapPin size={15} className="shrink-0 text-brand" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">
                         {loc.label}
@@ -333,7 +333,7 @@ export function SearchPanel({
                     onClick={() => onPickFavourite(r.origin, r.destination)}
                     className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ripple-muted/10"
                   >
-                    <Star size={15} className="shrink-0 text-warning" />
+                    <Star size={15} className="shrink-0 text-gold" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">
                         {r.label}
@@ -356,12 +356,12 @@ export function SearchPanel({
 function SectionHeader({ title, href }: { title: string; href: string }) {
   return (
     <div className="mb-1 flex items-center justify-between">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-ripple-muted">
+      <h3 className="eyebrow text-ripple-muted">
         {title}
       </h3>
       <Link
         href={href}
-        className="text-xs font-medium text-bus hover:underline"
+        className="text-xs font-medium text-brand hover:underline"
       >
         View all
       </Link>

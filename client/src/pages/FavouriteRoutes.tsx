@@ -53,7 +53,7 @@ export function FavouriteRoutes() {
         <div className="flex flex-col gap-2">
           {list.data.map((r) => (
             <Card key={r.id} className="flex items-start gap-3 p-4">
-              <Star size={16} className="mt-0.5 shrink-0 text-warning" />
+              <Star size={16} className="mt-0.5 shrink-0 text-gold" />
               <div className="min-w-0 flex-1">
                 <div className="font-semibold">{r.label}</div>
                 <div className="flex items-center gap-1.5 truncate text-sm text-ripple-muted">

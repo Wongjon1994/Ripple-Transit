@@ -19,9 +19,11 @@ function Stat({
   label: string;
 }) {
   return (
-    <Card className="flex flex-col gap-1 p-4">
+    <Card className="flex flex-col gap-1 p-4 shadow-[var(--shadow-card)]">
       <Icon size={18} className="text-ok" />
-      <span className="text-xl font-semibold">{value}</span>
+      <span className="font-serif text-2xl font-bold tracking-tight">
+        {value}
+      </span>
       <span className="text-xs text-ripple-muted">{label}</span>
     </Card>
   );
@@ -47,17 +49,17 @@ export function Sustainability() {
         </Card>
       ) : (
         <>
-          <Card className="mb-3 flex items-center justify-between p-5">
+          <Card className="mb-3 flex items-center justify-between p-5 shadow-[var(--shadow-card)]">
             <div>
               <div className="flex items-center gap-2 text-ok">
                 <Leaf size={20} />
-                <span className="text-sm font-semibold uppercase tracking-wide">
-                  CO₂ saved
-                </span>
+                <span className="eyebrow">CO₂ saved</span>
               </div>
-              <div className="mt-1 text-3xl font-bold">
+              <div className="mt-1 font-serif text-4xl font-bold tracking-tight">
                 {savedKg.toFixed(2)}{" "}
-                <span className="text-lg font-medium text-ripple-muted">kg</span>
+                <span className="font-sans text-lg font-medium text-ripple-muted">
+                  kg
+                </span>
               </div>
               <div className="mt-1 text-xs text-ripple-muted">
                 vs taking taxis for the same trips

@@ -135,7 +135,7 @@ export function LiveJourney() {
           <p className="text-sm text-ripple-muted">No active journey.</p>
           <Link
             href="/"
-            className="mt-3 inline-block text-sm font-medium text-bus hover:underline"
+            className="mt-3 inline-block text-sm font-medium text-brand hover:underline"
           >
             ← Plan a route
           </Link>
@@ -264,7 +264,7 @@ export function LiveJourney() {
       {/* Guidance sheet */}
       <div className="shrink-0 border-t border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="mb-2 flex items-center justify-between text-xs text-ripple-muted">
-          <span className="font-semibold uppercase tracking-wide">
+          <span className="eyebrow">
             Leg {legNum} of {total}
           </span>
           <Button variant="ghost" size="sm" onClick={() => end()}>
@@ -288,7 +288,7 @@ export function LiveJourney() {
                 {leg.exitDistanceM != null && ` · ${fmtDistance(leg.exitDistanceM)}`}
               </div>
             )}
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-ripple-muted">
+            <div className="data-voice mt-1 flex items-center gap-1.5 text-xs text-ripple-muted">
               <Navigation size={12} />
               {leg?.type === "walk"
                 ? `${fmtDistance(remainingM)} · ~${fmtDuration(leg.duration)}`
@@ -422,22 +422,30 @@ function CompletionSummary({
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-ok/15">
           <Check size={32} className="text-ok" strokeWidth={3} />
         </div>
-        <h1 className="mt-3 text-2xl font-bold">Journey complete</h1>
+        <h1 className="mt-3 font-serif text-3xl font-bold tracking-tight">
+          Journey complete
+        </h1>
         <p className="text-sm text-ripple-muted">
           {journey.originText} → {journey.destText}
         </p>
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3">
-        <Card className="p-4 text-center">
-          <div className="text-2xl font-bold">{totalMin} min</div>
-          <div className="text-xs text-ripple-muted">Total time</div>
+        <Card className="p-4 text-center shadow-[var(--shadow-card)]">
+          <div className="font-serif text-3xl font-bold tracking-tight">
+            {totalMin} min
+          </div>
+          <div className="eyebrow mt-1 text-[10px] text-ripple-muted">
+            Total time
+          </div>
         </Card>
-        <Card className="p-4 text-center">
-          <div className="text-2xl font-bold">
+        <Card className="p-4 text-center shadow-[var(--shadow-card)]">
+          <div className="font-serif text-3xl font-bold tracking-tight">
             {(distanceM / 1000).toFixed(1)} km
           </div>
-          <div className="text-xs text-ripple-muted">Distance</div>
+          <div className="eyebrow mt-1 text-[10px] text-ripple-muted">
+            Distance
+          </div>
         </Card>
       </div>
 
@@ -461,7 +469,7 @@ function CompletionSummary({
                   {legIcon(l.type, 14)}
                 </span>
                 <span className="flex-1">{instr.title}</span>
-                <span className="text-xs text-ripple-muted">
+                <span className="data-voice text-xs text-ripple-muted">
                   {fmtDuration(l.duration)}
                 </span>
               </div>

@@ -44,10 +44,12 @@ function Header() {
   return (
     <header className="relative flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4">
       <Link href="/" className="flex items-center gap-2">
-        <Waves size={20} className="text-bus" />
+        <Waves size={20} className="text-brand" />
         <div className="leading-tight">
-          <div className="text-[15px] font-semibold">Ripple Transit</div>
-          <div className="hidden text-[10px] uppercase tracking-wide text-ripple-muted sm:block">
+          <div className="font-serif text-[17px] font-bold tracking-tight">
+            Ripple Transit
+          </div>
+          <div className="eyebrow hidden text-[9px] text-ripple-muted sm:block">
             Urban mobility intelligence · Singapore
           </div>
         </div>
@@ -151,7 +153,7 @@ function Header() {
               ) : (
                 <Link
                   href="/login"
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-bus hover:bg-ripple-muted/10"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-brand hover:bg-ripple-muted/10"
                 >
                   <User size={15} /> Sign in
                 </Link>
@@ -212,7 +214,7 @@ export function App() {
                 <h1 className="text-xl font-semibold">Page not found</h1>
                 <Link
                   href="/"
-                  className="mt-4 inline-block text-sm font-medium text-bus hover:underline"
+                  className="mt-4 inline-block text-sm font-medium text-brand hover:underline"
                 >
                   ← Back to map
                 </Link>

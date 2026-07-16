@@ -55,7 +55,7 @@ export function SavedLocations() {
         <div className="flex flex-col gap-2">
           {list.data.map((loc) => (
             <Card key={loc.id} className="flex items-start gap-3 p-4">
-              <MapPin size={16} className="mt-0.5 shrink-0 text-bus" />
+              <MapPin size={16} className="mt-0.5 shrink-0 text-brand" />
               <div className="min-w-0 flex-1">
                 <div className="font-semibold">{loc.label}</div>
                 <div className="truncate text-sm text-ripple-muted">

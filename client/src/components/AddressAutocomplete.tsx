@@ -107,7 +107,7 @@ export function AddressAutocomplete({
                 {r.address}
               </span>
               {r.source === "here" && (
-                <span className="text-[10px] font-semibold uppercase text-bus">
+                <span className="text-[10px] font-semibold uppercase text-brand">
                   via HERE
                 </span>
               )}
