@@ -71,8 +71,20 @@ async function enrichBusLeg(
 ): Promise<void> {
   const board = leg.busStopCode!;
   const alight = leg.endBusStopCode;
+  // Time until you actually reach this boarding stop: for the first transit
+  // leg that's just the walk; for buses boarded mid-journey it's everything
+  // before it (walks + rides), so the buffer isn't scored as though you were
+  // standing at the stop right now.
+  const enRoute = it.legs.slice(0, idx).some((l) => l.type !== "walk");
+  const leadSeconds = it.legs
+    .slice(0, idx)
+    .reduce((s, l) => s + l.duration, 0);
   const prev = it.legs[idx - 1];
-  const walkSeconds = prev?.type === "walk" ? prev.duration : 0;
+  const walkSeconds = enRoute
+    ? leadSeconds
+    : prev?.type === "walk"
+      ? prev.duration
+      : 0;
   try {
     const { services } = await busArrivals(board);
     const candidates: BusCandidate[] = [];
@@ -97,6 +109,19 @@ async function enrichBusLeg(
       }),
     );
     const f = computeBusFeasibility(walkSeconds, candidates, now);
+    if (enRoute) {
+      // If none of LTA's next-3 buses arrive after you reach the stop, live
+      // data simply doesn't cover that horizon — say nothing rather than
+      // flashing a bogus MISS for a bus you were never trying to catch.
+      if (f.status === "miss" || f.status === "unknown") return;
+      f.enRoute = true;
+      f.arriveAtStopMs = now + leadSeconds * 1000;
+      // Restore the human walk time for display; the buffer already accounts
+      // for the full lead time.
+      f.walkMinutes = Math.round(
+        (prev?.type === "walk" ? prev.duration : 0) / 60,
+      );
+    }
     leg.busLegFeasibility = f;
     // Recommend the soonest catchable interchangeable bus for this leg.
     if (f.serviceNo) leg.busNo = f.serviceNo;

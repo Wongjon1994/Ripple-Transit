@@ -37,6 +37,11 @@ export interface BusLegFeasibility {
   serviceNo?: string; // the soonest catchable interchangeable bus for this leg
   walkMinutes: number;
   alternatives: BusAlternative[];
+  /** True for buses boarded mid-journey: buffer is measured against your
+   *  projected arrival at the stop (after all earlier legs), not against now. */
+  enRoute?: boolean;
+  /** Projected arrival time at the boarding stop (epoch ms), when enRoute. */
+  arriveAtStopMs?: number;
 }
 
 export interface RouteLeg {

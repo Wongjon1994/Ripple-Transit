@@ -13,7 +13,6 @@
 
   --color-ripple-bg: #f8f9fa;
   --color-ripple-fg: #1f2937;
-  --color-ripple-muted: #6b7280;
   --color-ripple-border: #e5e7eb;
 
   --color-ok: #10b981;
@@ -32,6 +31,9 @@
 @theme inline {
   --color-brand: var(--brand);
   --color-gold: var(--gold);
+  /* Theme-aware muted text: the old static #6b7280 was near-invisible on the
+     dark surface — every small timing/distance label looked faded. */
+  --color-ripple-muted: var(--muted);
 }
 
 /* Dark mode: activated by `.dark` on <html>. */
@@ -54,7 +56,7 @@
   --bg: #0f1419;
   --surface: #1a1f26;
   --fg: #e5e7eb;
-  --muted: #9ca3af;
+  --muted: #b3bec9; /* bright enough for 12px mono timings on dark surfaces */
   --border: #2a3038;
   --brand: #34c3d8; /* brighter cyan holds contrast on dark */
   --gold: #e0bd6e;

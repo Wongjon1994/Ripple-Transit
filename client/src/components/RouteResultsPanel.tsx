@@ -192,7 +192,10 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
       )}
       {active.eta && (
         <div className="data-voice mt-1.5 text-xs text-ripple-muted">
-          Bus at {fmtTime(active.eta)} · ~{f.walkMinutes} min walk
+          {f.enRoute && f.arriveAtStopMs
+            ? // Mid-journey boarding: timed against your projected arrival.
+              `You reach this stop ~${fmtTime(new Date(f.arriveAtStopMs).toISOString())} · bus at ${fmtTime(active.eta)}`
+            : `Bus at ${fmtTime(active.eta)} · ~${f.walkMinutes} min walk`}
           {waitMin > 0 && ` + ~${waitMin} min wait`}
         </div>
       )}
