@@ -61,11 +61,56 @@ export function decodePolyline5(str: string): Pt[] {
   return out;
 }
 
+/** Encode lat/lng points as a polyline (precision 5) — inverse of decode. */
+export function encodePolyline5(pts: Pt[]): string {
+  let out = "";
+  let prevLat = 0,
+    prevLng = 0;
+  const enc = (delta: number) => {
+    let v = delta < 0 ? ~(delta << 1) : delta << 1;
+    let s = "";
+    while (v >= 0x20) {
+      s += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+      v >>= 5;
+    }
+    return s + String.fromCharCode(v + 63);
+  };
+  for (const p of pts) {
+    const lat = Math.round(p.lat * 1e5);
+    const lng = Math.round(p.lng * 1e5);
+    out += enc(lat - prevLat) + enc(lng - prevLng);
+    prevLat = lat;
+    prevLng = lng;
+  }
+  return out;
+}
+
 /** Fast local-planar distance (m) — accurate to well under 1% at SG scale. */
 export function planarMeters(a: Pt, b: Pt): number {
   const dx = (b.lng - a.lng) * M_PER_DEG_LNG;
   const dy = (b.lat - a.lat) * M_PER_DEG_LAT;
   return Math.hypot(dx, dy);
+}
+
+/** The point on segment [a, b] closest to p. */
+export function closestPointOnSegment(p: Pt, a: Pt, b: Pt): Pt {
+  const ax = a.lng * M_PER_DEG_LNG,
+    ay = a.lat * M_PER_DEG_LAT;
+  const bx = b.lng * M_PER_DEG_LNG,
+    by = b.lat * M_PER_DEG_LAT;
+  const px = p.lng * M_PER_DEG_LNG,
+    py = p.lat * M_PER_DEG_LAT;
+  const dx = bx - ax,
+    dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  const t =
+    lenSq === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return {
+    lat: a.lat + (b.lat - a.lat) * t,
+    lng: a.lng + (b.lng - a.lng) * t,
+  };
 }
 
 /** Distance (m) from point p to the segment [a, b]. */
@@ -150,6 +195,41 @@ export class SegmentGrid {
     return this.segments.length;
   }
 
+  /**
+   * The nearest point on the network to `p`, within `maxM` — used to pick a
+   * via-point that pulls a route onto the PCN / sheltered corridors. Searches
+   * expanding cell rings so close hits return without scanning the island.
+   */
+  nearestPoint(p: Pt, maxM = 1500): Pt | null {
+    const la = Math.floor(p.lat / CELL_DEG);
+    const lo = Math.floor(p.lng / CELL_DEG);
+    const maxRing = Math.ceil(maxM / (CELL_DEG * M_PER_DEG_LAT)) + 1;
+    let best: Pt | null = null;
+    let bestD = maxM;
+    for (let ring = 0; ring <= maxRing; ring++) {
+      // Once we have a hit, one extra ring guards against cell-boundary edge
+      // cases; beyond that, farther rings can't beat it.
+      if (best && ring > Math.ceil(bestD / (CELL_DEG * M_PER_DEG_LAT)) + 1)
+        break;
+      for (let i = -ring; i <= ring; i++) {
+        for (let j = -ring; j <= ring; j++) {
+          if (Math.max(Math.abs(i), Math.abs(j)) !== ring) continue; // ring shell only
+          const ids = this.cells.get(`${la + i}:${lo + j}`);
+          if (!ids) continue;
+          for (const id of ids) {
+            const [a, b] = this.segments[id];
+            const d = pointToSegmentMeters(p, a, b);
+            if (d < bestD) {
+              bestD = d;
+              best = closestPointOnSegment(p, a, b);
+            }
+          }
+        }
+      }
+    }
+    return best;
+  }
+
   /** Is `p` within `nearM` of any indexed segment? (checks 3×3 cell block) */
   isNear(p: Pt, nearM = NEAR_METERS): boolean {
     const la = Math.floor(p.lat / CELL_DEG);
@@ -192,7 +272,10 @@ export function routeCoverage(coords: Pt[], grid: SegmentGrid): Coverage {
   };
 }
 
-export function comfortLabel(pct: number): {
+export function comfortLabel(
+  pct: number,
+  mode: "walk" | "cycle" = "cycle",
+): {
   label: string;
   tone: "ok" | "neutral" | "warning";
 } {
@@ -200,7 +283,13 @@ export function comfortLabel(pct: number): {
     return { label: "Mostly park connectors & cycling paths", tone: "ok" };
   if (pct >= 30)
     return { label: "Mixed — some roadside stretches", tone: "neutral" };
-  return { label: "Mostly roadside — ride with care", tone: "warning" };
+  return {
+    label:
+      mode === "walk"
+        ? "Mostly roadside — expect traffic alongside"
+        : "Mostly roadside — ride with care",
+    tone: "warning",
+  };
 }
 
 // ── Honest-estimate helpers ───────────────────────────────────
@@ -302,4 +391,54 @@ export async function getActiveNetwork(): Promise<SegmentGrid> {
     inFlight = null;
   });
   return inFlight;
+}
+
+// ── Sheltered walkways (OSM via Overpass, cached 24 h) ────────
+// No public covered-linkway dataset exists, but Singapore's sheltered
+// walkways are well mapped in OSM (covered=yes ways + building passages).
+
+const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const SG_BBOX = "1.20,103.59,1.48,104.10"; // south,west,north,east
+
+let shelterCache: { at: number; grid: SegmentGrid } | null = null;
+let shelterInFlight: Promise<SegmentGrid> | null = null;
+
+async function buildShelterNetwork(): Promise<SegmentGrid> {
+  const query = `[out:json][timeout:90];(way["covered"~"^(yes|arcade|colonnade)$"]["highway"](${SG_BBOX});way["tunnel"="building_passage"](${SG_BBOX}););out geom;`;
+  const res = await fetch(OVERPASS_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      // Overpass returns 406 without an identifying User-Agent (usage policy).
+      "User-Agent": "RippleTransit/1.0 (github.com/Wongjon1994/Ripple-Transit)",
+    },
+    body: "data=" + encodeURIComponent(query),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new Error(`Overpass failed: ${res.status}`);
+  const data = (await res.json()) as {
+    elements?: Array<{
+      type: string;
+      geometry?: Array<{ lat: number; lon: number }>;
+    }>;
+  };
+  const grid = new SegmentGrid();
+  for (const el of data.elements ?? []) {
+    if (el.type !== "way" || !el.geometry?.length) continue;
+    grid.addLine(el.geometry.map((g) => ({ lat: g.lat, lng: g.lon })));
+  }
+  if (grid.size === 0) throw new Error("no shelter ways returned");
+  shelterCache = { at: Date.now(), grid };
+  return grid;
+}
+
+/** Sheltered-walkway grid; null when Overpass is unavailable (degrade, don't block). */
+export async function getShelterNetwork(): Promise<SegmentGrid | null> {
+  if (shelterCache && Date.now() - shelterCache.at < GRID_TTL_MS) {
+    return shelterCache.grid;
+  }
+  shelterInFlight ??= buildShelterNetwork().finally(() => {
+    shelterInFlight = null;
+  });
+  return shelterInFlight.catch(() => null);
 }

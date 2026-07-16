@@ -7,9 +7,8 @@ import { useAuth } from "./lib/auth.js";
 import { trpc } from "./lib/trpc.js";
 import { Home } from "./pages/Home.js";
 import { Login } from "./pages/Login.js";
-import { SavedLocations } from "./pages/SavedLocations.js";
-import { FavouriteRoutes } from "./pages/FavouriteRoutes.js";
-import { Sustainability } from "./pages/Sustainability.js";
+import { Favourites } from "./pages/Favourites.js";
+import { Insights } from "./pages/Insights.js";
 import { LiveJourney } from "./pages/LiveJourney.js";
 import { Settings } from "./pages/Settings.js";
 import { Button } from "./components/ui.js";
@@ -35,9 +34,8 @@ function Header() {
 
   const nav = [
     { href: "/", label: "Map" },
-    { href: "/saved-locations", label: "Places" },
-    { href: "/favourite-routes", label: "Favourites" },
-    { href: "/impact", label: "Impact" },
+    { href: "/favourites", label: "Favourites" },
+    { href: "/insights", label: "Insights" },
     { href: "/settings", label: "Settings" },
   ];
 
@@ -188,20 +186,25 @@ export function App() {
           <Route path="/" component={Home} />
           <Route path="/journey" component={LiveJourney} />
           <Route path="/login" component={Login} />
-          <Route path="/saved-locations">
+          <Route path="/favourites">
             <RequireAuth>
-              <SavedLocations />
+              <Favourites />
             </RequireAuth>
+          </Route>
+          <Route path="/insights">
+            <RequireAuth>
+              <Insights />
+            </RequireAuth>
+          </Route>
+          {/* Old tab paths → their merged homes */}
+          <Route path="/saved-locations">
+            <Redirect to="/favourites" />
           </Route>
           <Route path="/favourite-routes">
-            <RequireAuth>
-              <FavouriteRoutes />
-            </RequireAuth>
+            <Redirect to="/favourites" />
           </Route>
           <Route path="/impact">
-            <RequireAuth>
-              <Sustainability />
-            </RequireAuth>
+            <Redirect to="/insights" />
           </Route>
           <Route path="/settings">
             <RequireAuth>

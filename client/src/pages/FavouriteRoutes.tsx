@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2, ArrowRight, Star } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
-import { Button, Input, Card, Modal, PageShell } from "../components/ui.js";
+import { Button, Input, Card, Modal } from "../components/ui.js";
 import { AddressAutocomplete } from "../components/AddressAutocomplete.js";
 
-export function FavouriteRoutes() {
+/** "Favourite routes" — a section of the merged Favourites page. */
+export function FavouriteRoutesSection() {
   const utils = trpc.useUtils();
   const list = trpc.favouriteRoutes.list.useQuery();
   const [adding, setAdding] = useState(false);
@@ -39,14 +40,13 @@ export function FavouriteRoutes() {
   });
 
   return (
-    <PageShell
-      title="Favourites"
-      action={
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="eyebrow text-ripple-muted">Favourite routes</h2>
         <Button size="sm" variant="accent" onClick={() => setAdding(true)}>
           <Plus size={15} /> Add
         </Button>
-      }
-    >
+      </div>
       {list.isLoading ? (
         <p className="text-sm text-ripple-muted">Loading…</p>
       ) : list.data && list.data.length > 0 ? (
@@ -105,7 +105,7 @@ export function FavouriteRoutes() {
           />
         </Modal>
       )}
-    </PageShell>
+    </section>
   );
 }
 

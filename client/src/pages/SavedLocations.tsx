@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
-import { Button, Input, Card, Modal, PageShell } from "../components/ui.js";
+import { Button, Input, Card, Modal } from "../components/ui.js";
 import { AddressAutocomplete } from "../components/AddressAutocomplete.js";
 import type { SearchResult } from "@shared/types.js";
 
-export function SavedLocations() {
+/** "Favourite places" — a section of the merged Favourites page. */
+export function SavedLocationsSection() {
   const utils = trpc.useUtils();
   const list = trpc.savedLocations.list.useQuery();
   const [adding, setAdding] = useState(false);
@@ -41,14 +42,13 @@ export function SavedLocations() {
   });
 
   return (
-    <PageShell
-      title="Places"
-      action={
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="eyebrow text-ripple-muted">Favourite places</h2>
         <Button size="sm" variant="accent" onClick={() => setAdding(true)}>
           <Plus size={15} /> Add
         </Button>
-      }
-    >
+      </div>
       {list.isLoading ? (
         <p className="text-sm text-ripple-muted">Loading…</p>
       ) : list.data && list.data.length > 0 ? (
@@ -107,7 +107,7 @@ export function SavedLocations() {
           pending={rename.isPending}
         />
       )}
-    </PageShell>
+    </section>
   );
 }
 

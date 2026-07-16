@@ -1,6 +1,6 @@
 import { Leaf, TreePine, Car, Route as RouteIcon, Footprints } from "lucide-react";
 import { trpc } from "../lib/trpc.js";
-import { Card, PageShell } from "../components/ui.js";
+import { Card } from "../components/ui.js";
 
 function badgeFor(savedKg: number): { label: string; emoji: string } {
   if (savedKg >= 20) return { label: "Forest Guardian", emoji: "🌳" };
@@ -29,14 +29,16 @@ function Stat({
   );
 }
 
-export function Sustainability() {
+/** "Impact" — a section of the Insights page. */
+export function SustainabilitySection() {
   const stats = trpc.sustainability.stats.useQuery();
   const s = stats.data;
   const savedKg = s ? s.totalSavedGrams / 1000 : 0;
   const badge = badgeFor(savedKg);
 
   return (
-    <PageShell title="Your Impact — this month">
+    <section>
+      <h2 className="eyebrow mb-2 text-ripple-muted">Impact — this month</h2>
       {stats.isLoading ? (
         <p className="text-sm text-ripple-muted">Loading…</p>
       ) : !s || s.trips === 0 ? (
@@ -97,6 +99,6 @@ export function Sustainability() {
           </div>
         </>
       )}
-    </PageShell>
+    </section>
   );
 }

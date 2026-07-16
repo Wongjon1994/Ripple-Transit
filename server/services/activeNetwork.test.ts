@@ -2,14 +2,17 @@ import { describe, it, expect } from "vitest";
 import {
   planarMeters,
   pointToSegmentMeters,
+  closestPointOnSegment,
   samplePath,
   SegmentGrid,
   routeCoverage,
   comfortLabel,
   activeKcal,
   decodePolyline5,
+  encodePolyline5,
   type Pt,
 } from "./activeNetwork.js";
+import { pathMidpoint, stitchRoutes } from "./activeVariants.js";
 
 // Around SG latitude, 0.001° lat ≈ 111.3 m, 0.001° lng ≈ 111.3 m (cos ≈ 1).
 const P = (lat: number, lng: number): Pt => ({ lat, lng });
@@ -98,7 +101,7 @@ describe("activeKcal", () => {
   });
 });
 
-describe("decodePolyline5", () => {
+describe("decodePolyline5 / encodePolyline5", () => {
   it("round-trips a known Google example", () => {
     // Canonical polyline example: (38.5,-120.2) (40.7,-120.95) (43.252,-126.453)
     const pts = decodePolyline5("_p~iF~ps|U_ulLnnqC_mqNvxq`@");
@@ -107,5 +110,63 @@ describe("decodePolyline5", () => {
     expect(pts[0].lng).toBeCloseTo(-120.2, 5);
     expect(pts[2].lat).toBeCloseTo(43.252, 5);
     expect(pts[2].lng).toBeCloseTo(-126.453, 5);
+  });
+
+  it("encode is the inverse of decode", () => {
+    const pts = [P(1.2896, 103.8017), P(1.3, 103.81), P(1.2847, 103.8296)];
+    const rt = decodePolyline5(encodePolyline5(pts));
+    expect(rt).toHaveLength(3);
+    rt.forEach((p, i) => {
+      expect(p.lat).toBeCloseTo(pts[i].lat, 5);
+      expect(p.lng).toBeCloseTo(pts[i].lng, 5);
+    });
+  });
+});
+
+describe("closestPointOnSegment / nearestPoint", () => {
+  const a = P(1.3, 103.8);
+  const b = P(1.3, 103.81);
+
+  it("projects onto the segment interior", () => {
+    const c = closestPointOnSegment(P(1.301, 103.805), a, b);
+    expect(c.lat).toBeCloseTo(1.3, 6);
+    expect(c.lng).toBeCloseTo(103.805, 6);
+  });
+
+  it("nearestPoint finds the network within range and respects maxM", () => {
+    const grid = new SegmentGrid();
+    grid.addLine([a, b]);
+    // ~556m north of the line — inside a 1500m search
+    const near = grid.nearestPoint(P(1.305, 103.805), 1500);
+    expect(near).not.toBeNull();
+    expect(near!.lat).toBeCloseTo(1.3, 5);
+    expect(near!.lng).toBeCloseTo(103.805, 3);
+    // ~5.5km away — outside range
+    expect(grid.nearestPoint(P(1.35, 103.805), 1500)).toBeNull();
+  });
+});
+
+describe("pathMidpoint / stitchRoutes", () => {
+  it("finds the halfway point by distance", () => {
+    // Two edges: 111m then 333m — midpoint (222m in) sits on the second edge.
+    const mid = pathMidpoint([P(1.3, 103.8), P(1.301, 103.8), P(1.304, 103.8)]);
+    expect(mid.lat).toBeCloseTo(1.302, 3);
+  });
+
+  it("stitches two routes end-to-end", () => {
+    const r1 = {
+      polyline: encodePolyline5([P(1.3, 103.8), P(1.301, 103.8)]),
+      distanceM: 111,
+      durationS: 80,
+    };
+    const r2 = {
+      polyline: encodePolyline5([P(1.301, 103.8), P(1.302, 103.8)]),
+      distanceM: 111,
+      durationS: 80,
+    };
+    const s = stitchRoutes(r1, r2);
+    expect(s.distanceM).toBe(222);
+    expect(s.durationS).toBe(160);
+    expect(decodePolyline5(s.polyline)).toHaveLength(4);
   });
 });

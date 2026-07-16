@@ -124,21 +124,35 @@ export interface Itinerary {
 // ── Active mobility (Phase 14) ────────────────────────────────
 export type ActiveMode = "walk" | "cycle";
 
-export interface ActiveCoverage {
-  /** % of the route within ~30m of a park connector or cycling path. */
-  pct: number;
-  label: string;
-  tone: "ok" | "neutral" | "warning";
-}
+/** Route-option flavours. Walk offers all three; cycle skips "sheltered". */
+export type ActiveVariantKind = "fastest" | "sheltered" | "pcn";
 
-export interface ActiveRoute {
-  mode: ActiveMode;
+/** One stop-to-stop portion of an active route (multi-stop journeys). */
+export interface ActiveSegment {
+  polyline: string; // encoded, precision 5
   distanceM: number;
   durationS: number;
-  polyline: string; // encoded, precision 5
-  coverage: ActiveCoverage;
+}
+
+export interface ActiveVariant {
+  kind: ActiveVariantKind;
+  /** When another flavour's best path is this same route (e.g. the fastest
+   *  walk is already the most sheltered), those kinds merge here as badges. */
+  also?: ActiveVariantKind[];
+  durationS: number;
+  distanceM: number;
   kcal: number; // honest estimate
-  co2SavedGrams: number; // vs driving the same trip
+  /** % within ~30m of a park connector / cycling path. */
+  pcnPct: number;
+  /** % within ~30m of an OSM covered walkway — walk only, when data loads. */
+  shelterPct?: number;
+  comfort: { label: string; tone: "ok" | "neutral" | "warning" };
+  segments: ActiveSegment[]; // one per consecutive stop pair
+}
+
+export interface ActiveModeRoutes {
+  /** Ordered for display: walk = fastest, sheltered, pcn; cycle = fastest, pcn. */
+  variants: ActiveVariant[];
 }
 
 export interface ActiveAdvisory {
@@ -147,10 +161,11 @@ export interface ActiveAdvisory {
 }
 
 export interface ActiveRoutesResult {
-  walk: ActiveRoute | null;
-  cycle: ActiveRoute | null;
+  walk: ActiveModeRoutes | null;
+  cycle: ActiveModeRoutes | null;
   weather: WeatherContext | null;
   advisory: ActiveAdvisory;
+  co2SavedGrams: number; // vs driving the same stops
 }
 
 /** Driving-baseline carbon for the same origin→destination. */

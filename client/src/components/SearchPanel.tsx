@@ -333,7 +333,7 @@ export function SearchPanel({
         <div className="mt-1 flex flex-col gap-4">
           {saved.data && saved.data.length > 0 && (
             <section>
-              <SectionHeader title="Saved Locations" href="/saved-locations" />
+              <SectionHeader title="Saved Locations" href="/favourites" />
               <div className="flex flex-col">
                 {saved.data.map((loc) => (
                   <button
@@ -363,7 +363,7 @@ export function SearchPanel({
 
           {favourites.data && favourites.data.length > 0 && (
             <section>
-              <SectionHeader title="Favourite Routes" href="/favourite-routes" />
+              <SectionHeader title="Favourite Routes" href="/favourites" />
               <div className="flex flex-col">
                 {favourites.data.map((r) => (
                   <button

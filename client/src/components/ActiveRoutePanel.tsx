@@ -6,19 +6,50 @@ import {
   CloudRain,
   Sun,
   ThermometerSun,
+  Zap,
+  Umbrella,
+  TreePine,
   Leaf,
   Flame,
   TriangleAlert,
 } from "lucide-react";
 import type {
-  ActiveRoute,
-  ActiveRoutesResult,
   ActiveMode,
+  ActiveRoutesResult,
+  ActiveVariant,
+  ActiveVariantKind,
 } from "@shared/types.js";
 import { fmtDuration, fmtDistance, cn } from "../lib/utils.js";
 import { Button } from "./ui.js";
 
 const LONG_WALK_M = 8000;
+
+const KIND_META: Record<
+  ActiveVariantKind,
+  { label: string; Icon: typeof Zap; cls: string }
+> = {
+  fastest: { label: "Fastest", Icon: Zap, cls: "bg-gold/15 text-gold" },
+  sheltered: {
+    label: "Most sheltered",
+    Icon: Umbrella,
+    cls: "bg-brand/10 text-brand",
+  },
+  pcn: { label: "PCN scenic", Icon: TreePine, cls: "bg-ok/10 text-ok" },
+};
+
+function KindTag({ kind }: { kind: ActiveVariantKind }) {
+  const { label, Icon, cls } = KIND_META[kind];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
+        cls,
+      )}
+    >
+      <Icon size={11} /> {label}
+    </span>
+  );
+}
 
 function AdvisoryStrip({
   advisory,
@@ -53,123 +84,182 @@ function AdvisoryStrip({
   );
 }
 
-function CoverageBar({ route }: { route: ActiveRoute }) {
-  const { pct, label, tone } = route.coverage;
-  const color =
-    tone === "ok" ? "var(--gold)" : tone === "warning" ? "#f59e0b" : "#9ca3af";
+function MetricBar({
+  label,
+  pct,
+  color,
+}: {
+  label: string;
+  pct: number;
+  color: string;
+}) {
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="eyebrow text-ripple-muted">
-          Park connectors & cycling paths
-        </span>
+        <span className="eyebrow text-[10px] text-ripple-muted">{label}</span>
         <span className="data-voice text-xs font-semibold text-[var(--fg)]">
           {pct}%
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-ripple-muted/15">
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-ripple-muted/15">
         <div
           className="h-full rounded-full"
           style={{ width: `${Math.max(2, pct)}%`, background: color }}
         />
       </div>
-      <p
-        className={cn(
-          "mt-1.5 text-xs",
-          tone === "warning" ? "font-medium text-warning" : "text-ripple-muted",
-        )}
-      >
-        {label}
-      </p>
     </div>
   );
 }
 
 /**
- * Walk / Cycle tab content: one OneMap path per mode, scored for comfort
- * against the PCN + cycling-path network, with a live weather call-out.
+ * Walk / Cycle tab: real alternate paths per journey — Fastest, Most
+ * sheltered (walk, OSM covered walkways), PCN scenic — each comfort-scored.
+ * Flavours whose best path is the same route merge into badges.
  */
 export function ActiveRoutePanel({
   mode,
   data,
   isLoading,
+  selected,
+  onSelect,
   onStartJourney,
 }: {
   mode: ActiveMode;
   data: ActiveRoutesResult | undefined;
   isLoading: boolean;
-  onStartJourney: (route: ActiveRoute) => void;
+  selected: number;
+  onSelect: (i: number) => void;
+  onStartJourney: (variant: ActiveVariant) => void;
 }) {
-  const Icon = mode === "walk" ? Footprints : Bike;
-  const verb = mode === "walk" ? "Walking" : "Cycling";
-
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 p-4 text-sm text-ripple-muted">
-        <Loader2 size={15} className="animate-spin" /> Finding a {mode} route…
+        <Loader2 size={15} className="animate-spin" /> Finding {mode} routes…
       </div>
     );
   }
-  const route = data?.[mode];
-  if (!route) {
+  const variants = data?.[mode]?.variants ?? [];
+  if (variants.length === 0) {
     return (
       <p className="p-4 text-sm text-ripple-muted">
-        No {mode === "walk" ? "walking" : "cycling"} route found for this pair.
+        No {mode === "walk" ? "walking" : "cycling"} route found for these
+        stops.
       </p>
     );
   }
+  const ModeIcon = mode === "walk" ? Footprints : Bike;
+  const sel = Math.min(selected, variants.length - 1);
 
   return (
     <div className="flex flex-col gap-3 p-3">
-      {data && <AdvisoryStrip advisory={data.advisory} area={data.weather?.area} />}
+      {data && (
+        <AdvisoryStrip advisory={data.advisory} area={data.weather?.area} />
+      )}
 
-      <div className="rounded-lg border border-brand bg-brand/5 p-3 shadow-[var(--shadow-card)]">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="font-serif text-[26px] font-bold leading-none tracking-tight">
-              {fmtDuration(route.durationS)}
-            </div>
-            <div className="data-voice mt-1.5 text-xs text-ripple-muted">
-              {fmtDistance(route.distanceM)} ·{" "}
-              <Flame size={11} className="inline -translate-y-px" /> ~
-              {route.kcal} kcal ·{" "}
-              <Leaf size={11} className="inline -translate-y-px text-ok" />{" "}
-              saves {(route.co2SavedGrams / 1000).toFixed(2)} kg CO₂
-            </div>
-          </div>
-          <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white"
-            style={{
-              background: mode === "walk" ? "#22c55e" : "#0ea5e9",
-            }}
+      <h3 className="eyebrow -mb-1 text-ripple-muted">
+        {variants.length === 1
+          ? "Your route"
+          : `${variants.length} ways to ${mode}`}
+      </h3>
+
+      {variants.map((v, i) => {
+        const isSel = i === sel;
+        return (
+          <div
+            key={v.kind}
+            className={cn(
+              "overflow-hidden rounded-lg border transition-colors",
+              isSel
+                ? "border-brand shadow-[var(--shadow-card)]"
+                : "border-[var(--border)]",
+            )}
           >
-            <Icon size={17} />
-          </span>
-        </div>
+            <button
+              onClick={() => onSelect(i)}
+              aria-expanded={isSel}
+              className={cn(
+                "flex w-full flex-col gap-2 p-3 text-left",
+                isSel ? "bg-brand/5" : "hover:bg-ripple-muted/5",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-serif text-[24px] font-bold leading-none tracking-tight">
+                  {fmtDuration(v.durationS)}
+                </div>
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
+                  style={{ background: mode === "walk" ? "#22c55e" : "#0ea5e9" }}
+                >
+                  <ModeIcon size={15} />
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <KindTag kind={v.kind} />
+                {v.also?.map((k) => <KindTag key={k} kind={k} />)}
+              </div>
+              <div className="data-voice text-xs text-ripple-muted">
+                {fmtDistance(v.distanceM)} ·{" "}
+                <Flame size={11} className="inline -translate-y-px" /> ~{v.kcal}{" "}
+                kcal
+                {data && (
+                  <>
+                    {" · "}
+                    <Leaf size={11} className="inline -translate-y-px text-ok" />{" "}
+                    saves {(data.co2SavedGrams / 1000).toFixed(2)} kg CO₂
+                  </>
+                )}
+              </div>
+            </button>
 
-        <div className="mt-3 border-t border-[var(--border)] pt-3">
-          <CoverageBar route={route} />
-        </div>
+            {isSel && (
+              <div className="flex flex-col gap-2.5 border-t border-[var(--border)] p-3">
+                <MetricBar
+                  label="Park connectors & cycling paths"
+                  pct={v.pcnPct}
+                  color="var(--gold)"
+                />
+                {v.shelterPct != null && (
+                  <MetricBar
+                    label="Sheltered walkways"
+                    pct={v.shelterPct}
+                    color="var(--brand)"
+                  />
+                )}
+                <p
+                  className={cn(
+                    "text-xs",
+                    v.comfort.tone === "warning"
+                      ? "font-medium text-warning"
+                      : "text-ripple-muted",
+                  )}
+                >
+                  {v.comfort.label}
+                </p>
 
-        {mode === "walk" && route.distanceM > LONG_WALK_M && (
-          <div className="mt-2.5 inline-flex items-center gap-1 rounded-md bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
-            <TriangleAlert size={12} /> {verb}{" "}
-            {fmtDistance(route.distanceM)} is a long one — consider transit.
+                {mode === "walk" && v.distanceM > LONG_WALK_M && (
+                  <div className="inline-flex items-center gap-1 self-start rounded-md bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                    <TriangleAlert size={12} /> {fmtDistance(v.distanceM)} is a
+                    long walk — consider transit.
+                  </div>
+                )}
+
+                <Button
+                  variant="accent"
+                  className="w-full"
+                  onClick={() => onStartJourney(v)}
+                >
+                  <Navigation size={16} /> Start journey
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-
-        <Button
-          variant="accent"
-          className="mt-3 w-full"
-          onClick={() => onStartJourney(route)}
-        >
-          <Navigation size={16} /> Start journey
-        </Button>
-      </div>
+        );
+      })}
 
       <p className="px-1 text-[11px] leading-relaxed text-ripple-muted">
-        Route by OneMap · comfort scored against NParks Park Connector Loop and
-        LTA Cycling Path Network · calories are an estimate.
+        Routes by OneMap · park-connector coverage from NParks & LTA open data ·
+        shelter coverage from OpenStreetMap covered walkways · calories are an
+        estimate.
       </p>
     </div>
   );

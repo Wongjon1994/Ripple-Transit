@@ -11,7 +11,7 @@ import { MrtStatus } from "../components/MrtStatus.js";
 import { useJourney } from "../lib/journey.js";
 import { useLocation } from "wouter";
 import { cn } from "../lib/utils.js";
-import type { ActiveMode, ActiveRoute, Itinerary, LatLng } from "@shared/types.js";
+import type { ActiveMode, ActiveVariant, Itinerary, LatLng } from "@shared/types.js";
 
 type ModeTab = "transit" | ActiveMode;
 
@@ -46,8 +46,10 @@ export function Home() {
   // (editing means they're planning a future trip).
   const [timeIsAuto, setTimeIsAuto] = useState(true);
   const [selected, setSelected] = useState(0);
-  // Results mode: Transit | Walk | Cycle (active modes are single-dest only).
+  // Results mode: Transit | Walk | Cycle (all support multi-stop journeys).
   const [modeTab, setModeTab] = useState<ModeTab>("transit");
+  // Selected variant within the active tab (fastest / sheltered / PCN).
+  const [activeSel, setActiveSel] = useState(0);
 
   const [routeParams, setRouteParams] = useState<{
     points: LatLng[]; // origin first, then each stop in order
@@ -153,55 +155,54 @@ export function Home() {
     { enabled: !!routeParams && !isMulti, retry: false, staleTime: 60_000 },
   );
 
-  // Walk & Cycle tabs (Phase 14): one OneMap path per mode, comfort-scored
-  // against the PCN/cycling-path network. Single destination only.
+  // Walk & Cycle tabs (Phase 14): real alternate paths per journey — fastest /
+  // most sheltered (walk) / PCN scenic — for the full multi-stop sequence.
   const active = trpc.active.routes.useQuery(
-    routeParams
-      ? {
-          start: routeParams.points[0],
-          end: routeParams.points[routeParams.points.length - 1],
-        }
-      : (undefined as never),
+    routeParams ? { points: routeParams.points } : (undefined as never),
     {
-      enabled: !!routeParams && !isMulti,
+      enabled: !!routeParams,
       retry: false,
       staleTime: 120_000,
       placeholderData: keepPreviousData,
     },
   );
 
-  const shownTab: ModeTab = isMulti ? "transit" : modeTab;
+  const shownTab: ModeTab = modeTab;
+  const selectedVariant: ActiveVariant | null =
+    shownTab === "transit"
+      ? null
+      : (active.data?.[shownTab]?.variants[
+          Math.min(activeSel, (active.data?.[shownTab]?.variants.length ?? 1) - 1)
+        ] ?? null);
 
-  // Synthetic single-leg itinerary for the selected active mode — reuses the
-  // existing map rendering and the live-journey companion unchanged.
+  // Synthetic itinerary for the selected variant — one leg per stop-to-stop
+  // segment, so the map, via dividers and the live-journey companion all work
+  // exactly as they do for transit.
   const activeItinerary = useMemo((): Itinerary | null => {
-    if (shownTab === "transit" || !routeParams) return null;
-    const r = active.data?.[shownTab];
-    if (!r) return null;
+    if (shownTab === "transit" || !routeParams || !selectedVariant) return null;
     const pts = routeParams.points;
     return {
-      duration: r.durationS,
+      duration: selectedVariant.durationS,
       fare: 0,
       transfers: 0,
       co2Grams: 0,
-      co2SavedGrams: r.co2SavedGrams,
-      legs: [
-        {
-          type: r.mode,
-          startPoint: pts[0],
-          endPoint: pts[pts.length - 1],
-          duration: r.durationS,
-          distance: r.distanceM,
-          polyline: r.polyline,
-          toName: stops[stops.length - 1]?.text,
-        },
-      ],
+      co2SavedGrams: active.data?.co2SavedGrams,
+      legs: selectedVariant.segments.map((s, i) => ({
+        type: shownTab,
+        startPoint: pts[i],
+        endPoint: pts[i + 1],
+        duration: s.durationS,
+        distance: s.distanceM,
+        polyline: s.polyline,
+        toName: stops[i]?.text,
+        viaStopIndex: i > 0 ? i : undefined,
+      })),
     };
-  }, [shownTab, active.data, routeParams, stops]);
+  }, [shownTab, selectedVariant, active.data, routeParams, stops]);
 
-  function handleStartActiveJourney(route: ActiveRoute) {
+  function handleStartActiveJourney(variant: ActiveVariant) {
+    void variant; // the selected card is the source of truth
     if (!activeItinerary || !routeParams) return;
-    void route;
     journeyCtx.start({
       itinerary: activeItinerary,
       originText: fromText,
@@ -234,6 +235,7 @@ export function Home() {
       );
       setSelected(0);
       setModeTab("transit");
+      setActiveSel(0);
       // Auto-synced departures read the clock at the moment of search.
       const depart = timeIsAuto ? nowParts() : { date, time };
       setRouteParams({ points, ...depart });
@@ -390,31 +392,32 @@ export function Home() {
         {routeParams && (
           <div className="border-t border-[var(--border)]">
             {/* Mode tabs — walking & cycling never co-mingle with transit
-                options; multi-stop journeys are transit-only. */}
-            {!isMulti && (
-              <div
-                className="flex gap-1 border-b border-[var(--border)] p-2"
-                role="tablist"
-                aria-label="Travel mode"
-              >
-                {MODE_TABS.map(({ id, label, Icon }) => (
-                  <button
-                    key={id}
-                    role="tab"
-                    aria-selected={shownTab === id}
-                    onClick={() => setModeTab(id)}
-                    className={cn(
-                      "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors",
-                      shownTab === id
-                        ? "bg-brand/10 text-brand"
-                        : "text-ripple-muted hover:bg-ripple-muted/10",
-                    )}
-                  >
-                    <Icon size={13} /> {label}
-                  </button>
-                ))}
-              </div>
-            )}
+                options. All three support multi-stop journeys. */}
+            <div
+              className="flex gap-1 border-b border-[var(--border)] p-2"
+              role="tablist"
+              aria-label="Travel mode"
+            >
+              {MODE_TABS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={shownTab === id}
+                  onClick={() => {
+                    setModeTab(id);
+                    setActiveSel(0);
+                  }}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                    shownTab === id
+                      ? "bg-brand/10 text-brand"
+                      : "text-ripple-muted hover:bg-ripple-muted/10",
+                  )}
+                >
+                  <Icon size={13} /> {label}
+                </button>
+              ))}
+            </div>
 
             {shownTab === "transit" ? (
               route.isError ? (
@@ -447,6 +450,8 @@ export function Home() {
                 mode={shownTab}
                 data={active.data}
                 isLoading={active.isLoading}
+                selected={activeSel}
+                onSelect={setActiveSel}
                 onStartJourney={handleStartActiveJourney}
               />
             )}

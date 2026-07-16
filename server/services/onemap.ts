@@ -383,10 +383,15 @@ export async function oneMapActiveRoute(
     route_summary?: { total_time?: number; total_distance?: number };
   };
   if (!data.route_geometry || !data.route_summary?.total_distance) return null;
+  const distanceM = data.route_summary.total_distance;
+  // OneMap's total_time is walk-paced even for cycle routes (~10 km/h, vs
+  // Google's ~16.5). Derive durations from distance at realistic speeds so
+  // walk & cycle timings are consistent: walk 4.7 km/h, cycle 15.5 km/h.
+  const kmh = mode === "walk" ? 4.7 : 15.5;
   return {
     polyline: data.route_geometry,
-    distanceM: data.route_summary.total_distance,
-    durationS: data.route_summary.total_time ?? 0,
+    distanceM,
+    durationS: Math.round(distanceM / ((kmh * 1000) / 3600)),
   };
 }
 
