@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { SearchPanel, type Place } from "../components/SearchPanel.js";
@@ -30,6 +31,9 @@ export function Home() {
   const [stops, setStops] = useState<Stop[]>([{ text: "", point: null }]);
   const [date, setDate] = useState(initial.date);
   const [time, setTime] = useState(initial.time);
+  // Depart time follows the device clock until the user edits it manually
+  // (editing means they're planning a future trip).
+  const [timeIsAuto, setTimeIsAuto] = useState(true);
   const [selected, setSelected] = useState(0);
 
   const [routeParams, setRouteParams] = useState<{
@@ -99,7 +103,13 @@ export function Home() {
           time: routeParams.time,
         }
       : (undefined as never),
-    { enabled: !!routeParams && !isMulti, retry: false },
+    {
+      enabled: !!routeParams && !isMulti,
+      retry: false,
+      // The depart time ticks with the clock — keep showing the previous
+      // results while the refreshed ranking loads (no flicker).
+      placeholderData: keepPreviousData,
+    },
   );
   const multiRoute = trpc.onemap.multiRoute.useQuery(
     routeParams
@@ -109,7 +119,11 @@ export function Home() {
           time: routeParams.time,
         }
       : (undefined as never),
-    { enabled: !!routeParams && isMulti, retry: false },
+    {
+      enabled: !!routeParams && isMulti,
+      retry: false,
+      placeholderData: keepPreviousData,
+    },
   );
   const route = isMulti ? multiRoute : singleRoute;
 
@@ -147,7 +161,9 @@ export function Home() {
         prev.map((s, i) => ({ ...s, point: points[i + 1] })),
       );
       setSelected(0);
-      setRouteParams({ points, date, time });
+      // Auto-synced departures read the clock at the moment of search.
+      const depart = timeIsAuto ? nowParts() : { date, time };
+      setRouteParams({ points, ...depart });
     } finally {
       setResolving(false);
     }
@@ -169,6 +185,26 @@ export function Home() {
   useEffect(() => {
     if (routeParams) setSnapIdx((i) => Math.max(i, 1));
   }, [routeParams]);
+
+  // While auto-synced, tick Depart date/time with the device clock — and keep
+  // an active search's params current too, so results refresh with live
+  // timings each minute and re-rank themselves (server sorts fastest-first).
+  useEffect(() => {
+    if (!timeIsAuto) return;
+    const sync = () => {
+      const p = nowParts();
+      setDate((d) => (d === p.date ? d : p.date));
+      setTime((t) => (t === p.time ? t : p.time));
+      setRouteParams((prev) =>
+        prev && (prev.date !== p.date || prev.time !== p.time)
+          ? { ...prev, date: p.date, time: p.time }
+          : prev,
+      );
+    };
+    sync();
+    const id = window.setInterval(sync, 10_000);
+    return () => window.clearInterval(id);
+  }, [timeIsAuto]);
 
   const sheetHeight =
     dragH != null
@@ -243,13 +279,19 @@ export function Home() {
             onSwap={handleSwap}
             date={date}
             time={time}
-            onDate={setDate}
-            onTime={setTime}
+            onDate={(s) => {
+              setDate(s);
+              setTimeIsAuto(false);
+            }}
+            onTime={(s) => {
+              setTime(s);
+              setTimeIsAuto(false);
+            }}
             onSearch={handleSearch}
             canSearch={
               !!fromText.trim() && stops.every((s) => !!s.text.trim())
             }
-            isSearching={resolving || route.isFetching}
+            isSearching={resolving || (route.isFetching && !route.data)}
             onPickSavedLocation={(p) => {
               // Fill From if empty, else the first empty stop, else the last stop.
               if (!fromText.trim()) {
