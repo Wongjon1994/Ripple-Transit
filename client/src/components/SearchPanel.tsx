@@ -7,6 +7,8 @@ import {
   Loader2,
   Star,
   LocateFixed,
+  Plus,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
@@ -132,13 +134,17 @@ function LocationInput({
   );
 }
 
+export const MAX_STOPS = 5;
+
 export function SearchPanel({
   fromText,
-  toText,
+  stops,
   onFromText,
-  onToText,
+  onStopText,
   onFromSelect,
-  onToSelect,
+  onStopSelect,
+  onAddStop,
+  onRemoveStop,
   onSwap,
   date,
   time,
@@ -152,11 +158,14 @@ export function SearchPanel({
   showShortcuts = true,
 }: {
   fromText: string;
-  toText: string;
+  /** Destinations in visit order (1–MAX_STOPS); the last one is "To". */
+  stops: { text: string }[];
   onFromText: (s: string) => void;
-  onToText: (s: string) => void;
+  onStopText: (i: number, s: string) => void;
   onFromSelect: (p: Place) => void;
-  onToSelect: (p: Place) => void;
+  onStopSelect: (i: number, p: Place) => void;
+  onAddStop: () => void;
+  onRemoveStop: (i: number) => void;
   onSwap: () => void;
   date: string;
   time: string;
@@ -238,20 +247,49 @@ export function SearchPanel({
             </button>
           }
         />
-        <button
-          onClick={onSwap}
-          aria-label="Swap origin and destination"
-          className="absolute right-2 top-[38px] z-10 rounded-full border border-[var(--border)] bg-[var(--surface)] p-1.5 text-ripple-muted hover:text-[var(--fg)]"
-        >
-          <ArrowUpDown size={14} />
-        </button>
-        <LocationInput
-          label="To"
-          accent="#ef4444"
-          value={toText}
-          onChange={onToText}
-          onSelect={onToSelect}
-        />
+        {stops.length === 1 && (
+          <button
+            onClick={onSwap}
+            aria-label="Swap origin and destination"
+            className="absolute right-2 top-[38px] z-10 rounded-full border border-[var(--border)] bg-[var(--surface)] p-1.5 text-ripple-muted hover:text-[var(--fg)]"
+          >
+            <ArrowUpDown size={14} />
+          </button>
+        )}
+        {stops.map((stop, i) => {
+          const isFinal = i === stops.length - 1;
+          return (
+            <LocationInput
+              key={i}
+              label={isFinal ? "To" : `Stop ${i + 1}`}
+              accent={isFinal ? "#ef4444" : "var(--gold)"}
+              value={stop.text}
+              onChange={(s) => onStopText(i, s)}
+              onSelect={(p) => onStopSelect(i, p)}
+              labelAction={
+                stops.length > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveStop(i)}
+                    aria-label={`Remove ${isFinal ? "destination" : `stop ${i + 1}`}`}
+                    className="flex items-center gap-1 text-xs font-medium text-ripple-muted hover:text-error"
+                  >
+                    <X size={12} /> Remove
+                  </button>
+                ) : undefined
+              }
+            />
+          );
+        })}
+        {stops.length < MAX_STOPS && (
+          <button
+            type="button"
+            onClick={onAddStop}
+            className="-mt-1 flex items-center gap-1 self-start text-xs font-semibold text-brand hover:underline"
+          >
+            <Plus size={13} /> Add stop
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">

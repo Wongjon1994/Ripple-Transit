@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   Footprints,
   TrainFront,
@@ -427,6 +427,7 @@ export function RouteResultsPanel({
   weather,
   carbon,
   taxi,
+  stopLabels,
 }: {
   itineraries: Itinerary[];
   selected: number;
@@ -436,6 +437,8 @@ export function RouteResultsPanel({
   weather?: WeatherContext | null;
   carbon?: CarbonBaseline | null;
   taxi?: TaxiEstimate | null;
+  /** Multi-stop destination labels, used for the via dividers in the stepper. */
+  stopLabels?: string[];
 }) {
   if (itineraries.length === 0) return null;
   const fastest = Math.min(...itineraries.map((it) => it.duration));
@@ -570,11 +573,23 @@ export function RouteResultsPanel({
 
                     <div className="p-3 pt-3.5">
                       {it.legs.map((leg, k) => (
-                        <LegStep
-                          key={k}
-                          leg={leg}
-                          isLast={k === it.legs.length - 1}
-                        />
+                        <Fragment key={k}>
+                          {leg.viaStopIndex != null && (
+                            <div className="relative z-[1] mb-3 flex items-center gap-2">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gold/15 font-mono text-[10px] font-bold text-gold ring-1 ring-gold/40">
+                                {leg.viaStopIndex}
+                              </span>
+                              <span className="min-w-0 truncate text-xs font-semibold">
+                                {stopLabels?.[leg.viaStopIndex - 1] ??
+                                  `Stop ${leg.viaStopIndex}`}
+                              </span>
+                            </div>
+                          )}
+                          <LegStep
+                            leg={leg}
+                            isLast={k === it.legs.length - 1}
+                          />
+                        </Fragment>
                       ))}
                     </div>
 

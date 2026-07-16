@@ -31,6 +31,7 @@ import { getAllLineStatuses } from "../db/helpers.js";
 import type {
   Itinerary,
   RouteLeg,
+  LatLng,
   WeatherContext,
   CarbonBaseline,
 } from "../../shared/types.js";
@@ -186,6 +187,109 @@ async function enrichItineraries(itineraries: Itinerary[]): Promise<void> {
   );
 }
 
+/**
+ * Full transit-planning pipeline for one origin→destination segment:
+ * OneMap routing → dedupe → (optionally) live enrichment → risk/CO₂ →
+ * (optionally) live-wait adjustment → fastest-first sort → carbon baseline.
+ *
+ * `live` should be false for segments the commuter won't start for a while
+ * (multi-stop segments after the first): live bus ETAs are only meaningful
+ * near departure, so those segments stay timetable-based and skip the
+ * feasibility callouts entirely.
+ */
+async function planTransit(
+  start: LatLng,
+  end: LatLng,
+  date: string,
+  time: string,
+  live: boolean,
+): Promise<{
+  itineraries: Itinerary[];
+  weather: WeatherContext | null;
+  carbon: CarbonBaseline;
+}> {
+  let itineraries = await oneMapRoute({
+    start,
+    end,
+    mode: "TRANSIT",
+    date,
+    time,
+  });
+  itineraries = dedupeItineraries(itineraries);
+  if (live) await enrichItineraries(itineraries);
+
+  // Context for per-option risk: weather, MRT disruptions, live traffic.
+  const [wx, lineStatuses, incidents] = await Promise.all([
+    weatherAt(start.lat, start.lng).catch(() => null),
+    getAllLineStatuses().catch(() => []),
+    getTrafficIncidents().catch(() => []),
+  ]);
+  const disruptedLines = new Set(
+    lineStatuses
+      .filter((l) => l.status !== "operational")
+      .map((l) => l.lineCode),
+  );
+
+  for (const it of itineraries) {
+    // Flag bus legs whose road has a live traffic incident.
+    const trafficAlerts: { severe: boolean; label: string }[] = [];
+    for (const leg of it.legs) {
+      if (leg.type !== "bus") continue;
+      const hits = incidentsOnPath(
+        { polyline: leg.polyline, start: leg.startPoint, end: leg.endPoint },
+        incidents,
+      );
+      if (hits.length) {
+        leg.trafficAlert = incidentLabel(hits[0]);
+        for (const h of hits)
+          trafficAlerts.push({ severe: h.severe, label: incidentLabel(h) });
+      }
+    }
+    it.risk = computeRouteRisk(it, {
+      wet: wx?.wet ?? false,
+      disruptedLines,
+      trafficAlerts,
+    });
+    it.co2Grams = itineraryCo2Grams(it.legs);
+
+    if (live) {
+      // Fold live bus waiting into the total so timing + "fastest" ranking
+      // reflect the wait you'll actually face, not just the timetable.
+      const { duration, waitSeconds } = applyLiveWaiting(it.legs, it.duration);
+      it.duration = duration;
+      it.waitSeconds = waitSeconds;
+    }
+  }
+
+  // Re-rank by (live-adjusted) total time, fastest first.
+  itineraries.sort((a, b) => a.duration - b.duration);
+
+  // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
+  const driveKm = (haversineMeters(start, end) / 1000) * 1.35;
+  return {
+    itineraries,
+    weather: wx,
+    carbon: { driveKm, ...drivingCo2Grams(driveKm) },
+  };
+}
+
+/** Advance a naive local date/time pair by `seconds` (SG has no DST). */
+function advanceClock(
+  date: string,
+  time: string,
+  seconds: number,
+): { date: string; time: string } {
+  const [y, mo, d] = date.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  const t = new Date(y, mo - 1, d, h, mi);
+  t.setSeconds(t.getSeconds() + seconds);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    date: `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`,
+    time: `${pad(t.getHours())}:${pad(t.getMinutes())}`,
+  };
+}
+
 export const onemapRouter = router({
   tokenInfo: publicProcedure.query(async () => {
     const info = await getOneMapTokenInfo();
@@ -209,83 +313,134 @@ export const onemapRouter = router({
 
   route: publicProcedure.input(routeInput).query(async ({ input }) => {
     const { date: d, time: t } = todayParts();
-    let itineraries: Itinerary[];
+    const date = input.date ?? d;
+    const time = input.time ?? t;
     try {
-      itineraries = await oneMapRoute({
+      if (input.mode === "TRANSIT") {
+        const { itineraries, weather, carbon } = await planTransit(
+          input.start,
+          input.end,
+          date,
+          time,
+          true,
+        );
+        return { plan: { itineraries }, weather, carbon };
+      }
+      const itineraries = await oneMapRoute({
         start: input.start,
         end: input.end,
         mode: input.mode,
-        date: input.date ?? d,
-        time: input.time ?? t,
+        date,
+        time,
       });
+      return { plan: { itineraries }, weather: null, carbon: null };
     } catch (err) {
+      if (err instanceof TRPCError) throw err;
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message:
           err instanceof Error ? err.message : "Failed to calculate route.",
       });
     }
+  }),
 
-    let weather: WeatherContext | null = null;
-    let carbon: CarbonBaseline | null = null;
-    if (input.mode === "TRANSIT") {
-      itineraries = dedupeItineraries(itineraries);
-      await enrichItineraries(itineraries);
+  /**
+   * Multi-stop transit routing: origin + 2–5 destinations visited in order.
+   * Each segment departs when the previous one arrives; the best (fastest,
+   * live-wait-aware for the first segment) itinerary per segment is stitched
+   * into one journey. Fare/CO₂/duration are summed; risk is the worst segment.
+   */
+  multiRoute: publicProcedure
+    .input(
+      z.object({
+        points: z
+          .array(z.object({ lat: z.number(), lng: z.number() }))
+          .min(3) // origin + at least 2 stops (single-stop uses `route`)
+          .max(6), // origin + up to 5 destinations
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        time: z
+          .string()
+          .regex(/^\d{2}:\d{2}$/)
+          .optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const { date: d, time: t } = todayParts();
+      let clock = { date: input.date ?? d, time: input.time ?? t };
 
-      // Context for per-option risk: weather, MRT disruptions, live traffic.
-      const [wx, lineStatuses, incidents] = await Promise.all([
-        weatherAt(input.start.lat, input.start.lng).catch(() => null),
-        getAllLineStatuses().catch(() => []),
-        getTrafficIncidents().catch(() => []),
-      ]);
-      weather = wx;
-      const disruptedLines = new Set(
-        lineStatuses
-          .filter((l) => l.status !== "operational")
-          .map((l) => l.lineCode),
-      );
+      const segments: Itinerary[] = [];
+      let weather: WeatherContext | null = null;
+      const carbon: CarbonBaseline = { driveKm: 0, taxiGrams: 0, carGrams: 0 };
 
-      for (const it of itineraries) {
-        // Flag bus legs whose road has a live traffic incident.
-        const trafficAlerts: { severe: boolean; label: string }[] = [];
-        for (const leg of it.legs) {
-          if (leg.type !== "bus") continue;
-          const hits = incidentsOnPath(
-            { polyline: leg.polyline, start: leg.startPoint, end: leg.endPoint },
-            incidents,
+      for (let i = 0; i < input.points.length - 1; i++) {
+        let seg;
+        try {
+          // Live enrichment only for the segment you're about to start.
+          seg = await planTransit(
+            input.points[i],
+            input.points[i + 1],
+            clock.date,
+            clock.time,
+            i === 0,
           );
-          if (hits.length) {
-            leg.trafficAlert = incidentLabel(hits[0]);
-            for (const h of hits)
-              trafficAlerts.push({ severe: h.severe, label: incidentLabel(h) });
-          }
+        } catch (err) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message:
+              err instanceof Error ? err.message : "Failed to calculate route.",
+          });
         }
-        it.risk = computeRouteRisk(it, {
-          wet: wx?.wet ?? false,
-          disruptedLines,
-          trafficAlerts,
-        });
-        it.co2Grams = itineraryCo2Grams(it.legs);
-
-        // Fold live bus waiting into the total so timing + "fastest" ranking
-        // reflect the wait you'll actually face, not just the timetable.
-        const { duration, waitSeconds } = applyLiveWaiting(it.legs, it.duration);
-        it.duration = duration;
-        it.waitSeconds = waitSeconds;
+        const best = seg.itineraries[0];
+        if (!best) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `No transit route found for stop ${i + 1} → stop ${i + 2}.`,
+          });
+        }
+        segments.push(best);
+        weather ??= seg.weather;
+        carbon.driveKm += seg.carbon.driveKm;
+        carbon.taxiGrams += seg.carbon.taxiGrams;
+        carbon.carGrams += seg.carbon.carGrams;
+        clock = advanceClock(clock.date, clock.time, best.duration);
       }
 
-      // Re-rank by live-adjusted total time (fastest first) so the default
-      // selection and the "Fastest" tag account for waiting.
-      itineraries.sort((a, b) => a.duration - b.duration);
+      // Stitch the per-segment winners into one journey. The first leg of each
+      // later segment is tagged with the stop it departs from, so the UI can
+      // divide the stepper at each destination.
+      const legs: RouteLeg[] = [];
+      segments.forEach((seg, i) => {
+        if (i > 0 && seg.legs[0]) seg.legs[0].viaStopIndex = i;
+        legs.push(...seg.legs);
+      });
+      const worstRisk = segments
+        .map((s) => s.risk)
+        .filter((r) => r != null)
+        .sort((a, b) => b!.score - a!.score)[0];
 
-      // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
-      const driveKm =
-        (haversineMeters(input.start, input.end) / 1000) * 1.35;
-      carbon = { driveKm, ...drivingCo2Grams(driveKm) };
-    }
+      const stitched: Itinerary = {
+        duration: segments.reduce((s, it) => s + it.duration, 0),
+        fare: segments.reduce((s, it) => s + it.fare, 0),
+        transfers: segments.reduce((s, it) => s + it.transfers, 0),
+        legs,
+        risk: worstRisk
+          ? {
+              ...worstRisk,
+              reasons: [
+                ...new Set(segments.flatMap((s) => s.risk?.reasons ?? [])),
+              ],
+            }
+          : undefined,
+        co2Grams: segments.reduce((s, it) => s + (it.co2Grams ?? 0), 0),
+        waitSeconds: segments[0]?.waitSeconds,
+        startTimeMs: segments[0]?.startTimeMs,
+      };
 
-    return { plan: { itineraries }, weather, carbon };
-  }),
+      return { plan: { itineraries: [stitched] }, weather, carbon };
+    }),
 
   reverseGeocode: publicProcedure
     .input(z.object({ lat: z.number(), lng: z.number() }))

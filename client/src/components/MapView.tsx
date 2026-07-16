@@ -149,6 +149,7 @@ function add3dBuildings(map: MaplibreMap, dark: boolean) {
 export function MapView({
   origin,
   destination,
+  waypoints,
   itinerary,
   livePosition,
   pitch = 0,
@@ -158,6 +159,8 @@ export function MapView({
 }: {
   origin: LatLng | null;
   destination: LatLng | null;
+  /** Intermediate multi-stop destinations, in visit order (numbered pins). */
+  waypoints?: LatLng[];
   itinerary: Itinerary | null;
   livePosition?: LatLng | null;
   /** Tilt (deg) — non-zero drives the 3D walk view. */
@@ -205,9 +208,12 @@ export function MapView({
       ...(destination
         ? ([[destination.lng, destination.lat]] as [number, number][])
         : []),
+      ...(waypoints ?? []).map(
+        (w) => [w.lng, w.lat] as [number, number],
+      ),
       ...legLines.flatMap((l) => l.coords),
     ],
-    [origin, destination, legLines],
+    [origin, destination, waypoints, legLines],
   );
 
   // Camera: follow a moving point during navigation; otherwise fit to the route.
@@ -320,6 +326,14 @@ export function MapView({
       {origin && (
         <PinMarker point={origin} color={TRANSIT_COLORS.bus} label="A" />
       )}
+      {waypoints?.map((w, i) => (
+        <PinMarker
+          key={`wp-${i}`}
+          point={w}
+          color="#a97f2e"
+          label={String(i + 1)}
+        />
+      ))}
       {destination && (
         <PinMarker point={destination} color={TRANSIT_COLORS.mrt} label="B" />
       )}

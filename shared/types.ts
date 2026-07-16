@@ -75,6 +75,10 @@ export interface RouteLeg {
 
   // phase 12
   busLegFeasibility?: BusLegFeasibility;
+
+  // multi-stop: set on the first leg of each later segment — the 1-based index
+  // of the intermediate destination this leg departs from.
+  viaStopIndex?: number;
 }
 
 export type RiskLevel = "low" | "moderate" | "high";

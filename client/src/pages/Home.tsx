@@ -16,19 +16,24 @@ function nowParts() {
   return { date, time };
 }
 
+/** One destination field: typed text + resolved coordinates (if picked). */
+interface Stop {
+  text: string;
+  point: LatLng | null;
+}
+
 export function Home() {
   const initial = useMemo(nowParts, []);
   const [fromText, setFromText] = useState("");
-  const [toText, setToText] = useState("");
   const [from, setFrom] = useState<LatLng | null>(null);
-  const [to, setTo] = useState<LatLng | null>(null);
+  // Destinations in visit order — 1 to 5 stops; the last one is "To".
+  const [stops, setStops] = useState<Stop[]>([{ text: "", point: null }]);
   const [date, setDate] = useState(initial.date);
   const [time, setTime] = useState(initial.time);
   const [selected, setSelected] = useState(0);
 
   const [routeParams, setRouteParams] = useState<{
-    start: LatLng;
-    end: LatLng;
+    points: LatLng[]; // origin first, then each stop in order
     date: string;
     time: string;
   } | null>(null);
@@ -60,9 +65,9 @@ export function Home() {
     journeyCtx.start({
       itinerary: it,
       originText: fromText,
-      destText: toText,
-      origin: routeParams.start,
-      destination: routeParams.end,
+      destText: stops[stops.length - 1]?.text ?? "",
+      origin: routeParams.points[0],
+      destination: routeParams.points[routeParams.points.length - 1],
     });
     navigate("/journey");
   }
@@ -80,61 +85,85 @@ export function Home() {
     return first ? { lat: first.lat, lng: first.lng } : null;
   }
 
-  const route = trpc.onemap.route.useQuery(
+  // Single destination uses the multi-option `route`; 2+ stops use the
+  // stitched `multiRoute` (one sequential journey, live data on segment 1).
+  const isMulti = (routeParams?.points.length ?? 0) > 2;
+
+  const singleRoute = trpc.onemap.route.useQuery(
     routeParams
       ? {
-          start: routeParams.start,
-          end: routeParams.end,
+          start: routeParams.points[0],
+          end: routeParams.points[1],
           mode: "TRANSIT" as const,
           date: routeParams.date,
           time: routeParams.time,
         }
       : (undefined as never),
-    { enabled: !!routeParams, retry: false },
+    { enabled: !!routeParams && !isMulti, retry: false },
   );
+  const multiRoute = trpc.onemap.multiRoute.useQuery(
+    routeParams
+      ? {
+          points: routeParams.points,
+          date: routeParams.date,
+          time: routeParams.time,
+        }
+      : (undefined as never),
+    { enabled: !!routeParams && isMulti, retry: false },
+  );
+  const route = isMulti ? multiRoute : singleRoute;
 
   const itineraries = route.data?.plan.itineraries ?? [];
 
+  // Taxi estimates are point-to-point — hidden for multi-stop journeys.
   const taxi = trpc.taxi.estimate.useQuery(
     routeParams
-      ? { origin: routeParams.start, destination: routeParams.end }
+      ? {
+          origin: routeParams.points[0],
+          destination: routeParams.points[routeParams.points.length - 1],
+        }
       : (undefined as never),
-    { enabled: !!routeParams, retry: false, staleTime: 60_000 },
+    { enabled: !!routeParams && !isMulti, retry: false, staleTime: 60_000 },
   );
 
   async function handleSearch() {
-    if (!fromText.trim() || !toText.trim()) {
-      toast.error("Enter both a From and To location.");
+    if (!fromText.trim() || stops.some((s) => !s.text.trim())) {
+      toast.error("Fill in From and every stop before searching.");
       return;
     }
     setResolving(true);
     try {
-      const [start, end] = await Promise.all([
+      const resolved = await Promise.all([
         resolvePoint(from, fromText),
-        resolvePoint(to, toText),
+        ...stops.map((s) => resolvePoint(s.point, s.text)),
       ]);
-      if (!start || !end) {
+      if (resolved.some((p) => !p)) {
         toast.error("Couldn’t locate one of those places. Try refining it.");
         return;
       }
-      setFrom(start);
-      setTo(end);
+      const points = resolved as LatLng[];
+      setFrom(points[0]);
+      setStops((prev) =>
+        prev.map((s, i) => ({ ...s, point: points[i + 1] })),
+      );
       setSelected(0);
-      setRouteParams({ start, end, date, time });
+      setRouteParams({ points, date, time });
     } finally {
       setResolving(false);
     }
   }
 
+  // Only offered for a single destination: reverse the trip.
   function handleSwap() {
-    setFrom(to);
-    setTo(from);
-    setFromText(toText);
-    setToText(fromText);
+    const last = stops[stops.length - 1];
+    setFrom(last.point);
+    setFromText(last.text);
+    setStops([{ text: fromText, point: from }]);
   }
 
-  const selectPlace = (setPoint: (p: LatLng) => void) => (p: Place) =>
-    setPoint(p.point);
+  function updateStop(i: number, patch: Partial<Stop>) {
+    setStops((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  }
 
   // Rise to the half snap when results first arrive.
   useEffect(() => {
@@ -195,40 +224,47 @@ export function Home() {
         <div className="px-4 pb-4 pt-2 md:pt-4">
           <SearchPanel
             fromText={fromText}
-            toText={toText}
+            stops={stops}
             onFromText={setFromText}
-            onToText={setToText}
+            onStopText={(i, s) => updateStop(i, { text: s, point: null })}
             onFromSelect={(p) => {
-              selectPlace(setFrom)(p);
+              setFrom(p.point);
               setFromText(p.label);
             }}
-            onToSelect={(p) => {
-              selectPlace(setTo)(p);
-              setToText(p.label);
-            }}
+            onStopSelect={(i, p) =>
+              updateStop(i, { text: p.label, point: p.point })
+            }
+            onAddStop={() =>
+              setStops((prev) => [...prev, { text: "", point: null }])
+            }
+            onRemoveStop={(i) =>
+              setStops((prev) => prev.filter((_, j) => j !== i))
+            }
             onSwap={handleSwap}
             date={date}
             time={time}
             onDate={setDate}
             onTime={setTime}
             onSearch={handleSearch}
-            canSearch={!!fromText.trim() && !!toText.trim()}
+            canSearch={
+              !!fromText.trim() && stops.every((s) => !!s.text.trim())
+            }
             isSearching={resolving || route.isFetching}
             onPickSavedLocation={(p) => {
-              // Fill the first empty field (From, else To).
+              // Fill From if empty, else the first empty stop, else the last stop.
               if (!fromText.trim()) {
                 setFrom(p.point);
                 setFromText(p.label);
-              } else {
-                setTo(p.point);
-                setToText(p.label);
+                return;
               }
+              const emptyIdx = stops.findIndex((s) => !s.text.trim());
+              const idx = emptyIdx >= 0 ? emptyIdx : stops.length - 1;
+              updateStop(idx, { text: p.label, point: p.point });
             }}
             onPickFavourite={(origin, destination) => {
               setFrom(null);
-              setTo(null);
               setFromText(origin);
-              setToText(destination);
+              setStops([{ text: destination, point: null }]);
             }}
             showShortcuts={!routeParams}
           />
@@ -261,7 +297,8 @@ export function Home() {
                 onStartJourney={handleStartJourney}
                 weather={route.data?.weather}
                 carbon={route.data?.carbon}
-                taxi={taxi.data}
+                taxi={isMulti ? null : taxi.data}
+                stopLabels={stops.map((s) => s.text)}
               />
             )}
           </div>
@@ -272,7 +309,8 @@ export function Home() {
       <main className="absolute inset-0 md:relative md:min-h-0 md:flex-1">
         <MapView
           origin={from}
-          destination={to}
+          destination={stops[stops.length - 1]?.point ?? null}
+          waypoints={stops.slice(0, -1).flatMap((s) => (s.point ? [s.point] : []))}
           itinerary={itineraries[selected] ?? null}
         />
       </main>
