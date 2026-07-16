@@ -136,7 +136,7 @@ export const tripLog = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     origin: text("origin").notNull(),
     destination: text("destination").notNull(),
-    mode: text("mode", { enum: ["transit", "taxi", "car"] })
+    mode: text("mode", { enum: ["transit", "taxi", "car", "walk", "cycle"] })
       .notNull()
       .default("transit"),
     co2Grams: integer("co2_grams").notNull(),

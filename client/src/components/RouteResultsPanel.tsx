@@ -3,6 +3,7 @@ import {
   Footprints,
   TrainFront,
   Bus,
+  Bike,
   Check,
   ChevronDown,
   ArrowRight,
@@ -39,15 +40,17 @@ import type { TaxiEstimate } from "@shared/types.js";
 
 function legColor(leg: RouteLeg): string {
   if (leg.type === "walk") return "#22c55e";
+  if (leg.type === "cycle") return "#0ea5e9";
   if (leg.type === "bus") return "#3b82f6";
   return lineColor(leg.lineCode);
 }
 
 function legTitle(leg: RouteLeg): string {
-  if (leg.type === "walk") {
+  if (leg.type === "walk" || leg.type === "cycle") {
+    const verb = leg.type === "walk" ? "Walk" : "Cycle";
     const to =
       cleanName(leg.toName) ?? leg.endBusStop ?? leg.endStation ?? null;
-    return to ? `Walk to ${to}` : "Walk";
+    return to ? `${verb} to ${to}` : verb;
   }
   if (leg.type === "mrt")
     return `${leg.startStation ?? "Board"} → ${leg.endStation ?? "Alight"}`;
@@ -61,7 +64,13 @@ function legTitle(leg: RouteLeg): string {
 function LegStep({ leg, isLast }: { leg: RouteLeg; isLast: boolean }) {
   const color = legColor(leg);
   const Icon =
-    leg.type === "walk" ? Footprints : leg.type === "bus" ? Bus : TrainFront;
+    leg.type === "walk"
+      ? Footprints
+      : leg.type === "cycle"
+        ? Bike
+        : leg.type === "bus"
+          ? Bus
+          : TrainFront;
   const f = leg.busLegFeasibility;
 
   return (

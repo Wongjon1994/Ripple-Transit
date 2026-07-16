@@ -4,6 +4,7 @@ import {
   Footprints,
   TrainFront,
   Bus,
+  Bike,
   Navigation,
   X,
   ArrowRight,
@@ -37,14 +38,15 @@ const ARRIVE_THRESHOLD_M = 35;
 
 function legIcon(type: RouteLeg["type"], size = 20) {
   if (type === "walk") return <Footprints size={size} />;
+  if (type === "cycle") return <Bike size={size} />;
   if (type === "bus") return <Bus size={size} />;
   return <TrainFront size={size} />;
 }
 
 function instruction(leg: RouteLeg): { title: string; detail: string } {
-  if (leg.type === "walk")
+  if (leg.type === "walk" || leg.type === "cycle")
     return {
-      title: "Walk",
+      title: leg.type === "walk" ? "Walk" : "Cycle",
       detail: `to ${leg.toName ?? leg.endStation ?? leg.endBusStop ?? "the next point"}`,
     };
   if (leg.type === "bus")
@@ -100,7 +102,7 @@ export function LiveJourney() {
   useEffect(() => {
     if (!journey || !leg || !geo.position || journey.status !== "active") return;
     if (
-      leg.type === "walk" &&
+      (leg.type === "walk" || leg.type === "cycle") &&
       haversineMeters(geo.position, leg.endPoint) < ARRIVE_THRESHOLD_M
     ) {
       advance();
@@ -114,13 +116,20 @@ export function LiveJourney() {
     if (!journey || !completed || !user || logged.current) return;
     logged.current = true;
     const distanceM = legs.reduce((s, l) => s + l.distance, 0);
+    // Pure walk/cycle journeys log as their own mode and bank the emissions
+    // avoided vs driving; mixed journeys stay "transit".
+    const mode = legs.some((l) => l.type === "cycle")
+      ? ("cycle" as const)
+      : legs.every((l) => l.type === "walk")
+        ? ("walk" as const)
+        : ("transit" as const);
     logTrip.mutate(
       {
         origin: journey.originText || "Origin",
         destination: journey.destText || "Destination",
-        mode: "transit",
+        mode,
         co2Grams: journey.itinerary.co2Grams ?? 0,
-        savedGrams: 0,
+        savedGrams: journey.itinerary.co2SavedGrams ?? 0,
         distanceM: Math.round(distanceM),
       },
       { onSuccess: () => toast.success("Journey logged to your Impact.") },
@@ -166,16 +175,18 @@ export function LiveJourney() {
   const legColor =
     leg?.type === "walk"
       ? "#22c55e"
-      : leg?.type === "bus"
-        ? "#3b82f6"
-        : lineColor(leg?.lineCode);
+      : leg?.type === "cycle"
+        ? "#0ea5e9"
+        : leg?.type === "bus"
+          ? "#3b82f6"
+          : lineColor(leg?.lineCode);
 
-  // Walk legs get a tilted, heading-up 3D navigation view that follows you;
-  // transit legs fall back to the flat overview (fit to the whole route).
+  // Walk/cycle legs get a tilted, heading-up 3D navigation view that follows
+  // you; transit legs fall back to the flat overview (whole route).
   const walkCamera:
     | { pitch: number; bearing: number; follow: LatLng; followZoom: number }
     | Record<string, never> =
-    leg?.type === "walk"
+    leg?.type === "walk" || leg?.type === "cycle"
       ? {
           pitch: 55,
           bearing: geo.position
@@ -461,9 +472,11 @@ function CompletionSummary({
                     background:
                       l.type === "walk"
                         ? "#22c55e"
-                        : l.type === "bus"
-                          ? "#3b82f6"
-                          : lineColor(l.lineCode),
+                        : l.type === "cycle"
+                          ? "#0ea5e9"
+                          : l.type === "bus"
+                            ? "#3b82f6"
+                            : lineColor(l.lineCode),
                   }}
                 >
                   {legIcon(l.type, 14)}

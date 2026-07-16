@@ -16,7 +16,7 @@ export interface SearchResult {
   source: SearchSource;
 }
 
-export type LegType = "walk" | "mrt" | "bus";
+export type LegType = "walk" | "mrt" | "bus" | "cycle";
 
 export type FeasibilityStatus = "ok" | "tight" | "miss" | "unknown";
 
@@ -116,8 +116,41 @@ export interface Itinerary {
   legs: RouteLeg[];
   risk?: RouteRisk;
   co2Grams?: number; // this route's carbon footprint
+  co2SavedGrams?: number; // walk/cycle journeys: emissions avoided vs driving
   startTimeMs?: number; // scheduled journey start (epoch ms, from OTP)
   waitSeconds?: number; // live waiting time at the first bus stop, if known
+}
+
+// ── Active mobility (Phase 14) ────────────────────────────────
+export type ActiveMode = "walk" | "cycle";
+
+export interface ActiveCoverage {
+  /** % of the route within ~30m of a park connector or cycling path. */
+  pct: number;
+  label: string;
+  tone: "ok" | "neutral" | "warning";
+}
+
+export interface ActiveRoute {
+  mode: ActiveMode;
+  distanceM: number;
+  durationS: number;
+  polyline: string; // encoded, precision 5
+  coverage: ActiveCoverage;
+  kcal: number; // honest estimate
+  co2SavedGrams: number; // vs driving the same trip
+}
+
+export interface ActiveAdvisory {
+  level: "good" | "info" | "warning";
+  message: string;
+}
+
+export interface ActiveRoutesResult {
+  walk: ActiveRoute | null;
+  cycle: ActiveRoute | null;
+  weather: WeatherContext | null;
+  advisory: ActiveAdvisory;
 }
 
 /** Driving-baseline carbon for the same origin→destination. */
@@ -161,6 +194,7 @@ export const TRANSIT_COLORS = {
   bus: "#3b82f6",
   mrt: "#ef4444",
   walk: "#22c55e",
+  cycle: "#0ea5e9",
 } as const;
 
 export const FEASIBILITY_COLORS: Record<FeasibilityStatus, string> = {

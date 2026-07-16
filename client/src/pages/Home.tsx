@@ -1,14 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { BusFront, Footprints, Bike } from "lucide-react";
 import { trpc } from "../lib/trpc.js";
 import { SearchPanel, type Place } from "../components/SearchPanel.js";
 import { RouteResultsPanel } from "../components/RouteResultsPanel.js";
+import { ActiveRoutePanel } from "../components/ActiveRoutePanel.js";
 import { MapView } from "../components/MapView.js";
 import { MrtStatus } from "../components/MrtStatus.js";
 import { useJourney } from "../lib/journey.js";
 import { useLocation } from "wouter";
-import type { LatLng } from "@shared/types.js";
+import { cn } from "../lib/utils.js";
+import type { ActiveMode, ActiveRoute, Itinerary, LatLng } from "@shared/types.js";
+
+type ModeTab = "transit" | ActiveMode;
+
+const MODE_TABS: { id: ModeTab; label: string; Icon: typeof BusFront }[] = [
+  { id: "transit", label: "Transit", Icon: BusFront },
+  { id: "walk", label: "Walk", Icon: Footprints },
+  { id: "cycle", label: "Cycle", Icon: Bike },
+];
 
 function nowParts() {
   const d = new Date();
@@ -35,6 +46,8 @@ export function Home() {
   // (editing means they're planning a future trip).
   const [timeIsAuto, setTimeIsAuto] = useState(true);
   const [selected, setSelected] = useState(0);
+  // Results mode: Transit | Walk | Cycle (active modes are single-dest only).
+  const [modeTab, setModeTab] = useState<ModeTab>("transit");
 
   const [routeParams, setRouteParams] = useState<{
     points: LatLng[]; // origin first, then each stop in order
@@ -140,6 +153,65 @@ export function Home() {
     { enabled: !!routeParams && !isMulti, retry: false, staleTime: 60_000 },
   );
 
+  // Walk & Cycle tabs (Phase 14): one OneMap path per mode, comfort-scored
+  // against the PCN/cycling-path network. Single destination only.
+  const active = trpc.active.routes.useQuery(
+    routeParams
+      ? {
+          start: routeParams.points[0],
+          end: routeParams.points[routeParams.points.length - 1],
+        }
+      : (undefined as never),
+    {
+      enabled: !!routeParams && !isMulti,
+      retry: false,
+      staleTime: 120_000,
+      placeholderData: keepPreviousData,
+    },
+  );
+
+  const shownTab: ModeTab = isMulti ? "transit" : modeTab;
+
+  // Synthetic single-leg itinerary for the selected active mode — reuses the
+  // existing map rendering and the live-journey companion unchanged.
+  const activeItinerary = useMemo((): Itinerary | null => {
+    if (shownTab === "transit" || !routeParams) return null;
+    const r = active.data?.[shownTab];
+    if (!r) return null;
+    const pts = routeParams.points;
+    return {
+      duration: r.durationS,
+      fare: 0,
+      transfers: 0,
+      co2Grams: 0,
+      co2SavedGrams: r.co2SavedGrams,
+      legs: [
+        {
+          type: r.mode,
+          startPoint: pts[0],
+          endPoint: pts[pts.length - 1],
+          duration: r.durationS,
+          distance: r.distanceM,
+          polyline: r.polyline,
+          toName: stops[stops.length - 1]?.text,
+        },
+      ],
+    };
+  }, [shownTab, active.data, routeParams, stops]);
+
+  function handleStartActiveJourney(route: ActiveRoute) {
+    if (!activeItinerary || !routeParams) return;
+    void route;
+    journeyCtx.start({
+      itinerary: activeItinerary,
+      originText: fromText,
+      destText: stops[stops.length - 1]?.text ?? "",
+      origin: routeParams.points[0],
+      destination: routeParams.points[routeParams.points.length - 1],
+    });
+    navigate("/journey");
+  }
+
   async function handleSearch() {
     if (!fromText.trim() || stops.some((s) => !s.text.trim())) {
       toast.error("Fill in From and every stop before searching.");
@@ -161,6 +233,7 @@ export function Home() {
         prev.map((s, i) => ({ ...s, point: points[i + 1] })),
       );
       setSelected(0);
+      setModeTab("transit");
       // Auto-synced departures read the clock at the moment of search.
       const depart = timeIsAuto ? nowParts() : { date, time };
       setRouteParams({ points, ...depart });
@@ -314,33 +387,67 @@ export function Home() {
 
         <MrtStatus />
 
-        {route.isError && (
-          <div className="mx-4 rounded-md border border-error/30 bg-error/10 p-3 text-sm text-error">
-            Couldn’t calculate a route. {route.error.message}
-          </div>
-        )}
-
-        {routeParams && !route.isError && (
+        {routeParams && (
           <div className="border-t border-[var(--border)]">
-            {route.isFetching && itineraries.length === 0 ? (
-              <p className="p-4 text-sm text-ripple-muted">
-                Calculating routes…
-              </p>
-            ) : itineraries.length === 0 ? (
-              <p className="p-4 text-sm text-ripple-muted">
-                No transit routes found for this pair.
-              </p>
+            {/* Mode tabs — walking & cycling never co-mingle with transit
+                options; multi-stop journeys are transit-only. */}
+            {!isMulti && (
+              <div
+                className="flex gap-1 border-b border-[var(--border)] p-2"
+                role="tablist"
+                aria-label="Travel mode"
+              >
+                {MODE_TABS.map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    role="tab"
+                    aria-selected={shownTab === id}
+                    onClick={() => setModeTab(id)}
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                      shownTab === id
+                        ? "bg-brand/10 text-brand"
+                        : "text-ripple-muted hover:bg-ripple-muted/10",
+                    )}
+                  >
+                    <Icon size={13} /> {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {shownTab === "transit" ? (
+              route.isError ? (
+                <div className="m-4 rounded-md border border-error/30 bg-error/10 p-3 text-sm text-error">
+                  Couldn’t calculate a route. {route.error.message}
+                </div>
+              ) : route.isFetching && itineraries.length === 0 ? (
+                <p className="p-4 text-sm text-ripple-muted">
+                  Calculating routes…
+                </p>
+              ) : itineraries.length === 0 ? (
+                <p className="p-4 text-sm text-ripple-muted">
+                  No transit routes found for this pair.
+                </p>
+              ) : (
+                <RouteResultsPanel
+                  itineraries={itineraries}
+                  selected={selected}
+                  onSelect={setSelected}
+                  onSave={() => toast.success("Route saving comes in Phase 11.")}
+                  onStartJourney={handleStartJourney}
+                  weather={route.data?.weather}
+                  carbon={route.data?.carbon}
+                  taxi={isMulti ? null : taxi.data}
+                  stopLabels={stops.map((s) => s.text)}
+                />
+              )
             ) : (
-              <RouteResultsPanel
-                itineraries={itineraries}
-                selected={selected}
-                onSelect={setSelected}
-                onSave={() => toast.success("Route saving comes in Phase 11.")}
-                onStartJourney={handleStartJourney}
-                weather={route.data?.weather}
-                carbon={route.data?.carbon}
-                taxi={isMulti ? null : taxi.data}
-                stopLabels={stops.map((s) => s.text)}
+              <ActiveRoutePanel
+                mode={shownTab}
+                data={active.data}
+                isLoading={active.isLoading}
+                onStartJourney={handleStartActiveJourney}
               />
             )}
           </div>
@@ -353,7 +460,11 @@ export function Home() {
           origin={from}
           destination={stops[stops.length - 1]?.point ?? null}
           waypoints={stops.slice(0, -1).flatMap((s) => (s.point ? [s.point] : []))}
-          itinerary={itineraries[selected] ?? null}
+          itinerary={
+            shownTab === "transit"
+              ? (itineraries[selected] ?? null)
+              : activeItinerary
+          }
         />
       </main>
     </div>

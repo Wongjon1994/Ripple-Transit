@@ -58,6 +58,7 @@ function decodePolyline(str: string): [number, number][] {
 function legColor(type: string) {
   if (type === "bus") return TRANSIT_COLORS.bus;
   if (type === "mrt") return TRANSIT_COLORS.mrt;
+  if (type === "cycle") return TRANSIT_COLORS.cycle;
   return TRANSIT_COLORS.walk;
 }
 

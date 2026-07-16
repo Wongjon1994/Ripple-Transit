@@ -275,7 +275,7 @@ export async function addTripLog(entry: {
   userId: number;
   origin: string;
   destination: string;
-  mode: "transit" | "taxi" | "car";
+  mode: "transit" | "taxi" | "car" | "walk" | "cycle";
   co2Grams: number;
   savedGrams: number;
   distanceM: number;

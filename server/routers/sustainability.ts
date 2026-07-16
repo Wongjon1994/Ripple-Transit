@@ -9,7 +9,9 @@ export const sustainabilityRouter = router({
       z.object({
         origin: z.string().max(255),
         destination: z.string().max(255),
-        mode: z.enum(["transit", "taxi", "car"]).default("transit"),
+        mode: z
+          .enum(["transit", "taxi", "car", "walk", "cycle"])
+          .default("transit"),
         co2Grams: z.number().int().nonnegative(),
         savedGrams: z.number().int().default(0),
         distanceM: z.number().int().nonnegative().default(0),

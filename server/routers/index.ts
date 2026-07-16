@@ -1,6 +1,7 @@
 import { router, publicProcedure } from "../trpc.js";
 import { authRouter } from "./auth.js";
 import { onemapRouter } from "./onemap.js";
+import { activeRouter } from "./active.js";
 import { ltaRouter } from "./lta.js";
 import { mrtRouter } from "./mrt.js";
 import { hereRouter } from "./here.js";
@@ -17,6 +18,7 @@ export const appRouter = router({
   }),
   auth: authRouter,
   onemap: onemapRouter,
+  active: activeRouter,
   lta: ltaRouter,
   mrt: mrtRouter,
   here: hereRouter,
