@@ -95,8 +95,11 @@ export function AddressAutocomplete({
               data-testid={testIdPrefix ? `${testIdPrefix}-${i}` : undefined}
               className="flex w-full flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left hover:bg-ripple-muted/10"
               onClick={() => {
-                onSelect(r);
+                // onChange BEFORE onSelect: consumers treat onChange as "the
+                // user typed" and clear their picked result — firing it after
+                // onSelect would immediately un-pick the selection.
                 onChange(r.title);
+                onSelect(r);
                 setOpen(false);
               }}
             >
