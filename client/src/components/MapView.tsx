@@ -1,38 +1,32 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
-  MapContainer,
-  TileLayer,
+  Map as MapGL,
   Marker,
-  Polyline,
-  useMap,
-} from "react-leaflet";
-import L from "leaflet";
+  Source,
+  Layer,
+  NavigationControl,
+  type MapRef,
+} from "react-map-gl/maplibre";
+import type { Map as MaplibreMap } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { useTheme } from "../lib/theme.js";
 
-const SG_CENTER: [number, number] = [1.3521, 103.8198];
-
-// Zoom tuned for Singapore transit planning: 12 shows a useful neighbourhood
-// span; 10 fits the whole island; 19 reaches building level.
+const SG_CENTER = { lng: 103.8198, lat: 1.3521 };
 const DEFAULT_ZOOM = 12;
 const MIN_ZOOM = 10;
 const MAX_ZOOM = 19;
 const FIT_MAX_ZOOM = 16; // don't over-zoom short routes when fitting bounds
 
-// OpenStreetMap tiles for both themes. Dark mode is derived from the same
-// colourful tiles via a CSS invert+hue-rotate filter (see index.css), which
-// keeps OSM's colour hierarchy — blue water, green parks, legible roads — on a
-// dark base, closer to Google Maps dark than a flat monochrome basemap.
-const OSM = {
-  url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  subdomains: "abc",
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · Routing by OneMap',
+// CARTO free vector basemaps (keyless): light = positron, dark = dark-matter.
+// Vector tiles let us tilt/pitch and extrude buildings for a 3D walk view.
+const STYLE = {
+  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
 } as const;
-const TILES = { light: OSM, dark: OSM } as const;
 
-/** Decode an encoded polyline (precision 5) into lat/lng pairs. */
+/** Decode an encoded polyline (precision 5) into [lng, lat] pairs (GeoJSON order). */
 function decodePolyline(str: string): [number, number][] {
   let index = 0,
     lat = 0,
@@ -56,47 +50,9 @@ function decodePolyline(str: string): [number, number][] {
       shift += 5;
     } while (b >= 0x20);
     lng += result & 1 ? ~(result >> 1) : result >> 1;
-    coords.push([lat / 1e5, lng / 1e5]);
+    coords.push([lng / 1e5, lat / 1e5]);
   }
   return coords;
-}
-
-function pinIcon(color: string, label: string) {
-  return L.divIcon({
-    className: "",
-    html: `<div style="background:${color};width:20px;height:20px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;">
-      <span style="transform:rotate(45deg);color:white;font-size:10px;font-weight:700;">${label}</span></div>`,
-    iconSize: [20, 20],
-    iconAnchor: [10, 20],
-  });
-}
-
-function liveIcon() {
-  return L.divIcon({
-    className: "",
-    html: `<div style="width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,.3),0 1px 4px rgba(0,0,0,.4);"></div>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
-}
-
-function FitBounds({
-  points,
-}: {
-  points: [number, number][];
-}) {
-  const map = useMap();
-  useEffect(() => {
-    if (points.length >= 2) {
-      map.fitBounds(L.latLngBounds(points), {
-        padding: [60, 60],
-        maxZoom: FIT_MAX_ZOOM,
-      });
-    } else if (points.length === 1) {
-      map.setView(points[0], 15);
-    }
-  }, [map, points]);
-  return null;
 }
 
 function legColor(type: string) {
@@ -105,93 +61,276 @@ function legColor(type: string) {
   return TRANSIT_COLORS.walk;
 }
 
+function PinMarker({
+  point,
+  color,
+  label,
+}: {
+  point: LatLng;
+  color: string;
+  label: string;
+}) {
+  return (
+    <Marker longitude={point.lng} latitude={point.lat} anchor="bottom">
+      <div
+        style={{
+          background: color,
+          width: 20,
+          height: 20,
+          borderRadius: "50% 50% 50% 0",
+          transform: "rotate(-45deg)",
+          border: "2px solid white",
+          boxShadow: "0 1px 4px rgba(0,0,0,.4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <span
+          style={{
+            transform: "rotate(45deg)",
+            color: "white",
+            fontSize: 10,
+            fontWeight: 700,
+          }}
+        >
+          {label}
+        </span>
+      </div>
+    </Marker>
+  );
+}
+
+/**
+ * Add a 3D building-extrusion layer to CARTO's vector basemap so buildings rise
+ * when the map is pitched (used for the walk navigation view). Best-effort:
+ * only runs if the "carto" source with a building layer is present.
+ */
+function add3dBuildings(map: MaplibreMap) {
+  try {
+    if (map.getLayer("ripple-buildings-3d")) return;
+    if (!map.getSource("carto")) return;
+    // Insert beneath the first symbol (label) layer so labels stay on top.
+    const layers = map.getStyle().layers ?? [];
+    const firstSymbol = layers.find(
+      (l) => l.type === "symbol" && (l.layout as { "text-field"?: unknown })?.["text-field"],
+    )?.id;
+    map.addLayer(
+      {
+        id: "ripple-buildings-3d",
+        source: "carto",
+        "source-layer": "building",
+        type: "fill-extrusion",
+        minzoom: 14,
+        paint: {
+          "fill-extrusion-color": "#9ca3af",
+          "fill-extrusion-opacity": 0.55,
+          "fill-extrusion-height": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            14,
+            0,
+            16,
+            ["coalesce", ["get", "render_height"], 8],
+          ],
+          "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+        },
+      },
+      firstSymbol,
+    );
+  } catch {
+    /* basemap schema differs — skip 3D buildings */
+  }
+}
+
 export function MapView({
   origin,
   destination,
   itinerary,
   livePosition,
+  pitch = 0,
+  bearing = 0,
+  follow,
+  followZoom = 18,
 }: {
   origin: LatLng | null;
   destination: LatLng | null;
   itinerary: Itinerary | null;
   livePosition?: LatLng | null;
+  /** Tilt (deg) — non-zero drives the 3D walk view. */
+  pitch?: number;
+  /** Map bearing (deg) — heading to follow during navigation. */
+  bearing?: number;
+  /** When set, keep this point centered (navigation) instead of fitting bounds. */
+  follow?: LatLng | null;
+  followZoom?: number;
 }) {
-  const legLines =
-    itinerary?.legs
-      .map((leg) => ({
-        type: leg.type,
-        coords: leg.polyline
-          ? decodePolyline(leg.polyline)
-          : ([
-              [leg.startPoint.lat, leg.startPoint.lng],
-              [leg.endPoint.lat, leg.endPoint.lng],
-            ] as [number, number][]),
-      }))
-      .filter((l) => l.coords.length > 0) ?? [];
-
-  const allPoints: [number, number][] = [
-    ...(origin ? ([[origin.lat, origin.lng]] as [number, number][]) : []),
-    ...(destination
-      ? ([[destination.lat, destination.lng]] as [number, number][])
-      : []),
-    ...(livePosition
-      ? ([[livePosition.lat, livePosition.lng]] as [number, number][])
-      : []),
-    ...legLines.flatMap((l) => l.coords),
-  ];
-
   const { theme } = useTheme();
-  const tiles = theme === "dark" ? TILES.dark : TILES.light;
+  const mapRef = useRef<MapRef | null>(null);
+
+  const legLines = useMemo(
+    () =>
+      itinerary?.legs
+        .map((leg) => ({
+          type: leg.type,
+          coords: leg.polyline
+            ? decodePolyline(leg.polyline)
+            : ([
+                [leg.startPoint.lng, leg.startPoint.lat],
+                [leg.endPoint.lng, leg.endPoint.lat],
+              ] as [number, number][]),
+        }))
+        .filter((l) => l.coords.length > 0) ?? [],
+    [itinerary],
+  );
+
+  const routeGeoJSON = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: legLines.map((l) => ({
+        type: "Feature" as const,
+        properties: { legType: l.type, color: legColor(l.type) },
+        geometry: { type: "LineString" as const, coordinates: l.coords },
+      })),
+    }),
+    [legLines],
+  );
+
+  const allPoints: [number, number][] = useMemo(
+    () => [
+      ...(origin ? ([[origin.lng, origin.lat]] as [number, number][]) : []),
+      ...(destination
+        ? ([[destination.lng, destination.lat]] as [number, number][])
+        : []),
+      ...legLines.flatMap((l) => l.coords),
+    ],
+    [origin, destination, legLines],
+  );
+
+  // Camera: follow a moving point during navigation; otherwise fit to the route.
+  // A lone pin (e.g. "use my location" before a route) recenters gently — no
+  // hard zoom-in (the old Leaflet behaviour that snapped to zoom 15).
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+
+    if (follow) {
+      map.easeTo({
+        center: [follow.lng, follow.lat],
+        zoom: followZoom,
+        pitch,
+        bearing,
+        duration: 700,
+      });
+      return;
+    }
+
+    map.easeTo({ pitch, bearing, duration: 400 });
+
+    if (allPoints.length >= 2) {
+      let minLng = Infinity,
+        minLat = Infinity,
+        maxLng = -Infinity,
+        maxLat = -Infinity;
+      for (const [lng, lat] of allPoints) {
+        minLng = Math.min(minLng, lng);
+        minLat = Math.min(minLat, lat);
+        maxLng = Math.max(maxLng, lng);
+        maxLat = Math.max(maxLat, lat);
+      }
+      map.fitBounds(
+        [
+          [minLng, minLat],
+          [maxLng, maxLat],
+        ],
+        { padding: 60, maxZoom: FIT_MAX_ZOOM, duration: 600 },
+      );
+    } else if (allPoints.length === 1) {
+      map.easeTo({
+        center: allPoints[0],
+        zoom: Math.min(map.getZoom(), 15),
+        duration: 600,
+      });
+    }
+  }, [allPoints, follow, followZoom, pitch, bearing]);
+
+  const handleLoad = (e: { target: MaplibreMap }) => add3dBuildings(e.target);
+  const handleStyleData = (e: { target: MaplibreMap }) =>
+    add3dBuildings(e.target);
 
   return (
-    <MapContainer
-      center={SG_CENTER}
-      zoom={DEFAULT_ZOOM}
+    <MapGL
+      ref={mapRef}
+      initialViewState={{
+        longitude: SG_CENTER.lng,
+        latitude: SG_CENTER.lat,
+        zoom: DEFAULT_ZOOM,
+      }}
       minZoom={MIN_ZOOM}
       maxZoom={MAX_ZOOM}
-      className="h-full w-full"
-      zoomControl
+      maxPitch={70}
+      mapStyle={theme === "dark" ? STYLE.dark : STYLE.light}
+      style={{ width: "100%", height: "100%" }}
       attributionControl={false}
+      onLoad={handleLoad}
+      onStyleData={handleStyleData}
     >
-      <TileLayer
-        key={theme}
-        url={tiles.url}
-        subdomains={tiles.subdomains}
-        minZoom={MIN_ZOOM}
-        maxZoom={MAX_ZOOM}
-      />
-      {legLines.map((l, i) => (
-        <Polyline
-          key={i}
-          positions={l.coords}
-          pathOptions={{
-            color: legColor(l.type),
-            weight: l.type === "walk" ? 4 : 5,
-            opacity: 0.85,
-            dashArray: l.type === "walk" ? "6 8" : undefined,
-          }}
-        />
-      ))}
+      <NavigationControl position="top-left" showCompass visualizePitch />
+
+      {legLines.length > 0 && (
+        <Source id="route" type="geojson" data={routeGeoJSON}>
+          <Layer
+            id="route-transit"
+            type="line"
+            filter={["!=", ["get", "legType"], "walk"]}
+            layout={{ "line-cap": "round", "line-join": "round" }}
+            paint={{
+              "line-color": ["get", "color"],
+              "line-width": 5,
+              "line-opacity": 0.85,
+            }}
+          />
+          <Layer
+            id="route-walk"
+            type="line"
+            filter={["==", ["get", "legType"], "walk"]}
+            layout={{ "line-cap": "round", "line-join": "round" }}
+            paint={{
+              "line-color": ["get", "color"],
+              "line-width": 4,
+              "line-opacity": 0.85,
+              "line-dasharray": [1, 1.6],
+            }}
+          />
+        </Source>
+      )}
+
       {origin && (
-        <Marker
-          position={[origin.lat, origin.lng]}
-          icon={pinIcon(TRANSIT_COLORS.bus, "A")}
-        />
+        <PinMarker point={origin} color={TRANSIT_COLORS.bus} label="A" />
       )}
       {destination && (
-        <Marker
-          position={[destination.lat, destination.lng]}
-          icon={pinIcon(TRANSIT_COLORS.mrt, "B")}
-        />
+        <PinMarker point={destination} color={TRANSIT_COLORS.mrt} label="B" />
       )}
       {livePosition && (
         <Marker
-          position={[livePosition.lat, livePosition.lng]}
-          icon={liveIcon()}
-          zIndexOffset={1000}
-        />
+          longitude={livePosition.lng}
+          latitude={livePosition.lat}
+          anchor="center"
+        >
+          <div
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: "50%",
+              background: "#2563eb",
+              border: "3px solid white",
+              boxShadow:
+                "0 0 0 4px rgba(37,99,235,.3),0 1px 4px rgba(0,0,0,.4)",
+            }}
+          />
+        </Marker>
       )}
-      <FitBounds points={allPoints} />
-    </MapContainer>
+    </MapGL>
   );
 }

@@ -32,6 +32,7 @@ import { RISK_COLORS, RISK_LABELS } from "@shared/types.js";
 import { fmtDuration, fmtDistance, fmtTime, cn } from "../lib/utils.js";
 import { lineColor, lineName } from "../lib/transit.js";
 import { FeasibilityBadge, FeasibilityCallout } from "./FeasibilityBadge.js";
+import { LiveArrivals } from "./LiveArrivals.js";
 import { TaxiCard } from "./TaxiCard.js";
 import { Button, Card } from "./ui.js";
 import type { TaxiEstimate } from "@shared/types.js";
@@ -152,6 +153,7 @@ function LegCard({ leg }: { leg: RouteLeg }) {
 /** Feasibility callout + re-route: pick an alternative to swap the active bus. */
 function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
   const [showAlts, setShowAlts] = useState(false);
+  const [showArrivals, setShowArrivals] = useState(false);
   const [chosen, setChosen] = useState<BusAlternative | null>(null);
 
   const active = chosen
@@ -173,6 +175,10 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
     (a) => !(a.serviceNo === active.serviceNo && a.eta === active.eta),
   );
 
+  // Time you'd spend waiting at the stop after walking there (the positive
+  // buffer). Shown as schedule detail — the coloured callout covers the risk.
+  const waitMin = Math.max(0, active.buffer);
+
   return (
     <div className="mt-2.5">
       {chosen && (
@@ -190,7 +196,8 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
       <FeasibilityCallout status={active.status} buffer={active.buffer} />
       {active.eta && (
         <div className="mt-1.5 text-xs text-ripple-muted">
-          Depart {fmtTime(active.eta)} · walk ~{f.walkMinutes} min
+          Bus at {fmtTime(active.eta)} · ~{f.walkMinutes} min walk
+          {waitMin > 0 && ` + ~${waitMin} min wait`}
         </div>
       )}
 
@@ -199,13 +206,10 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              toast.info(
-                `Live arrivals at stop ${leg.busStopCode} — full board coming soon.`,
-              )
-            }
+            onClick={() => setShowArrivals((s) => !s)}
+            aria-expanded={showArrivals}
           >
-            <BarChart3 size={14} /> View arrivals
+            <BarChart3 size={14} /> {showArrivals ? "Hide" : "View"} arrivals
           </Button>
         )}
         {alts.length > 0 && (
@@ -224,6 +228,13 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
           </Button>
         )}
       </div>
+
+      {showArrivals && leg.busStopCode && (
+        <LiveArrivals
+          busStopCode={leg.busStopCode}
+          highlightService={active.serviceNo}
+        />
+      )}
 
       {showAlts && alts.length > 0 && (
         <div className="mt-2.5">

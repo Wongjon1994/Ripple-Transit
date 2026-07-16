@@ -24,7 +24,13 @@ import { trpc } from "../lib/trpc.js";
 import { MapView } from "../components/MapView.js";
 import { Button, Card, Modal } from "../components/ui.js";
 import { lineColor, lineName } from "../lib/transit.js";
-import { fmtDistance, fmtDuration, haversineMeters, cn } from "../lib/utils.js";
+import {
+  fmtDistance,
+  fmtDuration,
+  haversineMeters,
+  bearingBetween,
+  cn,
+} from "../lib/utils.js";
 import type { RouteLeg, Itinerary, LatLng } from "@shared/types.js";
 
 const ARRIVE_THRESHOLD_M = 35;
@@ -164,6 +170,22 @@ export function LiveJourney() {
         ? "#3b82f6"
         : lineColor(leg?.lineCode);
 
+  // Walk legs get a tilted, heading-up 3D navigation view that follows you;
+  // transit legs fall back to the flat overview (fit to the whole route).
+  const walkCamera:
+    | { pitch: number; bearing: number; follow: LatLng; followZoom: number }
+    | Record<string, never> =
+    leg?.type === "walk"
+      ? {
+          pitch: 55,
+          bearing: geo.position
+            ? bearingBetween(geo.position, leg.endPoint)
+            : bearingBetween(leg.startPoint, leg.endPoint),
+          follow: geo.position ?? leg.startPoint,
+          followZoom: 18,
+        }
+      : {};
+
   const busEta = arrivals.data?.services.find(
     (s) => s.serviceNo === busLeg?.busNo,
   )?.nextBus?.estimatedArrival;
@@ -225,6 +247,7 @@ export function LiveJourney() {
           destination={journey.destination}
           itinerary={journey.itinerary}
           livePosition={geo.position}
+          {...walkCamera}
         />
         {!geo.supported && (
           <div className="absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full bg-warning/90 px-3 py-1 text-xs font-medium text-white">

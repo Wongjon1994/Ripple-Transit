@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, SunMoon } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { useTheme } from "../lib/theme.js";
@@ -25,7 +25,7 @@ function Section({
 }
 
 export function Settings() {
-  const { theme, toggleTheme } = useTheme();
+  const { mode, theme, setMode } = useTheme();
   const { user, refetch } = useAuth();
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
@@ -67,31 +67,36 @@ export function Settings() {
       </Section>
 
       <Section title="Preferences">
-        <div className="flex items-center justify-between">
-          <span className="text-sm">Theme</span>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <span className="text-sm">Theme</span>
+            {mode === "auto" && (
+              <p className="text-xs text-ripple-muted">
+                Following time of day — currently {theme}
+              </p>
+            )}
+          </div>
           <div className="flex gap-1 rounded-md border border-[var(--border)] p-0.5">
-            <button
-              onClick={() => theme === "dark" && toggleTheme()}
-              className={cn(
-                "flex items-center gap-1.5 rounded px-3 py-1 text-sm",
-                theme === "light"
-                  ? "bg-ripple-muted/15 font-medium"
-                  : "text-ripple-muted",
-              )}
-            >
-              <Sun size={14} /> Light
-            </button>
-            <button
-              onClick={() => theme === "light" && toggleTheme()}
-              className={cn(
-                "flex items-center gap-1.5 rounded px-3 py-1 text-sm",
-                theme === "dark"
-                  ? "bg-ripple-muted/15 font-medium"
-                  : "text-ripple-muted",
-              )}
-            >
-              <Moon size={14} /> Dark
-            </button>
+            {(
+              [
+                { m: "auto", label: "Auto", Icon: SunMoon },
+                { m: "light", label: "Light", Icon: Sun },
+                { m: "dark", label: "Dark", Icon: Moon },
+              ] as const
+            ).map(({ m, label, Icon }) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-3 py-1 text-sm",
+                  mode === m
+                    ? "bg-ripple-muted/15 font-medium"
+                    : "text-ripple-muted",
+                )}
+              >
+                <Icon size={14} /> {label}
+              </button>
+            ))}
           </div>
         </div>
       </Section>

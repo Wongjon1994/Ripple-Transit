@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { SearchPanel, type Place } from "../components/SearchPanel.js";
@@ -33,6 +33,23 @@ export function Home() {
     time: string;
   } | null>(null);
   const [resolving, setResolving] = useState(false);
+
+  // Mobile bottom sheet: three snap heights (fraction of viewport). Peek shows
+  // just the search form so the map gets most of the screen; expands to half
+  // once results arrive, and can be dragged to full via the grab handle.
+  const SNAPS = [0.42, 0.62, 0.9];
+  const [snapIdx, setSnapIdx] = useState(0);
+  const [dragH, setDragH] = useState<number | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
   const utils = trpc.useUtils();
   const journeyCtx = useJourney();
   const [, navigate] = useLocation();
@@ -119,12 +136,60 @@ export function Home() {
   const selectPlace = (setPoint: (p: LatLng) => void) => (p: Place) =>
     setPoint(p.point);
 
+  // Rise to the half snap when results first arrive.
+  useEffect(() => {
+    if (routeParams) setSnapIdx((i) => Math.max(i, 1));
+  }, [routeParams]);
+
+  const sheetHeight =
+    dragH != null
+      ? `${dragH}px`
+      : `${Math.round(SNAPS[snapIdx] * 100)}vh`;
+
+  function onHandleDown(e: React.PointerEvent) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startY: e.clientY,
+      startH: SNAPS[snapIdx] * window.innerHeight,
+    };
+  }
+  function onHandleMove(e: React.PointerEvent) {
+    if (!dragRef.current) return;
+    const delta = dragRef.current.startY - e.clientY; // up = grow
+    const h = dragRef.current.startH + delta;
+    const min = SNAPS[0] * window.innerHeight * 0.7;
+    const max = SNAPS[SNAPS.length - 1] * window.innerHeight;
+    setDragH(Math.max(min, Math.min(max, h)));
+  }
+  function onHandleUp(e: React.PointerEvent) {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    if (dragH != null) {
+      const frac = dragH / window.innerHeight;
+      let nearest = 0;
+      for (let i = 1; i < SNAPS.length; i++) {
+        if (Math.abs(SNAPS[i] - frac) < Math.abs(SNAPS[nearest] - frac))
+          nearest = i;
+      }
+      setSnapIdx(nearest);
+    }
+    dragRef.current = null;
+    setDragH(null);
+  }
+
   return (
     <div className="relative h-full md:flex md:overflow-hidden">
       {/* Panel: bottom sheet on mobile, sidebar on desktop */}
-      <aside className="absolute inset-x-0 bottom-0 z-[500] flex max-h-[72%] flex-col overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[var(--border)] bg-[var(--bg)] shadow-[0_-4px_24px_rgba(0,0,0,0.18)] md:relative md:inset-auto md:z-10 md:max-h-none md:w-[380px] md:rounded-none md:border-r md:border-t-0 md:shadow-none">
-        {/* Grab handle (mobile only) */}
-        <div className="sticky top-0 z-10 flex shrink-0 justify-center bg-[var(--bg)] pb-1 pt-2 md:hidden">
+      <aside
+        style={isMobile ? { height: sheetHeight } : undefined}
+        className="absolute inset-x-0 bottom-0 z-[500] flex flex-col overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[var(--border)] bg-[var(--bg)] shadow-[0_-4px_24px_rgba(0,0,0,0.18)] md:relative md:inset-auto md:z-10 md:h-auto md:w-[380px] md:rounded-none md:border-r md:border-t-0 md:shadow-none"
+      >
+        {/* Grab handle (mobile only) — drag to resize the sheet */}
+        <div
+          onPointerDown={onHandleDown}
+          onPointerMove={onHandleMove}
+          onPointerUp={onHandleUp}
+          className="sticky top-0 z-10 flex shrink-0 cursor-grab touch-none justify-center bg-[var(--bg)] pb-1 pt-2 active:cursor-grabbing md:hidden"
+        >
           <span className="h-1 w-10 rounded-full bg-ripple-muted/40" />
         </div>
         <div className="px-4 pb-4 pt-2 md:pt-4">

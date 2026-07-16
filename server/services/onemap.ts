@@ -258,6 +258,8 @@ interface OtpLeg {
   mode: string;
   duration: number;
   distance: number;
+  startTime?: number; // epoch ms
+  endTime?: number; // epoch ms
   route?: string;
   routeShortName?: string;
   routeLongName?: string;
@@ -270,6 +272,8 @@ interface OtpLeg {
 
 interface OtpItinerary {
   duration: number;
+  startTime?: number; // epoch ms
+  endTime?: number; // epoch ms
   walkTime?: number;
   transfers?: number;
   fare?: string | number;
@@ -387,6 +391,8 @@ function toItinerary(it: OtpItinerary): Itinerary {
       endPoint: { lat: leg.to.lat, lng: leg.to.lon },
       duration: Math.round(leg.duration),
       distance: Math.round(leg.distance),
+      startTimeMs: leg.startTime,
+      endTimeMs: leg.endTime,
       fromName: leg.from.name,
       toName: leg.to.name,
       polyline: leg.legGeometry?.points,
@@ -415,5 +421,6 @@ function toItinerary(it: OtpItinerary): Itinerary {
     fare: Number.isFinite(fare) ? fare : 0,
     transfers: it.transfers ?? 0,
     legs,
+    startTimeMs: it.startTime,
   };
 }

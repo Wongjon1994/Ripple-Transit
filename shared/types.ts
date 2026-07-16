@@ -45,6 +45,8 @@ export interface RouteLeg {
   endPoint: LatLng;
   duration: number; // seconds
   distance: number; // meters
+  startTimeMs?: number; // scheduled leg start (epoch ms, from OTP)
+  endTimeMs?: number; // scheduled leg end (epoch ms, from OTP)
 
   // where this leg starts/ends (stop, station, or place name)
   fromName?: string;
@@ -99,12 +101,14 @@ export interface WeatherContext {
 }
 
 export interface Itinerary {
-  duration: number; // seconds
+  duration: number; // seconds — live-adjusted total (includes waiting for the first bus)
   fare: number; // SGD
   transfers: number;
   legs: RouteLeg[];
   risk?: RouteRisk;
   co2Grams?: number; // this route's carbon footprint
+  startTimeMs?: number; // scheduled journey start (epoch ms, from OTP)
+  waitSeconds?: number; // live waiting time at the first bus stop, if known
 }
 
 /** Driving-baseline carbon for the same origin→destination. */

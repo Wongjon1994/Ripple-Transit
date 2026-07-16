@@ -13,6 +13,7 @@ import { hereAutosuggest } from "../services/here.js";
 import { busArrivals, serviceConnects, haversineMeters } from "../services/lta.js";
 import {
   computeBusFeasibility,
+  applyLiveWaiting,
   type BusCandidate,
 } from "../services/feasibility.js";
 import { weatherAt } from "../services/weather.js";
@@ -265,7 +266,17 @@ export const onemapRouter = router({
           trafficAlerts,
         });
         it.co2Grams = itineraryCo2Grams(it.legs);
+
+        // Fold live bus waiting into the total so timing + "fastest" ranking
+        // reflect the wait you'll actually face, not just the timetable.
+        const { duration, waitSeconds } = applyLiveWaiting(it.legs, it.duration);
+        it.duration = duration;
+        it.waitSeconds = waitSeconds;
       }
+
+      // Re-rank by live-adjusted total time (fastest first) so the default
+      // selection and the "Fastest" tag account for waiting.
+      itineraries.sort((a, b) => a.duration - b.duration);
 
       // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
       const driveKm =

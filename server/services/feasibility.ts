@@ -2,6 +2,7 @@ import type {
   BusLegFeasibility,
   BusAlternative,
   FeasibilityStatus,
+  RouteLeg,
 } from "../../shared/types.js";
 
 /**
@@ -58,6 +59,47 @@ export function bufferMinutes(
  * @param candidates   interchangeable upcoming buses at the stop
  * @param now          reference time in ms (defaults to Date.now())
  */
+/**
+ * Fold live bus waiting into an itinerary's total time.
+ *
+ * OneMap's `duration` is timetable-based; for a "leave now" trip the real first
+ * bus can come earlier or later than the schedule. We shift the whole journey by
+ * that difference (live board time − scheduled board time) so the total — and
+ * therefore the "fastest" ranking — reflects the wait you'll actually face.
+ *
+ * `waitSeconds` is the time you'd spend standing at the first stop after walking
+ * there (max(0, buffer)); it's surfaced in the UI. Itineraries with no live bus
+ * data (MRT-only, or arrivals unavailable) are returned unchanged.
+ */
+export function applyLiveWaiting(
+  legs: RouteLeg[],
+  otpDuration: number,
+  now: number = Date.now(),
+): { duration: number; waitSeconds: number | undefined } {
+  const sumLegs = legs.reduce((s, l) => s + l.duration, 0);
+  const bus = legs.find(
+    (l) => l.type === "bus" && l.busLegFeasibility?.eta,
+  );
+  const f = bus?.busLegFeasibility;
+  if (!bus || !f || !f.eta) {
+    return { duration: otpDuration, waitSeconds: undefined };
+  }
+
+  const waitSeconds = Math.max(0, f.buffer) * 60;
+  const liveBoardMs = new Date(f.eta).getTime();
+
+  let adjusted: number;
+  if (bus.startTimeMs != null) {
+    // Shift the trip by how late/early the live bus is versus the timetable.
+    adjusted = otpDuration + Math.round((liveBoardMs - bus.startTimeMs) / 1000);
+  } else {
+    // No OTP timestamps: rebuild from pure travel time + live first-bus wait.
+    adjusted = sumLegs + waitSeconds;
+  }
+
+  return { duration: Math.max(sumLegs, adjusted), waitSeconds };
+}
+
 export function computeBusFeasibility(
   walkSeconds: number,
   candidates: BusCandidate[],
