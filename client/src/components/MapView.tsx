@@ -106,7 +106,7 @@ function PinMarker({
  * when the map is pitched (used for the walk navigation view). Best-effort:
  * only runs if the "carto" source with a building layer is present.
  */
-function add3dBuildings(map: MaplibreMap) {
+function add3dBuildings(map: MaplibreMap, dark: boolean) {
   try {
     if (map.getLayer("ripple-buildings-3d")) return;
     if (!map.getSource("carto")) return;
@@ -123,8 +123,10 @@ function add3dBuildings(map: MaplibreMap) {
         type: "fill-extrusion",
         minzoom: 14,
         paint: {
-          "fill-extrusion-color": "#9ca3af",
-          "fill-extrusion-opacity": 0.55,
+          // Solid, legible massing (vertical gradient shades the sides for depth).
+          "fill-extrusion-color": dark ? "#3a4250" : "#d5d8dd",
+          "fill-extrusion-opacity": 0.92,
+          "fill-extrusion-vertical-gradient": true,
           "fill-extrusion-height": [
             "interpolate",
             ["linear"],
@@ -247,17 +249,26 @@ export function MapView({
         { padding: 60, maxZoom: FIT_MAX_ZOOM, duration: 600 },
       );
     } else if (allPoints.length === 1) {
-      map.easeTo({
-        center: allPoints[0],
-        zoom: Math.min(map.getZoom(), 15),
-        duration: 600,
-      });
+      // A lone endpoint (populating From/To, or "use my location"): never zoom
+      // in. Leave the map alone if the point is already on screen; otherwise
+      // pan to it, capped at a neighbourhood zoom so it never snaps to street
+      // level.
+      const [lng, lat] = allPoints[0];
+      if (!map.getBounds().contains([lng, lat])) {
+        map.easeTo({
+          center: [lng, lat],
+          zoom: Math.min(map.getZoom(), 13),
+          duration: 600,
+        });
+      }
     }
   }, [allPoints, follow, followZoom, pitch, bearing]);
 
-  const handleLoad = (e: { target: MaplibreMap }) => add3dBuildings(e.target);
+  const isDark = theme === "dark";
+  const handleLoad = (e: { target: MaplibreMap }) =>
+    add3dBuildings(e.target, isDark);
   const handleStyleData = (e: { target: MaplibreMap }) =>
-    add3dBuildings(e.target);
+    add3dBuildings(e.target, isDark);
 
   return (
     <MapGL
