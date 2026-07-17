@@ -9,6 +9,7 @@ import { Home } from "./pages/Home.js";
 import { Login } from "./pages/Login.js";
 import { Favourites } from "./pages/Favourites.js";
 import { Insights } from "./pages/Insights.js";
+import { About } from "./pages/About.js";
 import { LiveJourney } from "./pages/LiveJourney.js";
 import { Settings } from "./pages/Settings.js";
 import { Button } from "./components/ui.js";
@@ -36,6 +37,7 @@ function Header() {
     { href: "/", label: "Map" },
     { href: "/favourites", label: "Favourites" },
     { href: "/insights", label: "Insights" },
+    { href: "/about", label: "About" },
     { href: "/settings", label: "Settings" },
   ];
 
@@ -186,6 +188,7 @@ export function App() {
           <Route path="/" component={Home} />
           <Route path="/journey" component={LiveJourney} />
           <Route path="/login" component={Login} />
+          <Route path="/about" component={About} />
           <Route path="/favourites">
             <RequireAuth>
               <Favourites />
