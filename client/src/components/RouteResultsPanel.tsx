@@ -62,7 +62,16 @@ function legTitle(leg: RouteLeg): string {
  * One leg of the journey as a stepper row: coloured dot + connecting spine,
  * so the whole route reads as one path instead of a stack of cards.
  */
-function LegStep({ leg, isLast }: { leg: RouteLeg; isLast: boolean }) {
+function LegStep({
+  leg,
+  isLast,
+  prevEndMs,
+}: {
+  leg: RouteLeg;
+  isLast: boolean;
+  /** Scheduled arrival at this leg's start (previous leg's end), for waits. */
+  prevEndMs?: number;
+}) {
   const color = legColor(leg);
   const Icon =
     leg.type === "walk"
@@ -73,6 +82,14 @@ function LegStep({ leg, isLast }: { leg: RouteLeg; isLast: boolean }) {
           ? Bus
           : TrainFront;
   const f = leg.busLegFeasibility;
+
+  // Scheduled platform wait for an MRT leg: gap between reaching the station
+  // (previous leg's scheduled end) and the train's scheduled departure. OTP's
+  // timetable is the source of truth; live arrivals aren't published for rail.
+  const mrtWaitMin =
+    leg.type === "mrt" && leg.startTimeMs != null && prevEndMs != null
+      ? Math.max(0, Math.round((leg.startTimeMs - prevEndMs) / 60000))
+      : null;
 
   return (
     <div className="relative flex gap-3 pb-4 last:pb-0">
@@ -123,6 +140,16 @@ function LegStep({ leg, isLast }: { leg: RouteLeg; isLast: boolean }) {
             {leg.busStopCode ? (
               <span className="data-voice"> · {leg.busStopCode}</span>
             ) : null}
+          </div>
+        )}
+
+        {leg.type === "mrt" && leg.startTimeMs != null && (
+          <div className="data-voice mt-0.5 text-xs text-ripple-muted">
+            Departs {fmtTime(new Date(leg.startTimeMs).toISOString())}
+            {mrtWaitMin != null && mrtWaitMin > 0
+              ? ` · ~${mrtWaitMin} min wait`
+              : ""}{" "}
+            · scheduled
           </div>
         )}
 
@@ -604,6 +631,7 @@ export function RouteResultsPanel({
                           <LegStep
                             leg={leg}
                             isLast={k === it.legs.length - 1}
+                            prevEndMs={it.legs[k - 1]?.endTimeMs}
                           />
                         </Fragment>
                       ))}
