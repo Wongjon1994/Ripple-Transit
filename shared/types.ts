@@ -168,6 +168,51 @@ export interface ActiveRoutesResult {
   co2SavedGrams: number; // vs driving the same stops
 }
 
+// ── "Nearest ___" (Phase 15) ──────────────────────────────────
+export type NearestCategoryId =
+  | "hawker"
+  | "clinic"
+  | "supermarket"
+  | "park"
+  | "library"
+  | "sports"
+  | "atm"
+  | "attraction";
+
+export type NearestAnchor = "you" | "destination" | "route";
+
+export interface NearestResult {
+  id: string;
+  name: string;
+  address?: string;
+  point: LatLng;
+  /** Winning real mode for this candidate (multi-modal ranking). */
+  mode: "walk" | "cycle" | "transit";
+  durationS: number;
+  fare: number; // 0 for walk/cycle
+  steps: number; // transit legs (0 for walk/cycle)
+  /** Along-the-way only: added time vs the direct route. */
+  detourS?: number;
+  disclaimer?: string;
+}
+
+export interface NearestMrtStation {
+  name: string;
+  point: LatLng;
+  walkMinutes: number;
+  walkMeters: number;
+  lines: string[]; // e.g. ["EW", "TE"]
+  /** Non-operational lines serving this station — never listed unqualified. */
+  disrupted: { lineCode: string; status: string }[];
+}
+
+/** Client-tunable knobs the nearest ranking honours (Preferences MVP). */
+export interface NearestPrefs {
+  maxWalkMin?: number; // walk-wins gate, default 15
+  supermarketBrands?: string[];
+  atmBanks?: string[];
+}
+
 /** Driving-baseline carbon for the same origin→destination. */
 export interface CarbonBaseline {
   driveKm: number;

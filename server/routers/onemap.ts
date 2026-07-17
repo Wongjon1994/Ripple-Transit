@@ -222,7 +222,7 @@ async function enrichItineraries(itineraries: Itinerary[]): Promise<void> {
  * near departure, so those segments stay timetable-based and skip the
  * feasibility callouts entirely.
  */
-async function planTransit(
+export async function planTransit(
   start: LatLng,
   end: LatLng,
   date: string,
@@ -299,7 +299,7 @@ async function planTransit(
 }
 
 /** Advance a naive local date/time pair by `seconds` (SG has no DST). */
-function advanceClock(
+export function advanceClock(
   date: string,
   time: string,
   seconds: number,
