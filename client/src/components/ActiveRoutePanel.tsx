@@ -22,6 +22,7 @@ import type {
 } from "@shared/types.js";
 import { fmtDuration, fmtDistance, cn } from "../lib/utils.js";
 import { Button } from "./ui.js";
+import { LiveArrivals } from "./LiveArrivals.js";
 
 const LONG_WALK_M = 8000;
 
@@ -125,6 +126,7 @@ export function ActiveRoutePanel({
   onSelect,
   onStartJourney,
   collapseKey,
+  liveBoardStopCode,
 }: {
   mode: ActiveMode;
   data: ActiveRoutesResult | undefined;
@@ -134,6 +136,8 @@ export function ActiveRoutePanel({
   onStartJourney: (variant: ActiveVariant) => void;
   /** Collapse all cards when this changes (i.e. on a new search). */
   collapseKey?: string;
+  /** Walking to a bus stop: show its live arrival board inline (Tier 3). */
+  liveBoardStopCode?: string | null;
 }) {
   // §9: cards render Tier-1 only until tapped; selection (map) is separate.
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
@@ -266,6 +270,10 @@ export function ActiveRoutePanel({
           </div>
         );
       })}
+
+      {mode === "walk" && liveBoardStopCode && (
+        <LiveArrivals busStopCode={liveBoardStopCode} />
+      )}
 
       <p className="px-1 text-[11px] leading-relaxed text-ripple-muted">
         Routes by OneMap · park-connector coverage from NParks & LTA open data ·

@@ -24,11 +24,13 @@ import {
   type PoiCategoryId,
 } from "../services/poi.js";
 import { getAllLineStatuses } from "../db/helpers.js";
+import { nearbyStops, busArrivals } from "../services/lta.js";
 import type {
   Itinerary,
   LatLng,
   NearestResult,
   NearestMrtStation,
+  NearestBusStop,
 } from "../../shared/types.js";
 
 const SHORTLIST = 6; // crow-flies candidates evaluated with real routing
@@ -265,6 +267,66 @@ export const nearestRouter = router({
         })
         .slice(0, 3);
       return { results };
+    }),
+
+  /**
+   * Nearest bus stops with live arrival countdowns — the other half of the
+   * "Nearest transit" utility. Pure composition of existing LTA feeds.
+   * Honesty flags: a stop with no live feed, or an unusually long gap before
+   * the next arrival, is flagged rather than listed as a normal option.
+   */
+  busStops: publicProcedure
+    .input(z.object({ point: pointSchema }))
+    .query(async ({ input }): Promise<{ stops: NearestBusStop[] }> => {
+      const nearby = await nearbyStops(input.point.lat, input.point.lng, 600);
+      const top = nearby.slice(0, 2);
+      const now = Date.now();
+      const stops = await Promise.all(
+        top.map(async (s): Promise<NearestBusStop> => {
+          const point = { lat: s.Latitude, lng: s.Longitude };
+          const [walk, arrivals] = await Promise.all([
+            oneMapActiveRoute(input.point, point, "walk").catch(() => null),
+            busArrivals(s.BusStopCode).catch(() => null),
+          ]);
+          const walkMinutes = walk
+            ? Math.max(1, Math.round(walk.durationS / 60))
+            : Math.max(
+                1,
+                Math.round((s.distance * 1.3) / ((WALK_KMH * 1000) / 60)),
+              );
+          const services = (arrivals?.services ?? [])
+            .flatMap((svc) =>
+              svc.nextBus
+                ? [
+                    {
+                      no: svc.serviceNo,
+                      mins: Math.max(
+                        0,
+                        Math.round(
+                          (new Date(svc.nextBus.estimatedArrival).getTime() -
+                            now) /
+                            60_000,
+                        ),
+                      ),
+                    },
+                  ]
+                : [],
+            )
+            .sort((a, b) => a.mins - b.mins)
+            .slice(0, 3);
+          return {
+            code: s.BusStopCode,
+            name: s.Description,
+            roadName: s.RoadName,
+            point,
+            walkMinutes,
+            services,
+            noLiveData: services.length === 0,
+            longGap: services.length > 0 && services[0].mins > 15,
+          };
+        }),
+      );
+      return { stops };
     }),
 
   /** Nearest MRT stations — always-visible utility with disruption badges. */

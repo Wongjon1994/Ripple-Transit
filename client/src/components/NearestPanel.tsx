@@ -27,6 +27,7 @@ import { cn } from "../lib/utils.js";
 import type {
   LatLng,
   NearestAnchor,
+  NearestBusStop,
   NearestCategoryId,
   NearestResult,
 } from "@shared/types.js";
@@ -73,6 +74,7 @@ export function NearestPanel({
   onPickNearYou,
   onPickNearDestination,
   onPickAlongTheWay,
+  onPickBusStop,
   onPoisChange,
   onCorridorChange,
 }: {
@@ -85,6 +87,7 @@ export function NearestPanel({
   onPickNearYou: (myLocation: LatLng, r: NearestResult) => void;
   onPickNearDestination: (r: NearestResult) => void;
   onPickAlongTheWay: (r: NearestResult) => void;
+  onPickBusStop: (myLocation: LatLng, stop: NearestBusStop) => void;
   onPoisChange: (pois: { point: LatLng; name: string }[]) => void;
   onCorridorChange: (show: boolean) => void;
 }) {
@@ -215,10 +218,11 @@ export function NearestPanel({
 
   return (
     <div className="border-t border-[var(--border)] px-4 py-3">
-      <NearestMrt
+      <NearestTransit
         myLocation={myLocation}
         locating={locating}
         onRequestLocation={requestLocation}
+        onPickBusStop={onPickBusStop}
       />
 
       {/* Anchor — an eyebrow that becomes a 3-pill toggle once both ends exist */}
@@ -427,25 +431,32 @@ function Chip({
   );
 }
 
-/** Always-visible Nearest-MRT utility (wayfinding primitive, not a chip). */
-function NearestMrt({
+/** Always-visible "Nearest transit" utility: MRT stations + bus stops with
+ *  live countdowns (wayfinding primitives, not errand chips). */
+function NearestTransit({
   myLocation,
   locating,
   onRequestLocation,
+  onPickBusStop,
 }: {
   myLocation: LatLng | null;
   locating: boolean;
   onRequestLocation: () => void;
+  onPickBusStop: (myLocation: LatLng, stop: NearestBusStop) => void;
 }) {
   const q = trpc.nearest.mrt.useQuery(
     myLocation ? { point: myLocation } : (undefined as never),
     { enabled: !!myLocation, staleTime: 120_000, retry: false },
   );
+  const bus = trpc.nearest.busStops.useQuery(
+    myLocation ? { point: myLocation } : (undefined as never),
+    { enabled: !!myLocation, refetchInterval: 30_000, retry: false },
+  );
 
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="eyebrow text-ripple-muted">Nearest MRT</span>
+        <span className="eyebrow text-ripple-muted">Nearest transit</span>
         {!myLocation && (
           <button
             onClick={onRequestLocation}
@@ -501,6 +512,53 @@ function NearestMrt({
             ))}
           </div>
         ))}
+
+      {/* Bus stops with live countdowns — tap to walk there w/ the board */}
+      {myLocation && (bus.data?.stops.length ?? 0) > 0 && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {bus.data!.stops.map((s) => (
+            <button
+              key={s.code}
+              onClick={() => onPickBusStop(myLocation, s)}
+              className={cn(
+                "rounded-md border px-2.5 py-1.5 text-left hover:bg-ripple-muted/5",
+                s.noLiveData || s.longGap
+                  ? "border-warning/40 bg-warning/5"
+                  : "border-[var(--border)]",
+              )}
+            >
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                <BusFront size={13} className="shrink-0 text-bus" />
+                <span className="truncate">{s.name}</span>
+              </div>
+              <div className="data-voice mt-0.5 text-[11px] text-ripple-muted">
+                {s.walkMinutes} min walk · {s.code}
+              </div>
+              {s.noLiveData ? (
+                <div className="data-voice mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-warning">
+                  <TriangleAlert size={11} /> live arrivals unavailable
+                </div>
+              ) : (
+                <div className="data-voice mt-0.5 flex flex-wrap gap-x-2 text-[11px]">
+                  {s.services.map((svc) => (
+                    <span key={svc.no} className="font-semibold text-bus">
+                      {svc.no}{" "}
+                      <span className="font-normal text-ripple-muted">
+                        {svc.mins === 0 ? "now" : `${svc.mins}m`}
+                      </span>
+                    </span>
+                  ))}
+                  {s.longGap && (
+                    <span className="flex items-center gap-0.5 font-semibold text-warning">
+                      <TriangleAlert size={10} /> long gap
+                    </span>
+                  )}
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

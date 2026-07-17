@@ -206,6 +206,20 @@ export interface NearestMrtStation {
   disrupted: { lineCode: string; status: string }[];
 }
 
+export interface NearestBusStop {
+  code: string;
+  name: string;
+  roadName?: string;
+  point: LatLng;
+  walkMinutes: number;
+  /** Soonest arrival per service, soonest-first (top 3). */
+  services: { no: string; mins: number }[];
+  /** Live feed returned nothing — flagged, never listed as normal. */
+  noLiveData: boolean;
+  /** First arrival is unusually far out (> 15 min). */
+  longGap: boolean;
+}
+
 /** Client-tunable knobs the nearest ranking honours (Preferences MVP). */
 export interface NearestPrefs {
   maxWalkMin?: number; // walk-wins gate, default 15

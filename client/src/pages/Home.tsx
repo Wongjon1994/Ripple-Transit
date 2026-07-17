@@ -17,6 +17,7 @@ import type {
   ActiveVariant,
   Itinerary,
   LatLng,
+  NearestBusStop,
   NearestResult,
 } from "@shared/types.js";
 
@@ -219,6 +220,8 @@ export function Home() {
     { point: LatLng; name: string }[]
   >([]);
   const [showCorridor, setShowCorridor] = useState(false);
+  // Walking to a picked bus stop: its live board shows on the Walk tab.
+  const [walkTabStopCode, setWalkTabStopCode] = useState<string | null>(null);
 
   /** Run a fresh point-to-point search with known coordinates. */
   function runDirectSearch(
@@ -227,6 +230,7 @@ export function Home() {
     toLabel: string,
     mode: ModeTab,
   ) {
+    setWalkTabStopCode(null);
     setFrom(points[0]);
     setFromText(fromLabel);
     setStops([{ text: toLabel, point: points[points.length - 1] }]);
@@ -245,6 +249,12 @@ export function Home() {
       r.name,
       r.mode === "transit" ? "transit" : r.mode,
     );
+  }
+
+  function handlePickBusStop(myLocation: LatLng, stop: NearestBusStop) {
+    // Reaching a nearby stop is inherently a walk — Walk tab + live board.
+    runDirectSearch([myLocation, stop.point], "Current location", stop.name, "walk");
+    setWalkTabStopCode(stop.code);
   }
 
   function handlePickNearDestination(r: NearestResult) {
@@ -310,6 +320,7 @@ export function Home() {
       setSelected(0);
       setModeTab("transit");
       setActiveSel(0);
+      setWalkTabStopCode(null);
       // Auto-synced departures read the clock at the moment of search.
       const depart = timeIsAuto ? nowParts() : { date, time };
       setRouteParams({ points, ...depart });
@@ -471,6 +482,7 @@ export function Home() {
           onPickNearYou={handlePickNearYou}
           onPickNearDestination={handlePickNearDestination}
           onPickAlongTheWay={handlePickAlongTheWay}
+          onPickBusStop={handlePickBusStop}
           onPoisChange={setNearestPois}
           onCorridorChange={setShowCorridor}
         />
@@ -546,6 +558,7 @@ export function Home() {
                 onSelect={setActiveSel}
                 onStartJourney={handleStartActiveJourney}
                 collapseKey={collapseKey}
+                liveBoardStopCode={walkTabStopCode}
               />
             )}
           </div>
