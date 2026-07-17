@@ -87,7 +87,7 @@ function LocationInput({
           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ripple-muted"
         />
         <Input
-          className="pl-8"
+          className="pl-8 pr-8"
           placeholder="Search address or place"
           value={value}
           onChange={(e) => {
@@ -97,12 +97,25 @@ function LocationInput({
           onFocus={() => setOpen(true)}
           aria-label={label}
         />
-        {query.isFetching && (
+        {query.isFetching ? (
           <Loader2
             size={15}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-ripple-muted"
           />
-        )}
+        ) : value ? (
+          <button
+            type="button"
+            aria-label={`Clear ${label}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-ripple-muted hover:bg-ripple-muted/15 hover:text-[var(--fg)]"
+          >
+            <X size={15} />
+          </button>
+        ) : null}
       </div>
       {open && results.length > 0 && (
         <Card className="absolute z-[1000] mt-1 max-h-64 w-full overflow-auto p-1 shadow-lg">

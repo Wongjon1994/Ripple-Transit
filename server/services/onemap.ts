@@ -265,6 +265,7 @@ interface OtpLeg {
   routeLongName?: string;
   agencyName?: string;
   numStops?: number;
+  intermediateStops?: unknown[];
   legGeometry?: { points?: string };
   from: { name: string; lat: number; lon: number; stopCode?: string };
   to: { name: string; lat: number; lon: number; stopCode?: string };
@@ -429,6 +430,19 @@ export async function oneMapDrive(
   return { distanceM: s.total_distance, durationS: s.total_time ?? 0 };
 }
 
+/**
+ * Stops travelled on a transit leg. OneMap's OTP omits `numStops` but returns
+ * the `intermediateStops` between board and alight — the ride passes those
+ * plus the alighting stop.
+ */
+function legStops(leg: OtpLeg): number | undefined {
+  if (typeof leg.numStops === "number" && leg.numStops > 0) return leg.numStops;
+  if (Array.isArray(leg.intermediateStops)) {
+    return leg.intermediateStops.length + 1;
+  }
+  return undefined;
+}
+
 function toItinerary(it: OtpItinerary): Itinerary {
   const legs: RouteLeg[] = it.legs.map((leg) => {
     const type = mapMode(leg.mode);
@@ -449,13 +463,14 @@ function toItinerary(it: OtpItinerary): Itinerary {
       base.lineCode = lineCodeFromRoute(leg.route || leg.routeShortName);
       base.startStation = leg.from.name;
       base.endStation = leg.to.name;
-      base.numStops = leg.numStops;
+      base.numStops = legStops(leg);
     } else if (type === "bus") {
       base.busNo = leg.routeShortName || leg.route;
       base.startBusStop = leg.from.name;
       base.endBusStop = leg.to.name;
       base.busStopCode = leg.from.stopCode;
       base.endBusStopCode = leg.to.stopCode;
+      base.numStops = legStops(leg);
     }
     return base;
   });

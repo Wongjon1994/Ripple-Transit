@@ -5,6 +5,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../lib/utils.js";
@@ -96,7 +97,9 @@ export function Modal({
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  // Portal to <body> so the dialog is never clipped by the bottom sheet's
+  // overflow/height and always centres on the full viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/40 p-4"
       onMouseDown={onClose}
@@ -120,7 +123,8 @@ export function Modal({
         </div>
         {children}
       </Card>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -319,7 +319,7 @@ export function NearestPanel({
           className="mt-2.5 flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-xs"
         >
           {catDef && <catDef.Icon size={13} className="shrink-0 text-brand" />}
-          <span className="min-w-0 truncate">
+          <span className="min-w-0">
             <span className="text-ripple-muted">{catDef?.label} · </span>
             <span className="font-semibold">{picked.name}</span>
           </span>
@@ -513,9 +513,9 @@ function NearestTransit({
                     : "border-[var(--border)]",
                 )}
               >
-                <div className="flex items-center gap-1.5 text-sm font-medium">
-                  <TrainFront size={13} className="shrink-0 text-mrt" />
-                  <span className="truncate">
+                <div className="flex items-start gap-1.5 text-sm font-medium">
+                  <TrainFront size={13} className="mt-0.5 shrink-0 text-mrt" />
+                  <span>
                     {s.name.replace(/ MRT Station$/i, "")}
                   </span>
                 </div>
@@ -551,9 +551,9 @@ function NearestTransit({
                   : "border-[var(--border)]",
               )}
             >
-              <div className="flex items-center gap-1.5 text-sm font-medium">
-                <BusFront size={13} className="shrink-0 text-bus" />
-                <span className="truncate">{s.name}</span>
+              <div className="flex items-start gap-1.5 text-sm font-medium">
+                <BusFront size={13} className="mt-0.5 shrink-0 text-bus" />
+                <span>{s.name}</span>
               </div>
               <div className="data-voice mt-0.5 text-[11px] text-ripple-muted">
                 {s.walkMinutes} min walk · {s.code}

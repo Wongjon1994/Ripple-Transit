@@ -91,7 +91,7 @@ function LegStep({ leg, isLast }: { leg: RouteLeg; isLast: boolean }) {
 
       <div className="min-w-0 flex-1 pt-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="min-w-0 truncate text-sm font-semibold leading-snug text-[var(--fg)]">
+          <span className="min-w-0 text-sm font-semibold leading-snug text-[var(--fg)]">
             {legTitle(leg)}
             {leg.type === "mrt" && leg.lineCode && (
               <span
@@ -104,9 +104,14 @@ function LegStep({ leg, isLast }: { leg: RouteLeg; isLast: boolean }) {
           </span>
           <span className="data-voice shrink-0 whitespace-nowrap text-xs text-ripple-muted">
             {fmtDuration(leg.duration)} · {fmtDistance(leg.distance)}
-            {leg.type === "mrt" && leg.numStops ? ` · ${leg.numStops} stops` : ""}
           </span>
         </div>
+        {/* Stops counter between transit stops (MRT + bus) */}
+        {(leg.type === "mrt" || leg.type === "bus") && leg.numStops ? (
+          <div className="data-voice mt-0.5 text-[11px] font-medium text-ripple-muted">
+            {leg.numStops} stop{leg.numStops > 1 ? "s" : ""}
+          </div>
+        ) : null}
 
         {leg.type === "bus" && leg.startBusStop && (
           <div className="mt-0.5 text-xs text-ripple-muted">
@@ -364,9 +369,9 @@ function WeatherStrip({ weather }: { weather: WeatherContext }) {
         {weather.forecast}
       </span>
       {adv ? (
-        <span className="truncate">— {adv.message}</span>
+        <span>— {adv.message}</span>
       ) : (
-        <span className="truncate text-ripple-muted">near {weather.area}</span>
+        <span className="text-ripple-muted">near {weather.area}</span>
       )}
     </div>
   );
@@ -575,7 +580,7 @@ export function RouteResultsPanel({
                               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gold/15 font-mono text-[10px] font-bold text-gold ring-1 ring-gold/40">
                                 {leg.viaStopIndex}
                               </span>
-                              <span className="min-w-0 truncate text-xs font-semibold">
+                              <span className="min-w-0 text-xs font-semibold">
                                 {stopLabels?.[leg.viaStopIndex - 1] ??
                                   `Stop ${leg.viaStopIndex}`}
                               </span>
