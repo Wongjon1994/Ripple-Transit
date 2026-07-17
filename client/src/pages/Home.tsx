@@ -3,7 +3,8 @@ import { keepPreviousData } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { BusFront, Footprints, Bike } from "lucide-react";
 import { trpc } from "../lib/trpc.js";
-import { SearchPanel, type Place } from "../components/SearchPanel.js";
+import { SearchPanel, MAX_STOPS, type Place } from "../components/SearchPanel.js";
+import { NearestPanel } from "../components/NearestPanel.js";
 import { RouteResultsPanel } from "../components/RouteResultsPanel.js";
 import { ActiveRoutePanel } from "../components/ActiveRoutePanel.js";
 import { MapView } from "../components/MapView.js";
@@ -11,7 +12,13 @@ import { MrtStatus } from "../components/MrtStatus.js";
 import { useJourney } from "../lib/journey.js";
 import { useLocation } from "wouter";
 import { cn } from "../lib/utils.js";
-import type { ActiveMode, ActiveVariant, Itinerary, LatLng } from "@shared/types.js";
+import type {
+  ActiveMode,
+  ActiveVariant,
+  Itinerary,
+  LatLng,
+  NearestResult,
+} from "@shared/types.js";
 
 type ModeTab = "transit" | ActiveMode;
 
@@ -207,6 +214,66 @@ export function Home() {
     };
   }, [shownTab, selectedVariant, active.data, routeParams, stops]);
 
+  // "Nearest ___" browse state fed to the map by the NearestPanel.
+  const [nearestPois, setNearestPois] = useState<
+    { point: LatLng; name: string }[]
+  >([]);
+  const [showCorridor, setShowCorridor] = useState(false);
+
+  /** Run a fresh point-to-point search with known coordinates. */
+  function runDirectSearch(
+    points: LatLng[],
+    fromLabel: string,
+    toLabel: string,
+    mode: ModeTab,
+  ) {
+    setFrom(points[0]);
+    setFromText(fromLabel);
+    setStops([{ text: toLabel, point: points[points.length - 1] }]);
+    setSelected(0);
+    setActiveSel(0);
+    setModeTab(mode);
+    const depart = timeIsAuto ? nowParts() : { date, time };
+    setRouteParams({ points, ...depart });
+  }
+
+  function handlePickNearYou(myLocation: LatLng, r: NearestResult) {
+    // Auto-select the mode tab that won the multi-modal ranking.
+    runDirectSearch(
+      [myLocation, r.point],
+      "Current location",
+      r.name,
+      r.mode === "transit" ? "transit" : r.mode,
+    );
+  }
+
+  function handlePickNearDestination(r: NearestResult) {
+    setStops([{ text: r.name, point: r.point }]);
+    setSelected(0);
+    setActiveSel(0);
+    setModeTab(r.mode === "transit" ? "transit" : r.mode);
+    if (from) {
+      const depart = timeIsAuto ? nowParts() : { date, time };
+      setRouteParams({ points: [from, r.point], ...depart });
+    }
+  }
+
+  function handlePickAlongTheWay(r: NearestResult) {
+    if (!routeParams) return;
+    if (stops.length >= MAX_STOPS) {
+      toast.error(`Up to ${MAX_STOPS} stops — remove one first.`);
+      return;
+    }
+    // Insert as the FIRST stop (the corridor covers the active leg From → next).
+    const pts = routeParams.points;
+    setStops((prev) => [{ text: r.name, point: r.point }, ...prev]);
+    setSelected(0);
+    setActiveSel(0);
+    setModeTab("transit");
+    const depart = timeIsAuto ? nowParts() : { date, time };
+    setRouteParams({ points: [pts[0], r.point, ...pts.slice(1)], ...depart });
+  }
+
   function handleStartActiveJourney(variant: ActiveVariant) {
     void variant; // the selected card is the source of truth
     if (!activeItinerary || !routeParams) return;
@@ -396,6 +463,18 @@ export function Home() {
 
         <MrtStatus />
 
+        <NearestPanel
+          destination={stops[stops.length - 1]?.point ?? null}
+          destinationLabel={stops[stops.length - 1]?.text}
+          routeFrom={routeParams?.points[0] ?? null}
+          routeTo={routeParams?.points[1] ?? null}
+          onPickNearYou={handlePickNearYou}
+          onPickNearDestination={handlePickNearDestination}
+          onPickAlongTheWay={handlePickAlongTheWay}
+          onPoisChange={setNearestPois}
+          onCorridorChange={setShowCorridor}
+        />
+
         {routeParams && (
           <div className="border-t border-[var(--border)]">
             {/* Mode tabs — walking & cycling never co-mingle with transit
@@ -474,6 +553,8 @@ export function Home() {
           origin={from}
           destination={stops[stops.length - 1]?.point ?? null}
           waypoints={stops.slice(0, -1).flatMap((s) => (s.point ? [s.point] : []))}
+          pois={nearestPois}
+          corridor={showCorridor}
           itinerary={
             shownTab === "transit"
               ? (itineraries[selected] ?? null)

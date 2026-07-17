@@ -151,6 +151,8 @@ export function MapView({
   origin,
   destination,
   waypoints,
+  pois,
+  corridor = false,
   itinerary,
   livePosition,
   pitch = 0,
@@ -162,6 +164,10 @@ export function MapView({
   destination: LatLng | null;
   /** Intermediate multi-stop destinations, in visit order (numbered pins). */
   waypoints?: LatLng[];
+  /** "Nearest ___" browse results (numbered brand-cyan pins). */
+  pois?: { point: LatLng; name?: string }[];
+  /** Highlight a corridor band around the route's real geometry. */
+  corridor?: boolean;
   itinerary: Itinerary | null;
   livePosition?: LatLng | null;
   /** Tilt (deg) — non-zero drives the 3D walk view. */
@@ -230,9 +236,10 @@ export function MapView({
       ...(waypoints ?? []).map(
         (w) => [w.lng, w.lat] as [number, number],
       ),
+      ...(pois ?? []).map((p) => [p.point.lng, p.point.lat] as [number, number]),
       ...legLines.flatMap((l) => l.coords),
     ],
-    [origin, destination, waypoints, legLines],
+    [origin, destination, waypoints, pois, legLines],
   );
 
   // Camera: follow a moving point during navigation; otherwise fit to the route.
@@ -334,6 +341,20 @@ export function MapView({
 
       {legLines.length > 0 && (
         <Source id="route" type="geojson" data={routeGeoJSON}>
+          {corridor && (
+            // "Along the way" search corridor: a wide translucent band that
+            // follows the route's real leg geometry (never a straight line).
+            <Layer
+              id="route-corridor"
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": "#14b3c9",
+                "line-width": 22,
+                "line-opacity": 0.16,
+              }}
+            />
+          )}
           <Layer
             id="route-transit"
             type="line"
@@ -368,6 +389,14 @@ export function MapView({
           key={`wp-${i}`}
           point={w}
           color="#a97f2e"
+          label={String(i + 1)}
+        />
+      ))}
+      {pois?.map((p, i) => (
+        <PinMarker
+          key={`poi-${i}`}
+          point={p.point}
+          color="#0d8ea1"
           label={String(i + 1)}
         />
       ))}
