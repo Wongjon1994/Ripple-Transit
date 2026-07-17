@@ -436,6 +436,8 @@ export function Home() {
               setTime(s);
               setTimeIsAuto(false);
             }}
+            timeIsAuto={timeIsAuto}
+            onResetNow={() => setTimeIsAuto(true)}
             onSearch={handleSearch}
             canSearch={
               !!fromText.trim() && stops.every((s) => !!s.text.trim())
@@ -460,8 +462,6 @@ export function Home() {
             showShortcuts={!routeParams}
           />
         </div>
-
-        <MrtStatus />
 
         <NearestPanel
           destination={stops[stops.length - 1]?.point ?? null}
@@ -506,7 +506,11 @@ export function Home() {
             </div>
 
             {shownTab === "transit" ? (
-              route.isError ? (
+              <>
+                {/* §13a: line-status risk is only relevant when transit is the
+                    mode being considered — scoped here, not always-visible. */}
+                <MrtStatus />
+                {route.isError ? (
                 <div className="m-4 rounded-md border border-error/30 bg-error/10 p-3 text-sm text-error">
                   Couldn’t calculate a route. {route.error.message}
                 </div>
@@ -531,7 +535,8 @@ export function Home() {
                   stopLabels={stops.map((s) => s.text)}
                   collapseKey={collapseKey}
                 />
-              )
+              )}
+              </>
             ) : (
               <ActiveRoutePanel
                 mode={shownTab}

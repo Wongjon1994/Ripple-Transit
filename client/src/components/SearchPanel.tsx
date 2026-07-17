@@ -9,11 +9,13 @@ import {
   LocateFixed,
   Plus,
   X,
+  CalendarClock,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { useAuth } from "../lib/auth.js";
-import { Button, Input, Card } from "./ui.js";
+import { Button, Input, Card, Modal } from "./ui.js";
 import { cn } from "../lib/utils.js";
 import type { LatLng, SearchResult } from "@shared/types.js";
 
@@ -136,6 +138,21 @@ function LocationInput({
 
 export const MAX_STOPS = 5;
 
+/** "Jul 18, 6:30 PM" from the YYYY-MM-DD + HH:MM field values. */
+function departLabel(date: string, time: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = time.split(":").map(Number);
+  const dt = new Date(y, m - 1, d, hh, mm);
+  if (Number.isNaN(dt.getTime())) return `${date} ${time}`;
+  return dt.toLocaleString("en-SG", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 export function SearchPanel({
   fromText,
   stops,
@@ -150,6 +167,8 @@ export function SearchPanel({
   time,
   onDate,
   onTime,
+  timeIsAuto,
+  onResetNow,
   onSearch,
   canSearch,
   isSearching,
@@ -171,6 +190,9 @@ export function SearchPanel({
   time: string;
   onDate: (s: string) => void;
   onTime: (s: string) => void;
+  /** True while depart time follows the device clock ("Leave now"). */
+  timeIsAuto: boolean;
+  onResetNow: () => void;
   onSearch: () => void;
   canSearch: boolean;
   isSearching: boolean;
@@ -188,6 +210,7 @@ export function SearchPanel({
 
   const utils = trpc.useUtils();
   const [locating, setLocating] = useState(false);
+  const [departOpen, setDepartOpen] = useState(false);
 
   function useCurrentLocation() {
     if (!navigator.geolocation) {
@@ -292,28 +315,74 @@ export function SearchPanel({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="mb-1 block eyebrow text-ripple-muted">
-            Depart date
-          </label>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => onDate(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block eyebrow text-ripple-muted">
-            Time
-          </label>
-          <Input
-            type="time"
-            value={time}
-            onChange={(e) => onTime(e.target.value)}
-          />
-        </div>
-      </div>
+      {/* §13b: "leave now" is the common case and needs no form surface —
+          depart collapses to a pill; the popup holds the pickers. */}
+      <button
+        type="button"
+        onClick={() => setDepartOpen(true)}
+        className="flex items-center gap-1.5 self-start rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium hover:bg-ripple-muted/10"
+      >
+        <CalendarClock size={13} className="text-brand" />
+        {timeIsAuto ? "Leave now" : `Depart ${departLabel(date, time)}`}
+        <ChevronDown size={12} className="text-ripple-muted" />
+      </button>
+
+      {departOpen && (
+        <Modal
+          open
+          onClose={() => setDepartOpen(false)}
+          title="Departure time"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block eyebrow text-ripple-muted">
+                  Depart date
+                </label>
+                <Input
+                  type="date"
+                  value={date}
+                  onChange={(e) => onDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block eyebrow text-ripple-muted">
+                  Time
+                </label>
+                <Input
+                  type="time"
+                  value={time}
+                  onChange={(e) => onTime(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-ripple-muted">
+              {timeIsAuto
+                ? "Following your device clock — pick a date or time to plan ahead."
+                : "Custom departure set — the clock stops following the device."}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  onResetNow();
+                  setDepartOpen(false);
+                }}
+              >
+                Now
+              </Button>
+              <Button
+                variant="accent"
+                className="flex-1"
+                onClick={() => setDepartOpen(false)}
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <Button
         variant="accent"
