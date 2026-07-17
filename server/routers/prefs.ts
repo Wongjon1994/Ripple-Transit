@@ -5,16 +5,20 @@ import { db } from "../db/index.js";
 import { userPrefs } from "../../drizzle/schema.js";
 import type { UserPrefs } from "../../shared/types.js";
 
-const chipSchema = z.enum([
-  "hawker",
-  "clinic",
-  "supermarket",
-  "park",
-  "library",
-  "sports",
-  "atm",
-  "attraction",
-]);
+// "hawker" accepted as a legacy alias for "dining" (saved prefs survive §2a).
+const chipSchema = z
+  .enum([
+    "dining",
+    "hawker",
+    "clinic",
+    "supermarket",
+    "park",
+    "library",
+    "sports",
+    "atm",
+    "attraction",
+  ])
+  .transform((c) => (c === "hawker" ? ("dining" as const) : c));
 
 const prefsSchema = z.object({
   defaultChips: z.array(chipSchema).length(4).optional(),
@@ -30,7 +34,9 @@ export const prefsRouter = router({
         where: eq(userPrefs.userId, ctx.user.id),
       });
       if (!row) return {};
-      return prefsSchema.parse(JSON.parse(row.prefs)) as UserPrefs;
+      // Cast through unknown: the zod transform narrows legacy "hawker" → the
+      // "dining" it can't statically prove equals NearestCategoryId.
+      return prefsSchema.parse(JSON.parse(row.prefs)) as unknown as UserPrefs;
     } catch {
       // Missing table (failed migration) or malformed blob — defaults, not a 500.
       return {};

@@ -19,7 +19,7 @@ import {
 } from "./activeNetwork.js";
 
 export type PoiCategoryId =
-  | "hawker"
+  | "dining"
   | "clinic"
   | "supermarket"
   | "park"
@@ -33,6 +33,8 @@ export interface Poi {
   name: string;
   address?: string;
   point: Pt;
+  /** Result type tag, e.g. "Hawker centre" / "Restaurant" (dining tiers). */
+  tag?: string;
 }
 
 interface CategoryDef {
@@ -40,7 +42,8 @@ interface CategoryDef {
   label: string;
   source:
     | { kind: "datagov"; datasetId: string }
-    | { kind: "here"; query: string };
+    | { kind: "here"; query: string }
+    | { kind: "dining" }; // merged: hawker GeoJSON (Tier A) + HERE outlets (Tier B)
   /** Honest-estimate caveat surfaced with every result of this category. */
   disclaimer?: string;
   /** Property / Description-table keys to try for the display name. */
@@ -49,13 +52,13 @@ interface CategoryDef {
 }
 
 export const POI_CATEGORIES: Record<PoiCategoryId, CategoryDef> = {
-  hawker: {
-    id: "hawker",
-    label: "Hawker centre",
-    source: { kind: "datagov", datasetId: "d_4a086da0a5553be1d89383cd90d07ecd" },
-    disclaimer: "Cleaning-day closures aren’t tracked — check before you go.",
-    nameKeys: ["NAME"],
-    addressKeys: ["ADDRESS", "ADDRESS_MYENV", "ADDRESSSTREETNAME"],
+  dining: {
+    id: "dining",
+    label: "Dining",
+    source: { kind: "dining" },
+    disclaimer:
+      "Hygiene grades shown where NEA records match — hours not tracked.",
+    nameKeys: [],
   },
   clinic: {
     id: "clinic",
@@ -231,6 +234,59 @@ export function featureToPoi(
   };
 }
 
+// ── Dining (merged Tier A hawker venues + Tier B HERE outlets) ─
+
+const HAWKER_DEF = {
+  id: "dining" as const,
+  nameKeys: ["NAME"],
+  addressKeys: ["ADDRESS", "ADDRESS_MYENV", "ADDRESSSTREETNAME"],
+};
+
+const loadHawkerVenues = dailyCache(async (): Promise<Poi[]> => {
+  const gj = await fetchDataset("d_4a086da0a5553be1d89383cd90d07ecd"); // NEA Hawker Centres
+  const pois = (gj.features ?? [])
+    .map((f, i) => featureToPoi(f, i, HAWKER_DEF))
+    .filter((p): p is Poi => p !== null)
+    .map((p) => ({ ...p, id: `hawker-${p.id}`, tag: "Hawker centre" }));
+  if (pois.length === 0) throw new Error("hawker dataset parsed to 0 POIs");
+  return pois;
+});
+
+/** HERE category name → the addendum's dining type tags. */
+export function diningTag(category: string | undefined): string {
+  if (!category) return "Eatery";
+  if (/food court|hawker|canteen/i.test(category)) return "Food court";
+  if (/coffee|café|cafe|tea/i.test(category)) return "Café";
+  if (/restaurant/i.test(category)) return "Restaurant";
+  if (/bakery|snack|takeaway|take out|fast food/i.test(category))
+    return "Eatery";
+  return "Eatery";
+}
+
+async function diningCandidatePool(point: Pt): Promise<Poi[]> {
+  const [hawkers, outlets] = await Promise.all([
+    loadHawkerVenues().catch(() => [] as Poi[]),
+    hereDiningOutlets(point),
+  ]);
+  return [...hawkers, ...outlets];
+}
+
+async function hereDiningOutlets(point: Pt): Promise<Poi[]> {
+  const key = `dining:${Math.floor(point.lat / HERE_CELL_DEG)}:${Math.floor(point.lng / HERE_CELL_DEG)}`;
+  const hit = hereCellCache.get(key);
+  if (hit && Date.now() - hit.at < HERE_TTL_MS) return hit.pois;
+  const places = await hereDiscover("food", point, 15).catch(() => []);
+  const pois = places.map((p) => ({
+    id: p.id,
+    name: p.name,
+    address: p.address,
+    point: { lat: p.lat, lng: p.lng },
+    tag: diningTag(p.category),
+  }));
+  hereCellCache.set(key, { at: Date.now(), pois });
+  return pois;
+}
+
 // ── Category loading ──────────────────────────────────────────
 
 const loaders = new Map<PoiCategoryId, () => Promise<Poi[]>>();
@@ -285,16 +341,21 @@ async function hereCandidates(cat: PoiCategoryId, point: Pt): Promise<Poi[]> {
   return pois;
 }
 
+/** The full candidate pool for a category, anchored near a point. */
+async function poolFor(cat: PoiCategoryId, near: Pt): Promise<Poi[]> {
+  const src = POI_CATEGORIES[cat].source;
+  if (src.kind === "dining") return diningCandidatePool(near);
+  if (src.kind === "here") return hereCandidates(cat, near);
+  return loadCategory(cat);
+}
+
 /** Crow-flies shortlist around a point (real routing happens on top of this). */
 export async function nearestCandidates(
   cat: PoiCategoryId,
   point: Pt,
   n: number,
 ): Promise<Array<Poi & { crowMeters: number }>> {
-  const pois =
-    POI_CATEGORIES[cat].source.kind === "here"
-      ? await hereCandidates(cat, point)
-      : await loadCategory(cat);
+  const pois = await poolFor(cat, point);
   return pois
     .map((p) => ({ ...p, crowMeters: Math.round(planarMeters(point, p.point)) }))
     .sort((a, b) => a.crowMeters - b.crowMeters)
@@ -312,10 +373,7 @@ export async function candidatesNearPath(
   max: number,
 ): Promise<Array<Poi & { lineMeters: number }>> {
   if (path.length < 2) return [];
-  const pois =
-    POI_CATEGORIES[cat].source.kind === "here"
-      ? await hereCandidates(cat, path[Math.floor(path.length / 2)])
-      : await loadCategory(cat);
+  const pois = await poolFor(cat, path[Math.floor(path.length / 2)]);
 
   // Bounding box of the path, padded by the buffer.
   const padLat = bufferM / 111_320;

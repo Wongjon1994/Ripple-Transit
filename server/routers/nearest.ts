@@ -25,6 +25,7 @@ import {
 } from "../services/poi.js";
 import { getAllLineStatuses } from "../db/helpers.js";
 import { nearbyStops, busArrivals } from "../services/lta.js";
+import { safetyFor } from "../services/diningSafety.js";
 import type {
   Itinerary,
   LatLng,
@@ -41,16 +42,20 @@ const DEFAULT_MAX_WALK_MIN = 15;
 const WALK_KMH = 4.7;
 
 const pointSchema = z.object({ lat: z.number(), lng: z.number() });
-const categorySchema = z.enum([
-  "hawker",
-  "clinic",
-  "supermarket",
-  "park",
-  "library",
-  "sports",
-  "atm",
-  "attraction",
-]);
+// "hawker" accepted as a legacy alias for "dining" (pre-addendum clients/prefs).
+const categorySchema = z
+  .enum([
+    "dining",
+    "hawker",
+    "clinic",
+    "supermarket",
+    "park",
+    "library",
+    "sports",
+    "atm",
+    "attraction",
+  ])
+  .transform((c): PoiCategoryId => (c === "hawker" ? "dining" : c));
 const prefsSchema = z
   .object({
     maxWalkMin: z.number().min(5).max(30).optional(),
@@ -94,29 +99,48 @@ function applyBrandPrefs(
   return pois;
 }
 
+/**
+ * Dining safety gate (addendum §2a): actively-suspended establishments are
+ * excluded outright; a hygiene grade attaches only on a confident NEA match.
+ */
+async function applyDiningSafety<T extends Poi>(
+  cat: PoiCategoryId,
+  cands: T[],
+): Promise<Array<T & { grade?: string }>> {
+  if (cat !== "dining") return cands;
+  const out: Array<T & { grade?: string }> = [];
+  await Promise.all(
+    cands.map(async (c) => {
+      const s = await safetyFor(c.name, c.address).catch(() => null);
+      if (s?.suspended) return; // never listed, not even badged
+      out.push(s?.grade ? { ...c, grade: s.grade } : c);
+    }),
+  );
+  return out;
+}
+
 /** Best real mode for one candidate: walk wins short trips outright. */
 async function evaluateCandidate(
   from: LatLng,
-  poi: Poi,
+  poi: Poi & { grade?: string },
   maxWalkMin: number,
   date: string,
   time: string,
 ): Promise<Omit<NearestResult, "disclaimer"> | null> {
+  const base = {
+    id: poi.id,
+    name: poi.name,
+    address: poi.address,
+    point: poi.point,
+    tag: poi.tag,
+    grade: poi.grade,
+  };
   const walk = await oneMapActiveRoute(from, poi.point, "walk").catch(
     () => null,
   );
   const walkS = walk ? walk.durationS : Infinity;
   if (walkS <= maxWalkMin * 60) {
-    return {
-      id: poi.id,
-      name: poi.name,
-      address: poi.address,
-      point: poi.point,
-      mode: "walk",
-      durationS: walkS,
-      fare: 0,
-      steps: 0,
-    };
+    return { ...base, mode: "walk", durationS: walkS, fare: 0, steps: 0 };
   }
   const [transitRes, cycle] = await Promise.all([
     planTransit(from, poi.point, date, time, false).catch(() => null),
@@ -125,13 +149,13 @@ async function evaluateCandidate(
   const best = transitRes?.itineraries[0];
   const options: Array<Omit<NearestResult, "disclaimer">> = [];
   if (Number.isFinite(walkS)) {
-    options.push({ id: poi.id, name: poi.name, address: poi.address, point: poi.point, mode: "walk", durationS: walkS, fare: 0, steps: 0 });
+    options.push({ ...base, mode: "walk", durationS: walkS, fare: 0, steps: 0 });
   }
   if (cycle) {
-    options.push({ id: poi.id, name: poi.name, address: poi.address, point: poi.point, mode: "cycle", durationS: cycle.durationS, fare: 0, steps: 0 });
+    options.push({ ...base, mode: "cycle", durationS: cycle.durationS, fare: 0, steps: 0 });
   }
   if (best) {
-    options.push({ id: poi.id, name: poi.name, address: poi.address, point: poi.point, mode: "transit", durationS: best.duration, fare: best.fare, steps: transitSteps(best) });
+    options.push({ ...base, mode: "transit", durationS: best.duration, fare: best.fare, steps: transitSteps(best) });
   }
   if (options.length === 0) return null;
   options.sort((a, b) => a.durationS - b.durationS);
@@ -165,10 +189,13 @@ export const nearestRouter = router({
       }
 
       const { date, time } = todayParts();
-      const shortlist = applyBrandPrefs(
+      const shortlist = await applyDiningSafety(
         cat,
-        await nearestCandidates(cat, input.point, SHORTLIST),
-        input.prefs,
+        applyBrandPrefs(
+          cat,
+          await nearestCandidates(cat, input.point, SHORTLIST),
+          input.prefs,
+        ),
       );
       const maxWalk = input.prefs?.maxWalkMin ?? DEFAULT_MAX_WALK_MIN;
       const evaluated = (
@@ -219,10 +246,13 @@ export const nearestRouter = router({
           ? decodePolyline5(l.polyline)
           : [l.startPoint, l.endPoint],
       );
-      const candidates = applyBrandPrefs(
+      const candidates = await applyDiningSafety(
         cat,
-        await candidatesNearPath(cat, path, CORRIDOR_BUFFER_M, CORRIDOR_SHORTLIST),
-        input.prefs,
+        applyBrandPrefs(
+          cat,
+          await candidatesNearPath(cat, path, CORRIDOR_BUFFER_M, CORRIDOR_SHORTLIST),
+          input.prefs,
+        ),
       );
       if (candidates.length === 0) return { results: [] };
 
@@ -244,6 +274,8 @@ export const nearestRouter = router({
               name: poi.name,
               address: poi.address,
               point: poi.point,
+              tag: poi.tag,
+              grade: poi.grade,
               mode: "transit",
               durationS: total,
               fare: seg1.fare + seg2.fare,

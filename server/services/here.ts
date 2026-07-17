@@ -33,6 +33,7 @@ interface HereAutosuggestResponse {
     resultType?: string;
     address?: { label?: string; postalCode?: string };
     position?: { lat: number; lng: number };
+    categories?: Array<{ name?: string; primary?: boolean }>;
   }>;
 }
 
@@ -42,6 +43,8 @@ export interface HerePlace {
   address: string;
   lat: number;
   lng: number;
+  /** Primary HERE category name, e.g. "Restaurant", "Coffee Shop". */
+  category?: string;
 }
 
 /**
@@ -77,6 +80,8 @@ export async function hereDiscover(
       address: it.address?.label ?? it.title,
       lat: it.position!.lat,
       lng: it.position!.lng,
+      category: (it.categories?.find((c) => c.primary) ?? it.categories?.[0])
+        ?.name,
     }));
 }
 

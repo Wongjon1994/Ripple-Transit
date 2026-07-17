@@ -35,7 +35,7 @@ async function pollOnce(id: string): Promise<Response> {
   return fetch(POLL_URL(id), { signal: AbortSignal.timeout(15_000) });
 }
 
-export function fetchDataset(id: string): Promise<GeoJson> {
+function fetchRaw(id: string): Promise<Response> {
   const run = queue.then(async () => {
     // poll-download returns a signed URL for the dataset file.
     let poll = await pollOnce(id);
@@ -48,16 +48,59 @@ export function fetchDataset(id: string): Promise<GeoJson> {
     const meta = (await poll.json()) as { data?: { url?: string } };
     const url = meta.data?.url;
     if (!url) throw new Error("data.gov.sg: no download url");
-    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(45_000) });
     if (!res.ok) throw new Error(`dataset download failed: ${res.status}`);
-    const gj = (await res.json()) as GeoJson;
     // Small courtesy gap before the next queued poll (rate-limit hygiene).
     await sleep(800);
-    return gj;
+    return res;
   });
   // Chain the queue regardless of this download's outcome.
   queue = run.catch(() => undefined);
   return run;
+}
+
+export async function fetchDataset(id: string): Promise<GeoJson> {
+  return (await (await fetchRaw(id)).json()) as GeoJson;
+}
+
+/** Raw text download for CSV datasets (e.g. NEA licence lists). */
+export async function fetchDatasetText(id: string): Promise<string> {
+  return (await fetchRaw(id)).text();
+}
+
+/** Minimal CSV parser: quoted fields, embedded commas/quotes, CRLF. */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
+      } else field += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(field);
+      field = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(field);
+      field = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+    } else field += ch;
+  }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    if (row.length > 1 || row[0] !== "") rows.push(row);
+  }
+  return rows;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

@@ -39,7 +39,7 @@ interface CatDef {
 }
 
 export const ALL_CATS: CatDef[] = [
-  { id: "hawker", label: "Hawker centre", Icon: UtensilsCrossed },
+  { id: "dining", label: "Dining", Icon: UtensilsCrossed },
   { id: "clinic", label: "Clinic", Icon: Stethoscope },
   { id: "supermarket", label: "Supermarket", Icon: ShoppingCart },
   { id: "park", label: "Park", Icon: Trees },
@@ -49,7 +49,7 @@ export const ALL_CATS: CatDef[] = [
   { id: "attraction", label: "Attraction", Icon: Landmark },
 ];
 export const DEFAULT_CHIP_IDS: NearestCategoryId[] = [
-  "hawker",
+  "dining",
   "clinic",
   "supermarket",
   "park",
@@ -361,8 +361,32 @@ export function NearestPanel({
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 font-mono text-[10px] font-bold text-brand">
                     {i + 1}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  <span className="min-w-0 flex-1 text-sm font-medium">
                     {r.name}
+                    {(r.tag || r.grade) && (
+                      <span className="ml-1.5 inline-flex items-center gap-1 align-middle">
+                        {r.tag && (
+                          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.04em] text-ripple-muted">
+                            {r.tag}
+                          </span>
+                        )}
+                        {r.grade && (
+                          <span
+                            className={cn(
+                              "rounded px-1 font-mono text-[10px] font-bold",
+                              r.grade === "A"
+                                ? "bg-ok/10 text-ok"
+                                : r.grade === "B"
+                                  ? "bg-gold/15 text-gold"
+                                  : "bg-warning/10 text-warning",
+                            )}
+                            title="NEA hygiene grade"
+                          >
+                            {r.grade}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </span>
                   <span className="data-voice flex shrink-0 items-center gap-1.5 text-xs text-brand">
                     {anchor === "route" ? (

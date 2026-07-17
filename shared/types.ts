@@ -174,7 +174,7 @@ export interface ActiveRoutesResult {
 
 // ── "Nearest ___" (Phase 15) ──────────────────────────────────
 export type NearestCategoryId =
-  | "hawker"
+  | "dining" // broadened from "hawker" (addendum §2a)
   | "clinic"
   | "supermarket"
   | "park"
@@ -198,6 +198,10 @@ export interface NearestResult {
   /** Along-the-way only: added time vs the direct route. */
   detourS?: number;
   disclaimer?: string;
+  /** Dining: result type (Hawker centre / Restaurant / Café / Food court). */
+  tag?: string;
+  /** Dining: NEA hygiene grade, only on a confident record match. */
+  grade?: string;
 }
 
 export interface NearestMrtStation {

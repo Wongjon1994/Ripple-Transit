@@ -33,7 +33,9 @@ export function usePrefs(): {
   const save = trpc.prefs.set.useMutation({
     // Optimistic: reflect the change instantly; reconcile with the server.
     onMutate: (next) => {
-      utils.prefs.get.setData(undefined, next);
+      // The set-input type still carries the legacy "hawker" alias; the server
+      // normalizes it to "dining", so it's safe to reflect optimistically.
+      utils.prefs.get.setData(undefined, next as UserPrefs);
     },
     onError: (e) => {
       toast.error(`Couldn’t save preferences — ${e.message}`);

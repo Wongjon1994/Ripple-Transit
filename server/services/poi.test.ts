@@ -65,7 +65,7 @@ describe("featureToPoi", () => {
         },
       },
       0,
-      { id: "hawker", nameKeys: ["NAME"] },
+      { id: "dining", nameKeys: ["NAME"] },
     );
     expect(poi).not.toBeNull();
     expect(poi!.name).toBe("Redhill Food Centre");
