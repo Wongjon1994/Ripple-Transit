@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, PageShell } from "../components/ui.js";
 import { SavedLocationsSection } from "./SavedLocations.js";
@@ -35,18 +36,27 @@ export function Favourites() {
 
 function PreferencesSection() {
   const { prefs, setPrefs } = usePrefs();
-  const chips =
+  const saved =
     prefs.defaultChips && prefs.defaultChips.length === 4
       ? prefs.defaultChips
       : DEFAULT_CHIP_IDS;
+  // Natural toggle: deselect freely, re-pick to fill the row back to 4.
+  // Only a complete row of 4 is persisted (the map screen needs exactly 4).
+  const [chips, setChips] = useState<NearestCategoryId[]>(saved);
+  useEffect(() => setChips(saved), [saved.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleChip(id: NearestCategoryId) {
+    let next: NearestCategoryId[];
     if (chips.includes(id)) {
-      toast.info("Pick a replacement — the default row always has 4 chips.");
+      next = chips.filter((c) => c !== id);
+    } else if (chips.length >= 4) {
+      toast.info("That’s 4 — deselect one first to swap it out.");
       return;
+    } else {
+      next = [...chips, id];
     }
-    // Swap in: the new pick replaces the oldest default (front of the list).
-    setPrefs({ defaultChips: [...chips.slice(1), id] });
+    setChips(next);
+    if (next.length === 4) setPrefs({ defaultChips: next });
   }
 
   function toggleBrand(key: "supermarketBrands" | "atmBanks", brand: string) {
@@ -68,8 +78,13 @@ function PreferencesSection() {
             Default “Nearest ___” chips
           </div>
           <p className="mb-2 text-xs text-ripple-muted">
-            Four always-visible categories on the map screen — tap an unselected
-            one to swap it in; the rest live under “More”.
+            Four always-visible categories on the map screen — deselect one,
+            then pick its replacement; the rest live under “More”.
+            {chips.length < 4 && (
+              <span className="ml-1 font-semibold text-brand">
+                Pick {4 - chips.length} more.
+              </span>
+            )}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {ALL_CATS.map(({ id, label, Icon }) => {

@@ -25,13 +25,14 @@ const prefsSchema = z.object({
 
 export const prefsRouter = router({
   get: protectedProcedure.query(async ({ ctx }): Promise<UserPrefs> => {
-    const row = await db.query.userPrefs.findFirst({
-      where: eq(userPrefs.userId, ctx.user.id),
-    });
-    if (!row) return {};
     try {
+      const row = await db.query.userPrefs.findFirst({
+        where: eq(userPrefs.userId, ctx.user.id),
+      });
+      if (!row) return {};
       return prefsSchema.parse(JSON.parse(row.prefs)) as UserPrefs;
     } catch {
+      // Missing table (failed migration) or malformed blob — defaults, not a 500.
       return {};
     }
   }),

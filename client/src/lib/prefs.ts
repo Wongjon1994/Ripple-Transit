@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { trpc } from "./trpc.js";
 import { useAuth } from "./auth.js";
 import type { UserPrefs } from "@shared/types.js";
@@ -30,6 +31,14 @@ export function usePrefs(): {
     staleTime: 60_000,
   });
   const save = trpc.prefs.set.useMutation({
+    // Optimistic: reflect the change instantly; reconcile with the server.
+    onMutate: (next) => {
+      utils.prefs.get.setData(undefined, next);
+    },
+    onError: (e) => {
+      toast.error(`Couldn’t save preferences — ${e.message}`);
+      utils.prefs.get.invalidate(); // roll back to the server's truth
+    },
     onSuccess: () => utils.prefs.get.invalidate(),
   });
 
