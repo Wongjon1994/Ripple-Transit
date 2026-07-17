@@ -7,14 +7,13 @@
  * "mostly park connectors" comfort label (vs crowded roadside paths).
  */
 
+import { fetchDataset, type GeoJsonGeometry } from "./datagov.js";
+
 // data.gov.sg public datasets (GeoJSON, WGS84)
 const DATASETS = {
   pcn: "d_a69ef89737379f231d2ae93fd1c5707f", // NParks Park Connector Loop
   cyclingPaths: "d_8f468b25193f64be8a16fa7d8f60f553", // LTA Cycling Path Network
 } as const;
-
-const POLL_URL = (id: string) =>
-  `https://api-open.data.gov.sg/v1/public/api/datasets/${id}/poll-download`;
 
 /** ~0.002° ≈ 220 m cells; segments are registered in every cell they touch. */
 const CELL_DEG = 0.002;
@@ -302,20 +301,9 @@ export function activeKcal(mode: "walk" | "cycle", distanceM: number): number {
 
 // ── Network loading (data.gov.sg, cached 24 h) ────────────────
 
-interface GeoJson {
-  type: string;
-  features?: Array<{
-    geometry?: {
-      type: string;
-      coordinates?: unknown;
-      geometries?: Array<{ type: string; coordinates?: unknown }>;
-    };
-  }>;
-}
-
 function addGeometry(
   grid: SegmentGrid,
-  geom: { type: string; coordinates?: unknown; geometries?: unknown } | undefined,
+  geom: GeoJsonGeometry | undefined,
 ): void {
   if (!geom) return;
   const toPts = (line: unknown): Pt[] =>
@@ -342,20 +330,6 @@ function addGeometry(
         addGeometry(grid, g);
       break;
   }
-}
-
-async function fetchDataset(id: string): Promise<GeoJson> {
-  // poll-download returns a signed URL for the dataset file.
-  const poll = await fetch(POLL_URL(id), {
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!poll.ok) throw new Error(`data.gov.sg poll failed: ${poll.status}`);
-  const meta = (await poll.json()) as { data?: { url?: string } };
-  const url = meta.data?.url;
-  if (!url) throw new Error("data.gov.sg: no download url");
-  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`dataset download failed: ${res.status}`);
-  return (await res.json()) as GeoJson;
 }
 
 let gridCache: { at: number; grid: SegmentGrid } | null = null;
