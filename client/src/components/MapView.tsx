@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Map as MapGL,
   Marker,
@@ -174,6 +174,24 @@ export function MapView({
 }) {
   const { theme } = useTheme();
   const mapRef = useRef<MapRef | null>(null);
+  // Tap-friendly 3D toggle: MapLibre's compass only pitches via mouse-drag,
+  // which touch devices can't do — so we offer an explicit 2D/3D button.
+  const [is3d, setIs3d] = useState(false);
+
+  function toggle3d() {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    // Toggle off our own state (kept honest by the pitchend listener) rather
+    // than the live pitch — mid-animation reads would double-toggle.
+    const to3d = !is3d;
+    map.easeTo({
+      pitch: to3d ? 60 : 0,
+      // Leaving 3D also squares the map back to north.
+      bearing: to3d ? map.getBearing() : 0,
+      duration: 500,
+    });
+    setIs3d(to3d);
+  }
 
   const legLines = useMemo(
     () =>
@@ -272,8 +290,12 @@ export function MapView({
   }, [allPoints, follow, followZoom, pitch, bearing]);
 
   const isDark = theme === "dark";
-  const handleLoad = (e: { target: MaplibreMap }) =>
+  const handleLoad = (e: { target: MaplibreMap }) => {
     add3dBuildings(e.target, isDark);
+    // Keep the 2D/3D button honest when pitch changes by gesture or camera
+    // code (walk-follow tilts, two-finger drag on mobile, etc.).
+    e.target.on("pitchend", () => setIs3d(e.target.getPitch() >= 20));
+  };
   const handleStyleData = (e: { target: MaplibreMap }) =>
     add3dBuildings(e.target, isDark);
 
@@ -294,7 +316,21 @@ export function MapView({
       onLoad={handleLoad}
       onStyleData={handleStyleData}
     >
-      <NavigationControl position="top-left" showCompass visualizePitch />
+      <NavigationControl position="top-left" showCompass={false} />
+
+      {/* 2D/3D toggle — works by tap, unlike the drag-only compass control. */}
+      {!follow && (
+        <button
+          type="button"
+          onClick={toggle3d}
+          aria-label={is3d ? "Switch to 2D view" : "Switch to 3D view"}
+          aria-pressed={is3d}
+          className="absolute left-[10px] top-[76px] z-[1] h-[30px] w-[30px] rounded-lg border border-[var(--border)] bg-[var(--surface)] font-mono text-[11px] font-bold shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
+          style={{ color: is3d ? "var(--brand)" : "var(--fg)" }}
+        >
+          {is3d ? "2D" : "3D"}
+        </button>
+      )}
 
       {legLines.length > 0 && (
         <Source id="route" type="geojson" data={routeGeoJSON}>
