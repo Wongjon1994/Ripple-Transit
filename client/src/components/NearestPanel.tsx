@@ -55,6 +55,23 @@ export const DEFAULT_CHIP_IDS: NearestCategoryId[] = [
   "park",
 ];
 
+// The transit utility is folded into the chip row as a special category with
+// its own 4-box display and only Near-you / Near-destination anchors.
+type ChipId = NearestCategoryId | "transit";
+
+/** Synthesize a NearestResult for an MRT/bus-stop tap (reuses the pick flow). */
+function stationResult(point: LatLng, name: string): NearestResult {
+  return {
+    id: `stn-${name}`,
+    name,
+    point,
+    mode: "transit",
+    durationS: 0,
+    fare: 0,
+    steps: 0,
+  };
+}
+
 function modeIcon(mode: NearestResult["mode"], size = 12) {
   if (mode === "walk") return <Footprints size={size} />;
   if (mode === "cycle") return <Bike size={size} />;
@@ -92,7 +109,8 @@ export function NearestPanel({
   onCorridorChange: (show: boolean) => void;
 }) {
   const [anchor, setAnchor] = useState<NearestAnchor>("you");
-  const [category, setCategory] = useState<NearestCategoryId | null>(null);
+  const [category, setCategory] = useState<ChipId | null>(null);
+  const isTransit = category === "transit";
   const [showMore, setShowMore] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [picked, setPicked] = useState<NearestResult | null>(null);
@@ -122,15 +140,16 @@ export function NearestPanel({
   const canRoute = !!routeFrom && !!routeTo;
 
   // Never silently swap anchors: if the active anchor becomes unavailable
-  // (e.g. destination cleared), fall back to the default explicitly.
+  // (e.g. destination cleared, or "Along the way" on the transit category
+  // which doesn't support it), fall back to the default explicitly.
   useEffect(() => {
     if (
       (anchor === "destination" && !canDestination) ||
-      (anchor === "route" && !canRoute)
+      (anchor === "route" && (!canRoute || isTransit))
     ) {
       setAnchor("you");
     }
-  }, [anchor, canDestination, canRoute]);
+  }, [anchor, canDestination, canRoute, isTransit]);
 
   function requestLocation() {
     if (!navigator.geolocation) {
@@ -158,23 +177,25 @@ export function NearestPanel({
   const anchorPoint =
     anchor === "you" ? myLocation : anchor === "destination" ? destination : null;
 
+  const poiCategory =
+    category && category !== "transit" ? category : null;
   const pointQuery = trpc.nearest.query.useQuery(
-    category && anchorPoint
-      ? { category, point: anchorPoint, prefs: nearestPrefs }
+    poiCategory && anchorPoint
+      ? { category: poiCategory, point: anchorPoint, prefs: nearestPrefs }
       : (undefined as never),
     {
-      enabled: !!category && anchor !== "route" && !!anchorPoint,
+      enabled: !!poiCategory && anchor !== "route" && !!anchorPoint,
       staleTime: 60_000,
       retry: false,
       placeholderData: keepPreviousData,
     },
   );
   const routeQuery = trpc.nearest.alongTheWay.useQuery(
-    category && routeFrom && routeTo
-      ? { category, from: routeFrom, to: routeTo, prefs: nearestPrefs }
+    poiCategory && routeFrom && routeTo
+      ? { category: poiCategory, from: routeFrom, to: routeTo, prefs: nearestPrefs }
       : (undefined as never),
     {
-      enabled: !!category && anchor === "route" && canRoute,
+      enabled: !!poiCategory && anchor === "route" && canRoute,
       staleTime: 120_000,
       retry: false,
       placeholderData: keepPreviousData,
@@ -202,13 +223,15 @@ export function NearestPanel({
     else if (myLocation) onPickNearYou(myLocation, r);
   }
 
-  function tapChip(id: NearestCategoryId) {
+  function tapChip(id: ChipId) {
     setPicked(null);
     setMinimized(false);
+    if (id === "transit" && anchor === "route") setAnchor("you");
     setCategory((c) => (c === id ? null : id));
   }
 
   const catDef = ALL_CATS.find((c) => c.id === category);
+  const catLabel = isTransit ? "MRT / bus stop" : (catDef?.label ?? "");
 
   const anchorLabel: Record<NearestAnchor, string> = {
     you: "Near you",
@@ -218,15 +241,9 @@ export function NearestPanel({
 
   return (
     <div className="border-t border-[var(--border)] px-4 py-3">
-      <NearestTransit
-        myLocation={myLocation}
-        locating={locating}
-        onRequestLocation={requestLocation}
-        onPickBusStop={onPickBusStop}
-      />
-
-      {/* Anchor — an eyebrow that becomes a 3-pill toggle once both ends exist */}
-      <div className="mb-2 mt-3 flex items-center justify-between gap-2">
+      {/* Anchor — an eyebrow that becomes a pill toggle once both ends exist.
+          The transit category offers Near you / Near destination only. */}
+      <div className="mb-2 flex items-center justify-between gap-2">
         <span className="eyebrow text-ripple-muted">Nearest ___</span>
       </div>
       {(canDestination || canRoute) && (
@@ -235,7 +252,7 @@ export function NearestPanel({
             [
               ["you", true],
               ["destination", canDestination],
-              ["route", canRoute],
+              ["route", canRoute && !isTransit],
             ] as [NearestAnchor, boolean][]
           ).map(([a, enabled]) =>
             !enabled ? null : (
@@ -262,8 +279,14 @@ export function NearestPanel({
         </div>
       )}
 
-      {/* Category chips: 4 defaults + More overflow */}
+      {/* Category chips: transit utility + 4 POI defaults + More overflow */}
       <div className="flex flex-wrap gap-1.5">
+        <Chip
+          active={isTransit}
+          onClick={() => tapChip("transit")}
+          Icon={TrainFront}
+          label="MRT / Bus stop"
+        />
         {defaultCats.map(({ id, label, Icon }) => (
           <Chip
             key={id}
@@ -308,7 +331,7 @@ export function NearestPanel({
           ) : (
             <LocateFixed size={13} />
           )}
-          Use my location to find the nearest {catDef?.label.toLowerCase()}
+          Use my location to find the nearest {catLabel.toLowerCase()}
         </button>
       )}
 
@@ -329,11 +352,35 @@ export function NearestPanel({
         </button>
       )}
 
-      {/* Results */}
-      {category && !minimized && anchorPointReady(anchor, myLocation, destination, canRoute) && (
+      {/* Transit category: its own 4-box display (2 MRT + 2 bus stops) */}
+      {isTransit &&
+        anchorPointReady(anchor, myLocation, destination, canRoute) && (
+          <div className="mt-2.5">
+            <div className="eyebrow mb-1.5 text-[10px] text-ripple-muted">
+              Nearest MRT / bus stop · {anchorLabel[anchor]}
+            </div>
+            <NearestTransit
+              point={anchor === "destination" ? destination : myLocation}
+              onPickStation={(pt, name) =>
+                anchor === "destination"
+                  ? onPickNearDestination(stationResult(pt, name))
+                  : myLocation &&
+                    onPickNearYou(myLocation, stationResult(pt, name))
+              }
+              onPickBusStop={(stop) =>
+                anchor === "destination"
+                  ? onPickNearDestination(stationResult(stop.point, stop.name))
+                  : myLocation && onPickBusStop(myLocation, stop)
+              }
+            />
+          </div>
+        )}
+
+      {/* POI results (3 nearest) */}
+      {!isTransit && category && !minimized && anchorPointReady(anchor, myLocation, destination, canRoute) && (
         <div className="mt-2.5">
           <div className="eyebrow mb-1.5 text-[10px] text-ripple-muted">
-            3 nearest · {catDef?.label} · {anchorLabel[anchor]}
+            3 nearest · {catLabel} · {anchorLabel[anchor]}
           </div>
           {active.isLoading ? (
             <div className="flex items-center gap-2 py-2 text-xs text-ripple-muted">
@@ -455,48 +502,29 @@ function Chip({
   );
 }
 
-/** Always-visible "Nearest transit" utility: MRT stations + bus stops with
- *  live countdowns (wayfinding primitives, not errand chips). */
+/** "Nearest MRT / bus stop" — its own 4-box display (2 MRT + 2 bus), tappable.
+ *  Driven by the active anchor point (your location, or the destination). */
 function NearestTransit({
-  myLocation,
-  locating,
-  onRequestLocation,
+  point,
+  onPickStation,
   onPickBusStop,
 }: {
-  myLocation: LatLng | null;
-  locating: boolean;
-  onRequestLocation: () => void;
-  onPickBusStop: (myLocation: LatLng, stop: NearestBusStop) => void;
+  point: LatLng | null;
+  onPickStation: (point: LatLng, name: string) => void;
+  onPickBusStop: (stop: NearestBusStop) => void;
 }) {
   const q = trpc.nearest.mrt.useQuery(
-    myLocation ? { point: myLocation } : (undefined as never),
-    { enabled: !!myLocation, staleTime: 120_000, retry: false },
+    point ? { point } : (undefined as never),
+    { enabled: !!point, staleTime: 120_000, retry: false },
   );
   const bus = trpc.nearest.busStops.useQuery(
-    myLocation ? { point: myLocation } : (undefined as never),
-    { enabled: !!myLocation, refetchInterval: 30_000, retry: false },
+    point ? { point } : (undefined as never),
+    { enabled: !!point, refetchInterval: 30_000, retry: false },
   );
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="eyebrow text-ripple-muted">Nearest transit</span>
-        {!myLocation && (
-          <button
-            onClick={onRequestLocation}
-            disabled={locating}
-            className="flex items-center gap-1 text-xs font-medium text-brand hover:underline disabled:opacity-60"
-          >
-            {locating ? (
-              <Loader2 size={11} className="animate-spin" />
-            ) : (
-              <LocateFixed size={11} />
-            )}
-            Use my location
-          </button>
-        )}
-      </div>
-      {myLocation &&
+      {point &&
         (q.isLoading ? (
           <div className="flex items-center gap-2 py-1 text-xs text-ripple-muted">
             <Loader2 size={12} className="animate-spin" /> Finding stations…
@@ -504,10 +532,11 @@ function NearestTransit({
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {(q.data?.stations ?? []).map((s) => (
-              <div
+              <button
                 key={s.name}
+                onClick={() => onPickStation(s.point, s.name)}
                 className={cn(
-                  "rounded-md border px-2.5 py-1.5",
+                  "rounded-md border px-2.5 py-1.5 text-left hover:bg-ripple-muted/5",
                   s.disrupted.length > 0
                     ? "border-warning/40 bg-warning/5"
                     : "border-[var(--border)]",
@@ -532,18 +561,18 @@ function NearestTransit({
                     {s.lines.length > 0 ? ` · ${s.lines.join("/")}` : ""}
                   </div>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         ))}
 
       {/* Bus stops with live countdowns — tap to walk there w/ the board */}
-      {myLocation && (bus.data?.stops.length ?? 0) > 0 && (
+      {point && (bus.data?.stops.length ?? 0) > 0 && (
         <div className="mt-2 grid grid-cols-2 gap-2">
           {bus.data!.stops.map((s) => (
             <button
               key={s.code}
-              onClick={() => onPickBusStop(myLocation, s)}
+              onClick={() => onPickBusStop(s)}
               className={cn(
                 "rounded-md border px-2.5 py-1.5 text-left hover:bg-ripple-muted/5",
                 s.noLiveData || s.longGap

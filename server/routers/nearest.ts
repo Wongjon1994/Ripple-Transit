@@ -310,7 +310,7 @@ export const nearestRouter = router({
   busStops: publicProcedure
     .input(z.object({ point: pointSchema }))
     .query(async ({ input }): Promise<{ stops: NearestBusStop[] }> => {
-      const nearby = await nearbyStops(input.point.lat, input.point.lng, 600);
+      const nearby = await nearbyStops(input.point.lat, input.point.lng, 900);
       const top = nearby.slice(0, 2);
       const now = Date.now();
       const stops = await Promise.all(
