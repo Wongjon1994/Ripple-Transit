@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { keepPreviousData } from "@tanstack/react-query";
+import { usePrefs } from "../lib/prefs.js";
 import { cn } from "../lib/utils.js";
 import type {
   LatLng,
@@ -36,19 +37,22 @@ interface CatDef {
   Icon: typeof UtensilsCrossed;
 }
 
-const DEFAULT_CATS: CatDef[] = [
+export const ALL_CATS: CatDef[] = [
   { id: "hawker", label: "Hawker centre", Icon: UtensilsCrossed },
   { id: "clinic", label: "Clinic", Icon: Stethoscope },
   { id: "supermarket", label: "Supermarket", Icon: ShoppingCart },
   { id: "park", label: "Park", Icon: Trees },
-];
-const MORE_CATS: CatDef[] = [
   { id: "library", label: "Library", Icon: BookOpen },
   { id: "sports", label: "Public sports facility", Icon: Dumbbell },
   { id: "atm", label: "ATM", Icon: Banknote },
   { id: "attraction", label: "Attraction", Icon: Landmark },
 ];
-const ALL_CATS = [...DEFAULT_CATS, ...MORE_CATS];
+export const DEFAULT_CHIP_IDS: NearestCategoryId[] = [
+  "hawker",
+  "clinic",
+  "supermarket",
+  "park",
+];
 
 function modeIcon(mode: NearestResult["mode"], size = 12) {
   if (mode === "walk") return <Footprints size={size} />;
@@ -92,6 +96,25 @@ export function NearestPanel({
   const [myLocation, setMyLocation] = useState<LatLng | null>(null);
   const [locating, setLocating] = useState(false);
 
+  // Preferences: chip layout + ranking knobs (guests get sane defaults).
+  const { prefs } = usePrefs();
+  const chipIds =
+    prefs.defaultChips && prefs.defaultChips.length === 4
+      ? prefs.defaultChips
+      : DEFAULT_CHIP_IDS;
+  const defaultCats = chipIds
+    .map((id) => ALL_CATS.find((c) => c.id === id))
+    .filter((c): c is CatDef => !!c);
+  const moreCats = ALL_CATS.filter((c) => !chipIds.includes(c.id));
+  const nearestPrefs = useMemo(
+    () => ({
+      maxWalkMin: prefs.maxWalkMin,
+      supermarketBrands: prefs.supermarketBrands,
+      atmBanks: prefs.atmBanks,
+    }),
+    [prefs.maxWalkMin, prefs.supermarketBrands, prefs.atmBanks],
+  );
+
   const canDestination = !!destination;
   const canRoute = !!routeFrom && !!routeTo;
 
@@ -134,7 +157,7 @@ export function NearestPanel({
 
   const pointQuery = trpc.nearest.query.useQuery(
     category && anchorPoint
-      ? { category, point: anchorPoint }
+      ? { category, point: anchorPoint, prefs: nearestPrefs }
       : (undefined as never),
     {
       enabled: !!category && anchor !== "route" && !!anchorPoint,
@@ -145,7 +168,7 @@ export function NearestPanel({
   );
   const routeQuery = trpc.nearest.alongTheWay.useQuery(
     category && routeFrom && routeTo
-      ? { category, from: routeFrom, to: routeTo }
+      ? { category, from: routeFrom, to: routeTo, prefs: nearestPrefs }
       : (undefined as never),
     {
       enabled: !!category && anchor === "route" && canRoute,
@@ -237,7 +260,7 @@ export function NearestPanel({
 
       {/* Category chips: 4 defaults + More overflow */}
       <div className="flex flex-wrap gap-1.5">
-        {DEFAULT_CATS.map(({ id, label, Icon }) => (
+        {defaultCats.map(({ id, label, Icon }) => (
           <Chip
             key={id}
             active={category === id}
@@ -258,7 +281,7 @@ export function NearestPanel({
           />
         </button>
         {showMore &&
-          MORE_CATS.map(({ id, label, Icon }) => (
+          moreCats.map(({ id, label, Icon }) => (
             <Chip
               key={id}
               active={category === id}

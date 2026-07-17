@@ -165,6 +165,20 @@ export const settings = sqliteTable(
 
 // ── Inferred types ────────────────────────────────────────────
 export type User = typeof users.$inferSelect;
+// ── User preferences (Phase 15) ───────────────────────────────
+// One JSON blob per user: Nearest-___ chip layout, max walk radius, brand
+// filters. Guests keep the same shape in localStorage client-side.
+export const userPrefs = sqliteTable("user_prefs", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  prefs: text("prefs").notNull().default("{}"),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`)
+    .$onUpdate(() => new Date()),
+});
+
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type SavedLocation = typeof savedLocations.$inferSelect;

@@ -213,6 +213,13 @@ export interface NearestPrefs {
   atmBanks?: string[];
 }
 
+/** Persisted user preferences (server for accounts, localStorage for guests). */
+export interface UserPrefs extends NearestPrefs {
+  /** The 4 always-visible Nearest chips, in order; the rest go to "More". */
+  defaultChips?: NearestCategoryId[];
+  maxWalkMin?: 10 | 15 | 20;
+}
+
 /** Driving-baseline carbon for the same origin→destination. */
 export interface CarbonBaseline {
   driveKm: number;
