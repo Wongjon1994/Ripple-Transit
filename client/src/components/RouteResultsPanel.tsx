@@ -16,6 +16,7 @@ import {
   Zap,
   TriangleAlert,
   Leaf,
+  Users,
   Navigation,
   Bookmark,
 } from "lucide-react";
@@ -143,6 +144,20 @@ function LegStep({ leg, isLast }: { leg: RouteLeg; isLast: boolean }) {
         {leg.type === "bus" && leg.trafficAlert && (
           <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
             <TriangleAlert size={12} /> {leg.trafficAlert} — allow extra time
+          </div>
+        )}
+
+        {leg.type === "mrt" && (leg.crowd === "h" || leg.crowd === "m") && (
+          <div
+            className={cn(
+              "mt-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
+              leg.crowd === "h"
+                ? "bg-warning/10 text-warning"
+                : "bg-ripple-muted/10 text-ripple-muted",
+            )}
+          >
+            <Users size={12} />
+            {leg.crowd === "h" ? "Crowded platform" : "Moderate crowd"}
           </div>
         )}
 

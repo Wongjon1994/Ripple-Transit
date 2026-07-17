@@ -69,6 +69,8 @@ export interface RouteLeg {
   exitName?: string; // e.g. "Exit B" — best exit for the onward journey
   exitDistanceM?: number; // distance from that exit to the onward point/destination
   exitAlternatives?: { name: string; distanceM: number }[];
+  stationCode?: string; // e.g. "EW14" — boarding station code (MRT)
+  crowd?: "l" | "m" | "h"; // live boarding-platform crowd (PCDRealTime)
 
   // bus
   busNo?: string;

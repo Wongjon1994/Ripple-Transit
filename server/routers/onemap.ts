@@ -8,9 +8,15 @@ import {
   forceRefreshOneMap,
   mrtStationExits,
   reverseGeocode,
+  resolveStationCode,
 } from "../services/onemap.js";
 import { hereAutosuggest } from "../services/here.js";
-import { busArrivals, serviceConnects, haversineMeters } from "../services/lta.js";
+import {
+  busArrivals,
+  serviceConnects,
+  haversineMeters,
+  stationCrowd,
+} from "../services/lta.js";
 import {
   computeBusFeasibility,
   applyLiveWaiting,
@@ -196,16 +202,35 @@ function dedupeItineraries(itineraries: Itinerary[]): Itinerary[] {
   return out;
 }
 
-/** Attach live feasibility (bus) and exit guidance (MRT) to every leg. */
+/** Live boarding-platform crowd for an MRT leg (PCDRealTime). */
+async function enrichMrtCrowd(
+  leg: RouteLeg,
+  crowd: Map<string, "l" | "m" | "h">,
+): Promise<void> {
+  if (!leg.startStation) return;
+  const code = await resolveStationCode(leg.startStation, leg.lineCode);
+  if (!code) return;
+  leg.stationCode = code;
+  const level = crowd.get(code);
+  if (level) leg.crowd = level;
+}
+
+/** Attach live feasibility (bus) and exit + crowd guidance (MRT) to every leg. */
 async function enrichItineraries(itineraries: Itinerary[]): Promise<void> {
   const now = Date.now();
+  const crowd = await stationCrowd().catch(
+    () => new Map<string, "l" | "m" | "h">(),
+  );
   await Promise.all(
     itineraries.flatMap((it) =>
       it.legs.map(async (leg, idx) => {
         if (leg.type === "bus" && leg.busStopCode) {
           await enrichBusLeg(it, leg, idx, now);
         } else if (leg.type === "mrt") {
-          await enrichMrtExit(it, leg, idx);
+          await Promise.all([
+            enrichMrtExit(it, leg, idx),
+            enrichMrtCrowd(leg, crowd),
+          ]);
         }
       }),
     ),

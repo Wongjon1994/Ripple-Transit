@@ -90,6 +90,64 @@ export async function busArrivals(
   };
 }
 
+// ── MRT platform crowd density (PCDRealTime, cached 10 min) ───
+export type CrowdLevel = "l" | "m" | "h";
+
+// LTA line codes for PCDRealTime differ from our 2-letter lineCode.
+const PCD_LINES: Record<string, string> = {
+  NS: "NSL",
+  EW: "EWL",
+  CG: "CGL",
+  NE: "NEL",
+  CC: "CCL",
+  CE: "CEL",
+  DT: "DTL",
+  TE: "TEL",
+  BP: "BPL",
+  SW: "SLRT",
+  SE: "SLRT",
+  PW: "PLRT",
+  PE: "PLRT",
+};
+
+interface PcdResponse {
+  value?: Array<{ Station: string; CrowdLevel: CrowdLevel }>;
+}
+
+let crowdCache: { at: number; map: Map<string, CrowdLevel> } | null = null;
+const CROWD_TTL_MS = 10 * 60 * 1000; // PCDRealTime refreshes every 10 min
+
+/** Live platform crowd by station code (e.g. "EW14" → "h"), all lines. */
+export async function stationCrowd(): Promise<Map<string, CrowdLevel>> {
+  if (crowdCache && Date.now() - crowdCache.at < CROWD_TTL_MS) {
+    return crowdCache.map;
+  }
+  const lines = [...new Set(Object.values(PCD_LINES))];
+  const map = new Map<string, CrowdLevel>();
+  await Promise.all(
+    lines.map(async (line) => {
+      try {
+        const url = new URL(`${BASE}/PCDRealTime`);
+        url.searchParams.set("TrainLine", line);
+        const res = await fetch(url, {
+          headers: headers(),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as PcdResponse;
+        for (const s of data.value ?? []) {
+          if (s.Station && s.CrowdLevel) map.set(s.Station, s.CrowdLevel);
+        }
+      } catch {
+        /* one line failing shouldn't blank the rest */
+      }
+    }),
+  );
+  // Keep a stale map on total failure rather than nothing.
+  if (map.size > 0) crowdCache = { at: Date.now(), map };
+  return crowdCache?.map ?? map;
+}
+
 // ── Bus stops (paginated, cached 24h) ─────────────────────────
 let stopsCache: { at: number; stops: BusStop[] } | null = null;
 const STOPS_TTL_MS = 24 * 60 * 60 * 1000;

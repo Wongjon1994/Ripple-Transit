@@ -239,6 +239,39 @@ export async function oneMapSearch(
   }));
 }
 
+// Station name (+ line prefix) → station code, e.g. ("Tiong Bahru","EW")→"EW17".
+// OneMap titles carry codes like "TIONG BAHRU MRT STATION (EW17)".
+const stationCodeCache = new Map<string, string | null>();
+
+export async function resolveStationCode(
+  name: string,
+  linePrefix: string | undefined,
+): Promise<string | null> {
+  const key = `${name}|${linePrefix ?? ""}`;
+  const hit = stationCodeCache.get(key);
+  if (hit !== undefined) return hit;
+  let code: string | null = null;
+  try {
+    const results = await oneMapSearch(`${name} MRT STATION`, 1);
+    const codes: string[] = [];
+    for (const r of results) {
+      // Titles like "JURONG EAST MRT STATION (NS1 / EW24)" — grab every
+      // station-code token inside the parentheses (any separators/spacing).
+      const paren = r.title.match(/\(([^)]*\d[^)]*)\)/);
+      if (!paren) continue;
+      for (const m of paren[1].matchAll(/\b([A-Z]{2}\d+)\b/g)) codes.push(m[1]);
+    }
+    code =
+      (linePrefix && codes.find((c) => c.startsWith(linePrefix))) ??
+      codes[0] ??
+      null;
+  } catch {
+    code = null;
+  }
+  stationCodeCache.set(key, code);
+  return code;
+}
+
 // ── Routing ───────────────────────────────────────────────────
 function mapMode(mode: string): LegType {
   const m = mode.toUpperCase();

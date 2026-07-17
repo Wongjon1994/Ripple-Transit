@@ -51,6 +51,15 @@ export function computeRouteRisk(
     reasons.push(`${[...new Set(disrupted)].join(", ")} line disruption`);
   }
 
+  // Live platform crowding at a boarding MRT station (PCDRealTime).
+  const crowded = it.legs.filter((l) => l.type === "mrt" && l.crowd === "h");
+  if (crowded.length) {
+    score += 1;
+    reasons.push(
+      `Crowded platform at ${crowded[0].startStation ?? "an MRT station"}`,
+    );
+  }
+
   // Live road traffic on a bus leg (accident / heavy traffic / breakdown).
   if (ctx.trafficAlerts?.length) {
     const severe = ctx.trafficAlerts.some((a) => a.severe);
