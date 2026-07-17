@@ -8,6 +8,26 @@ import { env, isProd } from "./env.js";
 import { appRouter } from "./routers/index.js";
 import { createContext } from "./context.js";
 import { warmBusRouteIndex } from "./services/lta.js";
+import { libsql } from "./db/index.js";
+
+/**
+ * Safety net for tables added after the initial deploy: build-time migrations
+ * should create these, but if the migrator was skipped or partially applied
+ * (seen once on Render/Turso with user_prefs), recreate idempotently at boot
+ * so the feature works instead of 500-ing. Mirrors drizzle/migrations/0002.
+ */
+async function ensureRuntimeTables(): Promise<void> {
+  try {
+    await libsql.execute(`CREATE TABLE IF NOT EXISTS user_prefs (
+      user_id integer PRIMARY KEY NOT NULL,
+      prefs text DEFAULT '{}' NOT NULL,
+      updated_at integer DEFAULT (unixepoch()) NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE no action ON DELETE cascade
+    )`);
+  } catch (err) {
+    console.error("ensureRuntimeTables failed:", err);
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, "..");
@@ -78,6 +98,7 @@ async function main() {
     // Pre-load the bus-route connectivity index so the first route request
     // isn't slowed by fetching ~26k route rows.
     warmBusRouteIndex();
+    void ensureRuntimeTables();
   });
 }
 
