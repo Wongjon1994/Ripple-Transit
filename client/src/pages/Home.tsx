@@ -168,6 +168,13 @@ export function Home() {
   );
 
   const shownTab: ModeTab = modeTab;
+  // Search identity — §9 collapse-by-default resets expansion on a new search
+  // (but NOT on the minute-tick refetches, which only change date/time).
+  const collapseKey = routeParams
+    ? routeParams.points
+        .map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
+        .join("|")
+    : "";
   const selectedVariant: ActiveVariant | null =
     shownTab === "transit"
       ? null
@@ -443,6 +450,7 @@ export function Home() {
                   carbon={route.data?.carbon}
                   taxi={isMulti ? null : taxi.data}
                   stopLabels={stops.map((s) => s.text)}
+                  collapseKey={collapseKey}
                 />
               )
             ) : (
@@ -453,6 +461,7 @@ export function Home() {
                 selected={activeSel}
                 onSelect={setActiveSel}
                 onStartJourney={handleStartActiveJourney}
+                collapseKey={collapseKey}
               />
             )}
           </div>

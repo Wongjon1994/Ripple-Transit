@@ -7,38 +7,29 @@ const AVAIL: Record<TaxiAvailability, { label: string; color: string }> = {
   unavailable: { label: "Few nearby", color: "#dc2626" },
 };
 
-/** Slim taxi comparison row, consistent with the transit option cards. */
+/**
+ * One-line taxi comparison strip (three-tier discipline: it's a reference
+ * point, not a peer option card).
+ */
 export function TaxiCard({ taxi }: { taxi: TaxiEstimate }) {
   const a = AVAIL[taxi.availability];
   return (
-    <div className="rounded-lg border border-[var(--border)] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Car size={16} className="text-warning" />
-          <span className="text-sm font-semibold">Taxi</span>
-          <span
-            className="ml-1 inline-flex items-center gap-1 text-xs font-medium"
-            style={{ color: a.color }}
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: a.color }}
-            />
-            {a.label}
-          </span>
-        </div>
-        <div className="text-right">
-          <span className="text-base font-semibold">
-            ${taxi.fare.toFixed(2)}
-          </span>
-          <span className="ml-1.5 text-xs text-ripple-muted">
-            {taxi.durationMin} min
-          </span>
-        </div>
-      </div>
-      <div className="mt-1 text-[11px] text-ripple-muted">
-        LTA-rate estimate · ~{taxi.waitMin} min wait
-      </div>
+    <div className="flex items-center gap-2 px-1 py-1 text-xs text-ripple-muted">
+      <Car size={14} className="shrink-0 text-warning" />
+      <span className="data-voice min-w-0 truncate">
+        Taxi ~${taxi.fare.toFixed(2)} · {taxi.durationMin} min · ~{taxi.waitMin}{" "}
+        min wait · est.
+      </span>
+      <span
+        className="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] font-medium"
+        style={{ color: a.color }}
+      >
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ background: a.color }}
+        />
+        {a.label}
+      </span>
     </div>
   );
 }

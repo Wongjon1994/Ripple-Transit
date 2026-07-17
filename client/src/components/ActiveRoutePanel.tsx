@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Footprints,
   Bike,
@@ -123,6 +124,7 @@ export function ActiveRoutePanel({
   selected,
   onSelect,
   onStartJourney,
+  collapseKey,
 }: {
   mode: ActiveMode;
   data: ActiveRoutesResult | undefined;
@@ -130,7 +132,12 @@ export function ActiveRoutePanel({
   selected: number;
   onSelect: (i: number) => void;
   onStartJourney: (variant: ActiveVariant) => void;
+  /** Collapse all cards when this changes (i.e. on a new search). */
+  collapseKey?: string;
 }) {
+  // §9: cards render Tier-1 only until tapped; selection (map) is separate.
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  useEffect(() => setExpandedIdx(null), [collapseKey, mode]);
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 p-4 text-sm text-ripple-muted">
@@ -164,6 +171,7 @@ export function ActiveRoutePanel({
 
       {variants.map((v, i) => {
         const isSel = i === sel;
+        const isExp = i === expandedIdx;
         return (
           <div
             key={v.kind}
@@ -175,8 +183,11 @@ export function ActiveRoutePanel({
             )}
           >
             <button
-              onClick={() => onSelect(i)}
-              aria-expanded={isSel}
+              onClick={() => {
+                onSelect(i);
+                setExpandedIdx((e) => (e === i ? null : i));
+              }}
+              aria-expanded={isExp}
               className={cn(
                 "flex w-full flex-col gap-2 p-3 text-left",
                 isSel ? "bg-brand/5" : "hover:bg-ripple-muted/5",
@@ -211,7 +222,7 @@ export function ActiveRoutePanel({
               </div>
             </button>
 
-            {isSel && (
+            {isExp && (
               <div className="flex flex-col gap-2.5 border-t border-[var(--border)] p-3">
                 <MetricBar
                   label="Park connectors & cycling paths"

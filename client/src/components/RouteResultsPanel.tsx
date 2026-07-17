@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   Footprints,
   TrainFront,
@@ -190,23 +190,32 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
         </div>
       )}
 
-      {/* A comfortable catch collapses to a one-line pill; the verbose coloured
-          callout only appears for tight/miss/unknown, where it earns its space. */}
+      {/* §9: a comfortable catch is ONE line — pill + bus time. The verbose
+          coloured callout (plus its schedule detail) only appears for
+          tight/miss/unknown, where the extra guidance earns its space. */}
       {active.status === "ok" ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-ok/10 px-2.5 py-0.5 text-xs font-semibold text-ok">
+        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-full bg-ok/10 px-2.5 py-0.5 text-xs font-semibold text-ok">
           <Check size={12} strokeWidth={2.75} /> OK · {active.buffer} min buffer
+          {active.eta && (
+            <span className="data-voice font-medium opacity-90">
+              {f.enRoute && f.arriveAtStopMs
+                ? ` · reach ~${fmtTime(new Date(f.arriveAtStopMs).toISOString())} · bus ${fmtTime(active.eta)}`
+                : ` · bus ${fmtTime(active.eta)}`}
+            </span>
+          )}
         </span>
       ) : (
-        <FeasibilityCallout status={active.status} buffer={active.buffer} />
-      )}
-      {active.eta && (
-        <div className="data-voice mt-1.5 text-xs text-ripple-muted">
-          {f.enRoute && f.arriveAtStopMs
-            ? // Mid-journey boarding: timed against your projected arrival.
-              `You reach this stop ~${fmtTime(new Date(f.arriveAtStopMs).toISOString())} · bus at ${fmtTime(active.eta)}`
-            : `Bus at ${fmtTime(active.eta)} · ~${f.walkMinutes} min walk`}
-          {waitMin > 0 && ` + ~${waitMin} min wait`}
-        </div>
+        <>
+          <FeasibilityCallout status={active.status} buffer={active.buffer} />
+          {active.eta && (
+            <div className="data-voice mt-1.5 text-xs text-ripple-muted">
+              {f.enRoute && f.arriveAtStopMs
+                ? `You reach this stop ~${fmtTime(new Date(f.arriveAtStopMs).toISOString())} · bus at ${fmtTime(active.eta)}`
+                : `Bus at ${fmtTime(active.eta)} · ~${f.walkMinutes} min walk`}
+              {waitMin > 0 && ` + ~${waitMin} min wait`}
+            </div>
+          )}
+        </>
       )}
 
       <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
@@ -367,65 +376,25 @@ function fmtCo2(grams: number): string {
   return grams >= 1000 ? `${(grams / 1000).toFixed(1)} kg` : `${Math.round(grams)} g`;
 }
 
-/** Carbon one-liner that expands to a route-vs-taxi-vs-car breakdown on tap. */
-function CarbonInline({
+/**
+ * One Tier-2 savings line (§9): the headline CO₂ figure already lives in the
+ * Tier-1 meta — here we only add what's new (savings vs taxi / driving).
+ */
+function CarbonSavingsLine({
   routeGrams,
   carbon,
 }: {
   routeGrams: number;
   carbon: CarbonBaseline;
 }) {
-  const [open, setOpen] = useState(false);
-  const saved = Math.max(0, carbon.taxiGrams - routeGrams);
-  const max = Math.max(routeGrams, carbon.taxiGrams, carbon.carGrams, 1);
-  const rows: [string, number, string][] = [
-    ["This route", routeGrams, "#10b981"],
-    ["Taxi", carbon.taxiGrams, "#6b7280"],
-    ["Car", carbon.carGrams, "#9ca3af"],
-  ];
+  const vsTaxi = Math.max(0, carbon.taxiGrams - routeGrams) / 1000;
+  const vsCar = Math.max(0, carbon.carGrams - routeGrams) / 1000;
   return (
-    <div>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 text-xs"
-        aria-expanded={open}
-      >
-        <Leaf size={13} className="shrink-0 text-ok" />
-        <span className="font-medium text-ok">{fmtCo2(routeGrams)} CO₂</span>
-        {saved > 0 && (
-          <span className="text-ripple-muted">
-            · save {(saved / 1000).toFixed(2)} kg vs taxi
-          </span>
-        )}
-        <ChevronDown
-          size={12}
-          className={cn(
-            "ml-auto text-ripple-muted transition-transform",
-            open && "rotate-180",
-          )}
-        />
-      </button>
-      {open && (
-        <div className="mt-2 flex flex-col gap-1.5">
-          {rows.map(([label, grams, color]) => (
-            <div key={label}>
-              <div className="flex justify-between text-xs">
-                <span className="text-ripple-muted">{label}</span>
-                <span className="font-medium">{fmtCo2(grams)}</span>
-              </div>
-              <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-ripple-muted/15">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${Math.max(3, (grams / max) * 100)}%`,
-                    background: color,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="data-voice flex items-center gap-1.5 text-xs text-ripple-muted">
+      <Leaf size={12} className="shrink-0 text-ok" />
+      <span>
+        saves {vsTaxi.toFixed(2)} kg vs taxi · {vsCar.toFixed(2)} kg vs driving
+      </span>
     </div>
   );
 }
@@ -440,6 +409,7 @@ export function RouteResultsPanel({
   carbon,
   taxi,
   stopLabels,
+  collapseKey,
 }: {
   itineraries: Itinerary[];
   selected: number;
@@ -451,7 +421,14 @@ export function RouteResultsPanel({
   taxi?: TaxiEstimate | null;
   /** Multi-stop destination labels, used for the via dividers in the stepper. */
   stopLabels?: string[];
+  /** Collapse all cards when this changes (i.e. on a new search). */
+  collapseKey?: string;
 }) {
+  // §9: every card renders Tier-1 only on load; leg detail is tap-to-expand.
+  // Selection (map highlight) and expansion are deliberately decoupled.
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  useEffect(() => setExpandedIdx(null), [collapseKey]);
+
   if (itineraries.length === 0) return null;
   const fastest = Math.min(...itineraries.map((it) => it.duration));
 
@@ -482,6 +459,7 @@ export function RouteResultsPanel({
             const dev = Math.round((it.duration - fastest) / 60);
             const modes = journeyModes(it);
             const isSel = i === selected;
+            const isExp = i === expandedIdx;
             return (
               <div
                 key={i}
@@ -492,10 +470,13 @@ export function RouteResultsPanel({
                     : "border-[var(--border)]",
                 )}
               >
-                {/* Summary row — tap to select/expand */}
+                {/* Summary row — tap selects (map) and toggles leg detail */}
                 <button
-                  onClick={() => onSelect(i)}
-                  aria-expanded={isSel}
+                  onClick={() => {
+                    onSelect(i);
+                    setExpandedIdx((e) => (e === i ? null : i));
+                  }}
+                  aria-expanded={isExp}
                   className={cn(
                     "flex w-full flex-col gap-1.5 p-3 text-left",
                     isSel ? "bg-brand/5" : "hover:bg-ripple-muted/5",
@@ -525,7 +506,7 @@ export function RouteResultsPanel({
                         size={15}
                         className={cn(
                           "text-ripple-muted transition-transform",
-                          isSel && "rotate-180",
+                          isExp && "rotate-180",
                         )}
                       />
                     </div>
@@ -562,8 +543,8 @@ export function RouteResultsPanel({
                   </div>
                 </button>
 
-                {/* Details — only for the expanded option */}
-                {isSel && (
+                {/* Details — Tier 2, tap-to-expand only */}
+                {isExp && (
                   <div className="border-t border-[var(--border)]">
                     {it.risk && it.risk.reasons.length > 0 && (
                       <div className="border-b border-[var(--border)] px-3 py-2 text-xs text-ripple-muted">
@@ -578,8 +559,11 @@ export function RouteResultsPanel({
                     )}
 
                     {carbon && it.co2Grams != null && (
-                      <div className="border-b border-[var(--border)] px-3 py-2.5">
-                        <CarbonInline routeGrams={it.co2Grams} carbon={carbon} />
+                      <div className="border-b border-[var(--border)] px-3 py-2">
+                        <CarbonSavingsLine
+                          routeGrams={it.co2Grams}
+                          carbon={carbon}
+                        />
                       </div>
                     )}
 
