@@ -9,9 +9,14 @@ import {
 } from "react-map-gl/maplibre";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { TrainFront } from "lucide-react";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { useTheme } from "../lib/theme.js";
+import {
+  NETWORK_LINES_GEOJSON,
+  NETWORK_STATIONS_GEOJSON,
+} from "../lib/mrtNetwork.js";
 
 const SG_CENTER = { lng: 103.8198, lat: 1.3521 };
 const DEFAULT_ZOOM = 12;
@@ -183,6 +188,9 @@ export function MapView({
   // Tap-friendly 3D toggle: MapLibre's compass only pitches via mouse-drag,
   // which touch devices can't do — so we offer an explicit 2D/3D button.
   const [is3d, setIs3d] = useState(false);
+  // Ambient MRT/LRT network overlay — on by default, off in the tilted walk
+  // navigation view (follow) where it would clutter the street.
+  const [showNetwork, setShowNetwork] = useState(true);
 
   function toggle3d() {
     const map = mapRef.current?.getMap();
@@ -325,18 +333,93 @@ export function MapView({
     >
       <NavigationControl position="top-left" showCompass={false} />
 
-      {/* 2D/3D toggle — works by tap, unlike the drag-only compass control. */}
+      {/* Ambient rail-network overlay: every MRT/LRT line drawn faded beneath
+          the live route, so the city's transit skeleton is always readable
+          without overpowering the map. Hidden during walk navigation, and
+          unmounted (not just visibility-toggled) when switched off so the
+          toggle reliably clears it. */}
+      {!follow && showNetwork && (
+        <>
+          <Source id="mrt-network" type="geojson" data={NETWORK_LINES_GEOJSON}>
+            <Layer
+              id="mrt-network-lines"
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": ["get", "color"],
+                "line-opacity": isDark ? 0.42 : 0.32,
+                "line-width": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  10,
+                  1.4,
+                  13,
+                  2.6,
+                  16,
+                  4,
+                ],
+              }}
+            />
+          </Source>
+          <Source
+            id="mrt-network-stations"
+            type="geojson"
+            data={NETWORK_STATIONS_GEOJSON}
+          >
+            <Layer
+              id="mrt-network-dots"
+              type="circle"
+              minzoom={11}
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  11,
+                  1.6,
+                  14,
+                  3,
+                  16,
+                  4.5,
+                ],
+                "circle-color": isDark ? "#0b0f14" : "#ffffff",
+                "circle-stroke-color": ["get", "color"],
+                "circle-stroke-width": 1.4,
+                "circle-opacity": isDark ? 0.7 : 0.85,
+                "circle-stroke-opacity": isDark ? 0.55 : 0.45,
+              }}
+            />
+          </Source>
+        </>
+      )}
+
+      {/* Map control stack: 2D/3D + network toggle. Tap-friendly, unlike the
+          drag-only compass control. */}
       {!follow && (
-        <button
-          type="button"
-          onClick={toggle3d}
-          aria-label={is3d ? "Switch to 2D view" : "Switch to 3D view"}
-          aria-pressed={is3d}
-          className="absolute left-[10px] top-[76px] z-[1] h-[30px] w-[30px] rounded-lg border border-[var(--border)] bg-[var(--surface)] font-mono text-[11px] font-bold shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
-          style={{ color: is3d ? "var(--brand)" : "var(--fg)" }}
-        >
-          {is3d ? "2D" : "3D"}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={toggle3d}
+            aria-label={is3d ? "Switch to 2D view" : "Switch to 3D view"}
+            aria-pressed={is3d}
+            className="absolute left-[10px] top-[76px] z-[1] h-[30px] w-[30px] rounded-lg border border-[var(--border)] bg-[var(--surface)] font-mono text-[11px] font-bold shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
+            style={{ color: is3d ? "var(--brand)" : "var(--fg)" }}
+          >
+            {is3d ? "2D" : "3D"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowNetwork((v) => !v)}
+            aria-label={showNetwork ? "Hide MRT network" : "Show MRT network"}
+            aria-pressed={showNetwork}
+            title={showNetwork ? "Hide MRT network" : "Show MRT network"}
+            className="absolute left-[10px] top-[112px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
+            style={{ color: showNetwork ? "var(--brand)" : "var(--fg)" }}
+          >
+            <TrainFront size={16} />
+          </button>
+        </>
       )}
 
       {legLines.length > 0 && (

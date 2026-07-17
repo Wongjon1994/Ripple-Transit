@@ -16,6 +16,9 @@ build/
 
 # Database (local SQLite)
 data/
+# …but the bundled client dataset (generated MRT network) is source, not DB.
+!client/src/data/
+!client/src/data/**
 *.db
 *.db-journal
 *.db-wal
