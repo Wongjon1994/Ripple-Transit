@@ -10,7 +10,19 @@ interface ForecastResponse {
     name: string;
     label_location: { latitude: number; longitude: number };
   }>;
-  items?: Array<{ forecasts: Array<{ area: string; forecast: string }> }>;
+  items?: Array<{
+    valid_period?: { start: string; end: string };
+    forecasts: Array<{ area: string; forecast: string }>;
+  }>;
+}
+
+interface Forecast24Response {
+  items?: Array<{
+    periods?: Array<{
+      time: { start: string; end: string };
+      regions: Record<string, string>; // west/east/central/south/north
+    }>;
+  }>;
 }
 
 interface ReadingResponse {
@@ -91,6 +103,145 @@ export function weatherAdvisory(
     };
   }
   return null;
+}
+
+// ── Phase 15 addendum §12: exposure callouts + cycling rain window ────
+
+/** Region key for the NEA 24h forecast, from a rough island quadrant. */
+export function regionFor(lat: number, lng: number): string {
+  if (lng < 103.75) return "west";
+  if (lng > 103.9) return "east";
+  if (lat > 1.38) return "north";
+  if (lat < 1.28) return "south";
+  return "central";
+}
+
+/** Day-part phrasing for a period start hour — NEA's own granularity. */
+export function describePeriod(startHour: number): string {
+  if (startHour < 6) return "the early hours";
+  if (startHour < 12) return "this morning";
+  if (startHour < 18) return "this afternoon";
+  return "this evening";
+}
+
+export interface RainWindow {
+  rainingNow: boolean;
+  /** End of the 2h nowcast window — the only exact time NEA supports. */
+  untilISO?: string;
+  /** Day-part phrasing when rain continues beyond the nowcast horizon. */
+  outlook?: string;
+}
+
+/**
+ * Rain across the departure window: the 2h nowcast gives an honest
+ * "until ~time"; the 24h forecast's day-parts extend it in period language.
+ * Never fabricates an exact time the forecast can't support.
+ */
+export async function rainWindow(
+  lat: number,
+  lng: number,
+): Promise<RainWindow> {
+  const fc = await cachedFetch<ForecastResponse>("2-hour-weather-forecast");
+  const areas = fc?.area_metadata ?? [];
+  const item = fc?.items?.[0];
+  const forecasts = item?.forecasts ?? [];
+  let nearest = areas[0];
+  let best = Infinity;
+  for (const a of areas) {
+    const d = haversineMeters(
+      { lat, lng },
+      { lat: a.label_location.latitude, lng: a.label_location.longitude },
+    );
+    if (d < best) {
+      best = d;
+      nearest = a;
+    }
+  }
+  const now = forecasts.find((f) => f.area === nearest?.name)?.forecast ?? "";
+  const rainingNow = WET.test(now);
+  if (!rainingNow) return { rainingNow: false };
+
+  const untilISO = item?.valid_period?.end;
+  // Does the 24h forecast say rain continues past the nowcast window?
+  let outlook: string | undefined;
+  const fc24 = await cachedFetch<Forecast24Response>(
+    "24-hour-weather-forecast",
+  );
+  const region = regionFor(lat, lng);
+  const horizon = untilISO ? new Date(untilISO).getTime() : Date.now();
+  for (const p of fc24?.items?.[0]?.periods ?? []) {
+    const start = new Date(p.time.start).getTime();
+    const end = new Date(p.time.end).getTime();
+    if (end <= horizon) continue; // already covered by the nowcast
+    if (WET.test(p.regions[region] ?? "")) {
+      outlook = describePeriod(new Date(Math.max(start, horizon)).getHours());
+      break;
+    }
+    break; // the next period is dry — nowcast end stands
+  }
+  return { rainingNow: true, untilISO, outlook };
+}
+
+/**
+ * Exposure-based walking callout (§12a): keyed off the route's REAL
+ * sheltered-walkway coverage, never the destination. No shelter data ⇒ no
+ * exposure claim ⇒ no callout. Pure and unit-tested.
+ */
+export function walkExposureCallout(input: {
+  wet: boolean;
+  temperature: number | null;
+  humidity: number | null;
+  shelterPct: number | undefined;
+}): WeatherAdvisory | null {
+  if (input.shelterPct === undefined) return null;
+  const exposure = Math.max(0, Math.min(100, 100 - input.shelterPct));
+  if (input.wet && exposure >= 30) {
+    return {
+      level: "warning",
+      message: `Bring an umbrella — ${exposure}% of this walk is uncovered.`,
+    };
+  }
+  if (
+    !input.wet &&
+    (input.temperature ?? 0) >= 33 &&
+    (input.humidity ?? 0) >= 70 &&
+    exposure >= 40
+  ) {
+    return {
+      level: "info",
+      message: `${Math.round(input.temperature!)}° and humid — sunscreen and water; ${exposure}% of the walk is exposed.`,
+    };
+  }
+  return null;
+}
+
+/** Cycling rain-avoidance copy (§12b) — soft advisory, honest time bounds. */
+export function cycleRainCallout(
+  win: RainWindow,
+  area: string,
+): WeatherAdvisory | null {
+  if (!win.rainingNow) return null;
+  if (win.outlook) {
+    return {
+      level: "warning",
+      message: `Rain likely through ${win.outlook} near ${area} — consider transit or waiting it out.`,
+    };
+  }
+  if (win.untilISO) {
+    const t = new Date(win.untilISO).toLocaleTimeString("en-SG", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    return {
+      level: "warning",
+      message: `Rain near ${area} until ~${t} — you might want to wait.`,
+    };
+  }
+  return {
+    level: "warning",
+    message: `Rain near ${area} — consider transit, or wait for a break.`,
+  };
 }
 
 /** Nearest-area 2-hour forecast + realtime temp/humidity/wind for a point. */

@@ -148,6 +148,8 @@ export interface ActiveVariant {
   shelterPct?: number;
   comfort: { label: string; tone: "ok" | "neutral" | "warning" };
   segments: ActiveSegment[]; // one per consecutive stop pair
+  /** Exposure-based weather callout (umbrella / sunscreen), when actionable. */
+  callout?: WeatherAdvisory;
 }
 
 export interface ActiveModeRoutes {
@@ -165,6 +167,8 @@ export interface ActiveRoutesResult {
   cycle: ActiveModeRoutes | null;
   weather: WeatherContext | null;
   advisory: ActiveAdvisory;
+  /** Rain-window advisory specific to cycling ("until ~3:40 pm" phrasing). */
+  cycleAdvisory?: ActiveAdvisory;
   co2SavedGrams: number; // vs driving the same stops
 }
 

@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
-import { weatherAt } from "../services/weather.js";
+import {
+  weatherAt,
+  rainWindow,
+  walkExposureCallout,
+  cycleRainCallout,
+} from "../services/weather.js";
 import { drivingCo2Grams } from "../services/sustainability.js";
 import { haversineMeters } from "../services/lta.js";
 import {
@@ -58,6 +63,29 @@ export const activeRouter = router({
         buildActiveMode("cycle", pts, pcnGrid, null),
       ]);
 
+      // §12a: exposure-based umbrella/sunscreen callouts per walk variant —
+      // keyed off each route's real sheltered coverage; no data, no claim.
+      if (walk && weather) {
+        for (const v of walk.variants) {
+          const c = walkExposureCallout({
+            wet: weather.wet,
+            temperature: weather.temperature ?? null,
+            humidity: weather.humidity ?? null,
+            shelterPct: v.shelterPct,
+          });
+          if (c) v.callout = c;
+        }
+      }
+
+      // §12b: cycling rain window — a specific wait-until inside the nowcast
+      // horizon, day-part phrasing beyond it. Soft advisory, never a block.
+      let cycleAdvisory;
+      if (cycle && weather?.wet) {
+        const win = await rainWindow(pts[0].lat, pts[0].lng).catch(() => null);
+        const c = win ? cycleRainCallout(win, weather.area) : null;
+        if (c) cycleAdvisory = { level: c.level, message: c.message } as const;
+      }
+
       // Emissions avoided vs driving the same stop sequence.
       let driveKm = 0;
       for (let i = 1; i < pts.length; i++)
@@ -68,6 +96,7 @@ export const activeRouter = router({
         cycle,
         weather,
         advisory: activeAdvisory(weather),
+        cycleAdvisory,
         co2SavedGrams: Math.round(drivingCo2Grams(driveKm).carGrams),
       };
     }),

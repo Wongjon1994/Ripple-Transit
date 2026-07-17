@@ -164,7 +164,14 @@ export function ActiveRoutePanel({
   return (
     <div className="flex flex-col gap-3 p-3">
       {data && (
-        <AdvisoryStrip advisory={data.advisory} area={data.weather?.area} />
+        <AdvisoryStrip
+          advisory={
+            mode === "cycle" && data.cycleAdvisory
+              ? data.cycleAdvisory
+              : data.advisory
+          }
+          area={data.weather?.area}
+        />
       )}
 
       <h3 className="eyebrow -mb-1 text-ripple-muted">
@@ -224,6 +231,24 @@ export function ActiveRoutePanel({
                   </>
                 )}
               </div>
+              {v.callout && (
+                // §12a Tier-1 exposure callout — one line, only when actionable.
+                <div
+                  className={cn(
+                    "flex items-start gap-1 text-xs font-medium",
+                    v.callout.level === "warning"
+                      ? "text-warning"
+                      : "text-brand",
+                  )}
+                >
+                  {v.callout.level === "warning" ? (
+                    <Umbrella size={12} className="mt-0.5 shrink-0" />
+                  ) : (
+                    <Sun size={12} className="mt-0.5 shrink-0" />
+                  )}
+                  {v.callout.message}
+                </div>
+              )}
             </button>
 
             {isExp && (
