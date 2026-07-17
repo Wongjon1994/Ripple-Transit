@@ -252,15 +252,38 @@ const loadHawkerVenues = dailyCache(async (): Promise<Poi[]> => {
   return pois;
 });
 
-/** HERE category name → the addendum's dining type tags. */
-export function diningTag(category: string | undefined): string {
-  if (!category) return "Eatery";
-  if (/food court|hawker|canteen/i.test(category)) return "Food court";
-  if (/coffee|café|cafe|tea/i.test(category)) return "Café";
-  if (/restaurant/i.test(category)) return "Restaurant";
-  if (/bakery|snack|takeaway|take out|fast food/i.test(category))
-    return "Eatery";
-  return "Eatery";
+/**
+ * HERE category → dining type tag, or null to DROP.
+ *
+ * HERE's food search mixes in groceries, convenience stores and specialty
+ * food shops (NTUC, Fairprice Xpress, biscuit shops) that aren't places to
+ * eat, plus category-less listings that are often home-based/delivery-only.
+ * We keep only genuine walk-in dining venues.
+ */
+export function diningTag(category: string | undefined): string | null {
+  if (!category) return null; // no category → usually not a real storefront
+  const c = category.toLowerCase();
+  // Explicitly not dining venues.
+  if (
+    /grocery|supermarket|convenience|specialty food|market\/stall|liquor|wholesale|butcher|department/.test(
+      c,
+    ) &&
+    !/food court|hawker/.test(c)
+  ) {
+    // "Food Market/Stall" is a hawker-style stall — keep it below; other
+    // *market/store* categories are retail, not dining.
+    if (!/food market\/stall/.test(c)) return null;
+  }
+  if (/food court|hawker|kopitiam|canteen|cafeteria/.test(c)) return "Food court";
+  if (/food market\/stall|food stall/.test(c)) return "Food stall";
+  if (/coffee|café|cafe|\btea\b/.test(c)) return "Café";
+  if (/bakery|baked goods|patisserie|dessert|ice cream|confection/.test(c))
+    return "Bakery";
+  if (/fast food|quick service|takeaway|take-out/.test(c)) return "Fast food";
+  if (/restaurant|bistro|diner|eatery|steakhouse|buffet|noodle|bbq/.test(c))
+    return "Restaurant";
+  if (/bar|pub|brewery|wine/.test(c)) return "Bar";
+  return null; // anything else (unknown retail types) → not dining
 }
 
 async function diningCandidatePool(point: Pt): Promise<Poi[]> {
@@ -275,14 +298,19 @@ async function hereDiningOutlets(point: Pt): Promise<Poi[]> {
   const key = `dining:${Math.floor(point.lat / HERE_CELL_DEG)}:${Math.floor(point.lng / HERE_CELL_DEG)}`;
   const hit = hereCellCache.get(key);
   if (hit && Date.now() - hit.at < HERE_TTL_MS) return hit.pois;
-  const places = await hereDiscover("food", point, 15).catch(() => []);
-  const pois = places.map((p) => ({
-    id: p.id,
-    name: p.name,
-    address: p.address,
-    point: { lat: p.lat, lng: p.lng },
-    tag: diningTag(p.category),
-  }));
+  const places = await hereDiscover("food", point, 20).catch(() => []);
+  const pois: Poi[] = [];
+  for (const p of places) {
+    const tag = diningTag(p.category);
+    if (!tag) continue; // drop groceries, convenience stores, no-category junk
+    pois.push({
+      id: p.id,
+      name: p.name,
+      address: p.address,
+      point: { lat: p.lat, lng: p.lng },
+      tag,
+    });
+  }
   hereCellCache.set(key, { at: Date.now(), pois });
   return pois;
 }

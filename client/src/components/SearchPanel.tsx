@@ -40,6 +40,7 @@ function LocationInput({
   onSelect,
   accent,
   labelAction,
+  reserveTrailing = false,
 }: {
   label: string;
   value: string;
@@ -47,6 +48,8 @@ function LocationInput({
   onSelect: (place: Place) => void;
   accent: string;
   labelAction?: ReactNode;
+  /** Leave room on the right for an overlaid control (the swap button). */
+  reserveTrailing?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const debounced = useDebounced(value, 250);
@@ -87,7 +90,7 @@ function LocationInput({
           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ripple-muted"
         />
         <Input
-          className="pl-8 pr-8"
+          className={cn("pl-8", reserveTrailing ? "pr-16" : "pr-8")}
           placeholder="Search address or place"
           value={value}
           onChange={(e) => {
@@ -111,7 +114,11 @@ function LocationInput({
               onChange("");
               setOpen(false);
             }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-ripple-muted hover:bg-ripple-muted/15 hover:text-[var(--fg)]"
+            className={cn(
+              "absolute top-1/2 -translate-y-1/2 rounded-full p-0.5 text-ripple-muted hover:bg-ripple-muted/15 hover:text-[var(--fg)]",
+              // Sit left of the swap button on the From field so they don't overlap.
+              reserveTrailing ? "right-11" : "right-2",
+            )}
           >
             <X size={15} />
           </button>
@@ -267,6 +274,7 @@ export function SearchPanel({
           value={fromText}
           onChange={onFromText}
           onSelect={onFromSelect}
+          reserveTrailing={stops.length === 1}
           labelAction={
             <button
               type="button"

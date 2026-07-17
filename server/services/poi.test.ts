@@ -6,6 +6,7 @@ import {
   brandFilter,
   candidatesNearPath,
   loadCategory,
+  diningTag,
 } from "./poi.js";
 import type { Pt } from "./activeNetwork.js";
 
@@ -145,5 +146,24 @@ describe("candidatesNearPath", () => {
 describe("loadCategory", () => {
   it("rejects HERE-backed categories (no static dataset)", async () => {
     await expect(loadCategory("atm")).rejects.toThrow(/not a static dataset/);
+  });
+});
+
+describe("diningTag (cleanliness filter)", () => {
+  it("keeps genuine dining venues with a tag", () => {
+    expect(diningTag("Restaurant")).toBe("Restaurant");
+    expect(diningTag("Fast Food")).toBe("Fast food");
+    expect(diningTag("Cafeteria")).toBe("Food court");
+    expect(diningTag("Bakery & Baked Goods Store")).toBe("Bakery");
+    expect(diningTag("Coffee-Tea")).toBe("Café");
+    expect(diningTag("Food Market/Stall")).toBe("Food stall");
+  });
+
+  it("drops retail and category-less listings (home-based/delivery junk)", () => {
+    expect(diningTag("Grocery")).toBeNull();
+    expect(diningTag("Convenience Store")).toBeNull();
+    expect(diningTag("Specialty Food Store")).toBeNull();
+    expect(diningTag(undefined)).toBeNull();
+    expect(diningTag("Electronics Store")).toBeNull();
   });
 });
