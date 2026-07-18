@@ -20,11 +20,21 @@ const chipSchema = z
   ])
   .transform((c) => (c === "hawker" ? ("dining" as const) : c));
 
+const activePriority = z.enum(["fastest", "sheltered", "scenic"]);
 const prefsSchema = z.object({
   defaultChips: z.array(chipSchema).length(4).optional(),
   maxWalkMin: z.union([z.literal(10), z.literal(15), z.literal(20)]).optional(),
   supermarketBrands: z.array(z.string().max(40)).max(10).optional(),
   atmBanks: z.array(z.string().max(40)).max(10).optional(),
+  routePriority: z
+    .object({
+      transit: z
+        .enum(["fastest", "fewest_transfers", "least_walking", "greenest"])
+        .optional(),
+      walk: activePriority.optional(),
+      cycle: activePriority.optional(),
+    })
+    .optional(),
 });
 
 export const prefsRouter = router({

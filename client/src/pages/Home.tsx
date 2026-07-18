@@ -10,6 +10,7 @@ import { ActiveRoutePanel } from "../components/ActiveRoutePanel.js";
 import { MapView } from "../components/MapView.js";
 import { MrtStatus } from "../components/MrtStatus.js";
 import { useJourney } from "../lib/journey.js";
+import { usePrefs } from "../lib/prefs.js";
 import { useSearchSession } from "../lib/searchSession.js";
 import { useLocation } from "wouter";
 import { cn } from "../lib/utils.js";
@@ -49,6 +50,7 @@ export function Home() {
   // after exiting the live journey — read once at mount.
   const session = useSearchSession();
   const saved = useRef(session.get()).current;
+  const { prefs } = usePrefs();
   const [fromText, setFromText] = useState(saved?.fromText ?? "");
   const [from, setFrom] = useState<LatLng | null>(saved?.from ?? null);
   // Destinations in visit order — 1 to 5 stops; the last one is "To".
@@ -169,6 +171,7 @@ export function Home() {
           time: routeParams.time,
           destName: routeParams.destName,
           arriveBy: routeParams.arriveBy,
+          transitPriority: prefs.routePriority?.transit,
         }
       : (undefined as never),
     {
@@ -222,7 +225,13 @@ export function Home() {
   // Walk & Cycle tabs (Phase 14): real alternate paths per journey — fastest /
   // most sheltered (walk) / PCN scenic — for the full multi-stop sequence.
   const active = trpc.active.routes.useQuery(
-    routeParams ? { points: routeParams.points } : (undefined as never),
+    routeParams
+      ? {
+          points: routeParams.points,
+          walkPriority: prefs.routePriority?.walk,
+          cyclePriority: prefs.routePriority?.cycle,
+        }
+      : (undefined as never),
     {
       enabled: !!routeParams,
       retry: false,

@@ -56,6 +56,10 @@ const routeInput = z.object({
   destName: z.string().max(255).optional(),
   /** When true, date/time is the target ARRIVAL; we solve for the departure. */
   arriveBy: z.boolean().optional(),
+  /** Result ordering preference (Preferences → Route priority). */
+  transitPriority: z
+    .enum(["fastest", "fewest_transfers", "least_walking", "greenest"])
+    .optional(),
 });
 
 function todayParts() {
@@ -418,6 +422,12 @@ export async function planTransit(
   live: boolean,
   /** Destination establishment name — enables the opening-hours arrival risk. */
   destName?: string,
+  /** Result ordering preference (default: fastest). */
+  transitPriority:
+    | "fastest"
+    | "fewest_transfers"
+    | "least_walking"
+    | "greenest" = "fastest",
 ): Promise<{
   itineraries: Itinerary[];
   weather: WeatherContext | null;
@@ -487,8 +497,18 @@ export async function planTransit(
     it.co2Grams = itineraryCo2Grams(it.legs);
   }
 
-  // Re-rank by realized total time, fastest first, and show up to 5 options.
-  itineraries.sort((a, b) => a.duration - b.duration);
+  // Rank by the chosen priority (duration is always the tie-breaker), and show
+  // up to 5 options.
+  const walkSecs = (it: Itinerary) =>
+    it.legs.filter((l) => l.type === "walk").reduce((s, l) => s + l.duration, 0);
+  const primary: Record<typeof transitPriority, (it: Itinerary) => number> = {
+    fastest: (it) => it.duration,
+    fewest_transfers: (it) => it.transfers,
+    least_walking: (it) => walkSecs(it),
+    greenest: (it) => it.co2Grams ?? Infinity,
+  };
+  const key = primary[transitPriority];
+  itineraries.sort((a, b) => key(a) - key(b) || a.duration - b.duration);
   itineraries = itineraries.slice(0, 5);
 
   // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
@@ -566,6 +586,7 @@ export const onemapRouter = router({
             depParts.time,
             true,
             input.destName,
+            input.transitPriority,
           );
           const leaveByMs = itineraries[0]?.startTimeMs ?? targetMs - estDur * 1000;
           return {
@@ -583,6 +604,7 @@ export const onemapRouter = router({
           time,
           true,
           input.destName,
+          input.transitPriority,
         );
         return {
           plan: { itineraries },

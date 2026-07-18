@@ -255,11 +255,27 @@ export interface NearestPrefs {
   atmBanks?: string[];
 }
 
+/** How to rank/order route options, per mode (Preferences). */
+export type TransitPriority =
+  | "fastest"
+  | "fewest_transfers"
+  | "least_walking"
+  | "greenest";
+export type ActivePriority = "fastest" | "sheltered" | "scenic";
+
+export interface RoutePriority {
+  transit?: TransitPriority;
+  walk?: ActivePriority;
+  cycle?: ActivePriority;
+}
+
 /** Persisted user preferences (server for accounts, localStorage for guests). */
 export interface UserPrefs extends NearestPrefs {
   /** The 4 always-visible Nearest chips, in order; the rest go to "More". */
   defaultChips?: NearestCategoryId[];
   maxWalkMin?: 10 | 15 | 20;
+  /** Per-mode ordering preference for route results. */
+  routePriority?: RoutePriority;
 }
 
 /** Driving-baseline carbon for the same origin→destination. */

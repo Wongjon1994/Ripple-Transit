@@ -15,9 +15,28 @@ import {
 import { buildActiveMode } from "../services/activeVariants.js";
 import type {
   ActiveRoutesResult,
+  ActiveModeRoutes,
+  ActivePriority,
   ActiveAdvisory,
   WeatherContext,
 } from "../../shared/types.js";
+
+/** Move the preferred variant to the front so the client pre-selects it. */
+function prioritize(
+  routes: ActiveModeRoutes | null,
+  pref: ActivePriority | undefined,
+): ActiveModeRoutes | null {
+  if (!routes || !pref || pref === "fastest") return routes;
+  const want = pref === "sheltered" ? "sheltered" : "pcn";
+  const idx = routes.variants.findIndex(
+    (v) => v.kind === want || v.also?.includes(want),
+  );
+  if (idx > 0) {
+    const [v] = routes.variants.splice(idx, 1);
+    routes.variants.unshift(v);
+  }
+  return routes;
+}
 
 /** Weather call-out for walking/cycling right now. */
 function activeAdvisory(wx: WeatherContext | null): ActiveAdvisory {
@@ -48,6 +67,8 @@ export const activeRouter = router({
           .array(z.object({ lat: z.number(), lng: z.number() }))
           .min(2)
           .max(6),
+        walkPriority: z.enum(["fastest", "sheltered", "scenic"]).optional(),
+        cyclePriority: z.enum(["fastest", "sheltered", "scenic"]).optional(),
       }),
     )
     .query(async ({ input }): Promise<ActiveRoutesResult> => {
@@ -92,8 +113,8 @@ export const activeRouter = router({
         driveKm += (haversineMeters(pts[i - 1], pts[i]) / 1000) * 1.35;
 
       return {
-        walk,
-        cycle,
+        walk: prioritize(walk, input.walkPriority),
+        cycle: prioritize(cycle, input.cyclePriority),
         weather,
         advisory: activeAdvisory(weather),
         cycleAdvisory,
