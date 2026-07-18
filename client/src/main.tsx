@@ -8,6 +8,7 @@ import { trpc } from "./lib/trpc.js";
 import { ThemeProvider } from "./lib/theme.js";
 import { AuthProvider } from "./lib/auth.js";
 import { JourneyProvider } from "./lib/journey.js";
+import { SearchSessionProvider } from "./lib/searchSession.js";
 import { App } from "./App.js";
 import "./index.css";
 
@@ -32,8 +33,10 @@ function Root() {
         <ThemeProvider>
           <AuthProvider>
             <JourneyProvider>
-              <App />
-              <Toaster position="top-center" richColors />
+              <SearchSessionProvider>
+                <App />
+                <Toaster position="top-center" richColors />
+              </SearchSessionProvider>
             </JourneyProvider>
           </AuthProvider>
         </ThemeProvider>

@@ -10,6 +10,7 @@ import { ActiveRoutePanel } from "../components/ActiveRoutePanel.js";
 import { MapView } from "../components/MapView.js";
 import { MrtStatus } from "../components/MrtStatus.js";
 import { useJourney } from "../lib/journey.js";
+import { useSearchSession } from "../lib/searchSession.js";
 import { useLocation } from "wouter";
 import { cn } from "../lib/utils.js";
 import type {
@@ -44,20 +45,26 @@ interface Stop {
 
 export function Home() {
   const initial = useMemo(nowParts, []);
-  const [fromText, setFromText] = useState("");
-  const [from, setFrom] = useState<LatLng | null>(null);
+  // Restore the last search + results when returning to Map from another tab or
+  // after exiting the live journey — read once at mount.
+  const session = useSearchSession();
+  const saved = useRef(session.get()).current;
+  const [fromText, setFromText] = useState(saved?.fromText ?? "");
+  const [from, setFrom] = useState<LatLng | null>(saved?.from ?? null);
   // Destinations in visit order — 1 to 5 stops; the last one is "To".
-  const [stops, setStops] = useState<Stop[]>([{ text: "", point: null }]);
-  const [date, setDate] = useState(initial.date);
-  const [time, setTime] = useState(initial.time);
+  const [stops, setStops] = useState<Stop[]>(
+    saved?.stops ?? [{ text: "", point: null }],
+  );
+  const [date, setDate] = useState(saved?.date ?? initial.date);
+  const [time, setTime] = useState(saved?.time ?? initial.time);
   // Depart time follows the device clock until the user edits it manually
   // (editing means they're planning a future trip).
-  const [timeIsAuto, setTimeIsAuto] = useState(true);
-  const [selected, setSelected] = useState(0);
+  const [timeIsAuto, setTimeIsAuto] = useState(saved?.timeIsAuto ?? true);
+  const [selected, setSelected] = useState(saved?.selected ?? 0);
   // Results mode: Transit | Walk | Cycle (all support multi-stop journeys).
-  const [modeTab, setModeTab] = useState<ModeTab>("transit");
+  const [modeTab, setModeTab] = useState<ModeTab>(saved?.modeTab ?? "transit");
   // Selected variant within the active tab (fastest / sheltered / PCN).
-  const [activeSel, setActiveSel] = useState(0);
+  const [activeSel, setActiveSel] = useState(saved?.activeSel ?? 0);
 
   const [routeParams, setRouteParams] = useState<{
     points: LatLng[]; // origin first, then each stop in order
@@ -65,8 +72,37 @@ export function Home() {
     time: string;
     /** Destination label — drives the opening-hours arrival risk. */
     destName?: string;
-  } | null>(null);
+  } | null>(saved?.routeParams ?? null);
   const [resolving, setResolving] = useState(false);
+
+  // Persist the search + results so returning to Map (or exiting a journey)
+  // restores this state instead of a blank form.
+  useEffect(() => {
+    session.set({
+      fromText,
+      from,
+      stops,
+      date,
+      time,
+      timeIsAuto,
+      modeTab,
+      selected,
+      activeSel,
+      routeParams,
+    });
+  }, [
+    session,
+    fromText,
+    from,
+    stops,
+    date,
+    time,
+    timeIsAuto,
+    modeTab,
+    selected,
+    activeSel,
+    routeParams,
+  ]);
 
   // Mobile bottom sheet: three snap heights (fraction of viewport). Peek shows
   // just the search form so the map gets most of the screen; expands to half
