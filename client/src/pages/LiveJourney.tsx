@@ -7,6 +7,7 @@ import {
   Bike,
   Navigation,
   X,
+  ChevronLeft,
   ArrowRight,
   Check,
   Share2,
@@ -316,20 +317,33 @@ export function LiveJourney() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Journey-wide ETA + progress (§3.1/§3.2): journey-scoped, so it persists
-          unchanged across leg transitions. */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-sm">
-          <Clock size={14} className="shrink-0 text-brand" />
-          <span className="text-ripple-muted">Arriving</span>
+      {/* One-line journey header (§4/§6c): leg progress + ETA, journey-scoped so
+          it persists across leg transitions. Replaces the stacked
+          progress-dots + ETA-banner treatment. */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+        <button
+          onClick={() => navigate("/")}
+          aria-label="Back to map"
+          className="shrink-0 rounded-md p-1 text-ripple-muted hover:bg-ripple-muted/10 hover:text-[var(--fg)]"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <div className="min-w-0 flex-1 truncate text-center text-sm">
+          <span className="text-ripple-muted">
+            Leg {legNum} of {total} · Arriving{" "}
+          </span>
           <span className="data-voice font-semibold text-brand">
             {arrivalClock}
           </span>
-          <span className="truncate text-ripple-muted">
-            · {remainingMin} min left
-          </span>
+          <span className="text-ripple-muted"> · {remainingMin} min left</span>
         </div>
-        <ProgressDots total={total} current={journey.currentLeg} />
+        <button
+          onClick={() => end()}
+          aria-label="End journey"
+          className="shrink-0 rounded-md p-1 text-ripple-muted hover:bg-ripple-muted/10 hover:text-[var(--fg)]"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -360,14 +374,9 @@ export function LiveJourney() {
 
       {/* Guidance sheet */}
       <div className="max-h-[55%] shrink-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--surface)] p-4">
-        <div className="mb-3 flex items-center justify-between text-xs text-ripple-muted">
-          <span className="eyebrow">
-            {viewMode === "route" ? "Full route" : `Leg ${legNum} of ${total}`}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => end()}>
-            <X size={14} /> End
-          </Button>
-        </div>
+        {viewMode === "route" && (
+          <div className="mb-2 eyebrow text-ripple-muted">Full route</div>
+        )}
 
         {viewMode === "route" ? (
           <FullStepper legs={legs} current={journey.currentLeg} />
@@ -521,27 +530,6 @@ function liveRisk({
       caption: mrtDisrupted.message || "expect delays on the line ahead",
     };
   return null;
-}
-
-/** At-a-glance progress across the N legs (replaces the "Leg X of N" text). */
-function ProgressDots({ total, current }: { total: number; current: number }) {
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      {Array.from({ length: total }, (_, i) => (
-        <span
-          key={i}
-          className={cn(
-            "h-1 rounded-full transition-all",
-            i < current
-              ? "w-2.5 bg-brand/60"
-              : i === current
-                ? "w-4 bg-brand"
-                : "w-2.5 bg-ripple-muted/30",
-          )}
-        />
-      ))}
-    </div>
-  );
 }
 
 /** Current leg: full-size filled node (with a "you are here" halo), title,

@@ -313,7 +313,7 @@ export function NearestPanel({
           <SlidersHorizontal size={12} /> Preferences
         </Link>
       </div>
-      {(canDestination || canRoute) && (
+      {category && (canDestination || canRoute) && (
         <div className="mb-2 flex gap-1" role="radiogroup" aria-label="Anchor">
           {(
             [
@@ -385,6 +385,14 @@ export function NearestPanel({
             />
           ))}
       </div>
+
+      {/* Compensates for the hidden anchor toggle (§2): keep the three search
+          anchors discoverable until a category is chosen. */}
+      {!category && (
+        <p className="mt-2 text-xs text-ripple-muted">
+          Tap a category to search near you, your destination, or along the way.
+        </p>
+      )}
 
       {/* Location gate — explicit, never a silent fallback */}
       {category && anchor === "you" && !myLocation && (

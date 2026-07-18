@@ -34,6 +34,7 @@ import type {
 import { RISK_COLORS, RISK_LABELS } from "@shared/types.js";
 import { fmtDuration, fmtDistance, fmtTime, cn } from "../lib/utils.js";
 import { lineColor, lineName } from "../lib/transit.js";
+import { trpc } from "../lib/trpc.js";
 import { FeasibilityBadge, FeasibilityCallout } from "./FeasibilityBadge.js";
 import { LiveArrivals } from "./LiveArrivals.js";
 import { TaxiCard } from "./TaxiCard.js";
@@ -419,36 +420,86 @@ function RiskPill({ level }: { level: RiskLevel }) {
 }
 
 /**
- * One compact weather line. Plain/muted when conditions are unremarkable;
- * coloured and prominent only when there's an advisory (rain / heat).
+ * One ambient status line (§3) merging weather and live MRT service — both are
+ * unselected context, so they share a single muted row. The weather half turns
+ * coloured/prominent only when there's an advisory (rain / heat); the MRT half
+ * shows a dot + "All lines normal" / "N lines affected".
  */
-function WeatherStrip({ weather }: { weather: WeatherContext }) {
-  const Icon = weather.wet
+function AmbientStatus({ weather }: { weather: WeatherContext | null }) {
+  const { data: lines } = trpc.mrt.lineStatuses.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+  const affected = (lines ?? []).filter((l) => l.status !== "operational");
+  const hasLines = !!lines && lines.length > 0;
+  const mrtOk = affected.length === 0;
+
+  const adv = weather?.advisory;
+  const Icon = weather?.wet
     ? CloudRain
-    : /cloud/i.test(weather.forecast)
+    : weather && /cloud/i.test(weather.forecast)
       ? Cloud
       : Sun;
-  const adv = weather.advisory;
+
+  if (!weather && !hasLines) return null;
+
   return (
     <div
       className={cn(
         "flex items-center gap-2 px-4 py-2 text-xs",
         adv?.level === "warning"
-          ? "bg-warning/10 text-warning"
+          ? "bg-warning/10"
           : adv
-            ? "bg-brand/10 text-brand"
-            : "text-ripple-muted",
+            ? "bg-brand/10"
+            : "",
       )}
     >
-      <Icon size={14} className="shrink-0" />
-      <span className={cn("font-medium", !adv && "text-[var(--fg)]")}>
-        {weather.temperature != null ? `${Math.round(weather.temperature)}° · ` : ""}
-        {weather.forecast}
-      </span>
-      {adv ? (
-        <span>— {adv.message}</span>
-      ) : (
-        <span className="text-ripple-muted">near {weather.area}</span>
+      {weather && (
+        <>
+          <Icon
+            size={14}
+            className={cn(
+              "shrink-0",
+              adv?.level === "warning"
+                ? "text-warning"
+                : adv
+                  ? "text-brand"
+                  : "text-ripple-muted",
+            )}
+          />
+          <span
+            className={cn(
+              "font-medium",
+              adv?.level === "warning"
+                ? "text-warning"
+                : adv
+                  ? "text-brand"
+                  : "text-[var(--fg)]",
+            )}
+          >
+            {weather.temperature != null
+              ? `${Math.round(weather.temperature)}° · `
+              : ""}
+            {weather.forecast}
+          </span>
+          {adv && (
+            <span className={adv.level === "warning" ? "text-warning" : "text-brand"}>
+              — {adv.message}
+            </span>
+          )}
+        </>
+      )}
+      {hasLines && (
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: mrtOk ? "#10b981" : "#f59e0b" }}
+          />
+          <span className={mrtOk ? "text-ripple-muted" : "text-warning"}>
+            {mrtOk
+              ? "All lines normal"
+              : `${affected.length} line${affected.length > 1 ? "s" : ""} affected`}
+          </span>
+        </span>
       )}
     </div>
   );
@@ -528,14 +579,9 @@ export function RouteResultsPanel({
 
   return (
     <div className="flex flex-col">
-      {weather && <WeatherStrip weather={weather} />}
+      <AmbientStatus weather={weather ?? null} />
 
       <div className="p-3">
-        <h3 className="eyebrow mb-2 text-ripple-muted">
-          {itineraries.length === 1
-            ? "Your route"
-            : `${itineraries.length} ways there`}
-        </h3>
         <div className="flex flex-col gap-2">
           {itineraries.map((it, i) => {
             const dev = Math.round((it.duration - fastest) / 60);
@@ -560,68 +606,69 @@ export function RouteResultsPanel({
                   }}
                   aria-expanded={isExp}
                   className={cn(
-                    "flex w-full flex-col gap-1.5 p-3 text-left",
+                    "flex w-full flex-col gap-1 p-3 text-left",
                     isSel ? "bg-brand/5" : "hover:bg-ripple-muted/5",
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-serif text-[22px] font-bold leading-none tracking-tight">
+                  {/* Hero row (§3): the two proven differentiators — ETA and
+                      risk — get the weight. The top card's time is larger. */}
+                  <div className="flex items-start justify-between gap-2">
+                    <span
+                      className={cn(
+                        "font-serif font-bold leading-none tracking-tight",
+                        i === fastestIdx ? "text-[26px]" : "text-[22px]",
+                      )}
+                    >
                       {fmtDuration(it.duration)}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      {i === fastestIdx && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-gold">
-                          <Zap size={11} /> Fastest
-                        </span>
-                      )}
-                      {dev > 0 && (
-                        <span className="data-voice text-xs text-ripple-muted">
-                          +{dev} min
-                        </span>
-                      )}
-                      {showReliableTag && i === mostReliableIdx && (
-                        <span className="text-xs font-semibold text-brand">
-                          Most reliable
-                        </span>
-                      )}
+                      {it.risk && <RiskPill level={it.risk.level} />}
                       <ChevronDown
                         size={15}
                         className={cn(
-                          "text-ripple-muted transition-transform",
+                          "shrink-0 text-ripple-muted transition-transform",
                           isExp && "rotate-180",
                         )}
                       />
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-1">
-                    {modes.map((m, j) => (
-                      <span key={j} className="inline-flex items-center gap-1">
-                        {j > 0 && (
-                          <ArrowRight size={10} className="text-ripple-muted" />
-                        )}
-                        <span
-                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] font-bold text-white"
-                          style={{ background: m.color }}
-                        >
-                          {m.kind === "bus" ? (
-                            <Bus size={11} />
-                          ) : (
-                            <TrainFront size={11} />
+
+                  {/* Ranking tag + mode sequence — one small mono line. */}
+                  <div className="data-voice flex flex-wrap items-center gap-x-1.5 text-[11px] text-ripple-muted">
+                    <span className="font-semibold uppercase tracking-[0.06em] text-brand">
+                      {i === fastestIdx
+                        ? "Fastest"
+                        : showReliableTag && i === mostReliableIdx
+                          ? "Most reliable"
+                          : dev > 0
+                            ? `+${dev} min`
+                            : "Alternative"}
+                    </span>
+                    <span aria-hidden>·</span>
+                    <span className="inline-flex flex-wrap items-center gap-x-1">
+                      {modes.map((m, j) => (
+                        <span key={j} className="inline-flex items-center gap-1">
+                          {j > 0 && (
+                            <ArrowRight
+                              size={9}
+                              className="text-ripple-muted"
+                            />
                           )}
-                          {m.label}
+                          <span style={{ color: m.color }}>{m.label}</span>
                         </span>
-                      </span>
-                    ))}
+                      ))}
+                    </span>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="data-voice text-xs text-ripple-muted">
+
+                  {/* De-emphasised secondary metrics (§3). */}
+                  <div className="mt-0.5 border-t border-[var(--border)] pt-1.5">
+                    <span className="data-voice text-[11px] text-ripple-muted">
                       ${it.fare.toFixed(2)} ·{" "}
                       {it.transfers === 0
                         ? "direct"
                         : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
                       {it.co2Grams != null && ` · ${fmtCo2(it.co2Grams)} CO₂`}
                     </span>
-                    {it.risk && <RiskPill level={it.risk.level} />}
                   </div>
                 </button>
 

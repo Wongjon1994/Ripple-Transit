@@ -45,13 +45,8 @@ function Header() {
     <header className="relative flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4">
       <Link href="/" className="flex items-center gap-2">
         <Waves size={20} className="text-brand" />
-        <div className="leading-tight">
-          <div className="font-serif text-[17px] font-bold tracking-tight">
-            Ripple Transit
-          </div>
-          <div className="eyebrow hidden text-[9px] text-ripple-muted sm:block">
-            Urban mobility intelligence · Singapore
-          </div>
+        <div className="font-serif text-[17px] font-bold tracking-tight">
+          Ripple Transit
         </div>
       </Link>
 

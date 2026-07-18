@@ -11,6 +11,7 @@ import {
   X,
   CalendarClock,
   ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
@@ -239,6 +240,9 @@ export function SearchPanel({
   const utils = trpc.useUtils();
   const [locating, setLocating] = useState(false);
   const [departOpen, setDepartOpen] = useState(false);
+  // Favourite routes collapse to a summary row on the search screen (§2) so
+  // they don't outweigh "Nearest ___" for top-of-fold space.
+  const [favOpen, setFavOpen] = useState(false);
 
   function useCurrentLocation() {
     if (!navigator.geolocation) {
@@ -492,8 +496,24 @@ export function SearchPanel({
 
           {favourites.data && favourites.data.length > 0 && (
             <section>
-              <SectionHeader title="Favourite Routes" href="/preferences" />
-              <div className="flex flex-col">
+              <button
+                onClick={() => setFavOpen((o) => !o)}
+                aria-expanded={favOpen}
+                className="flex w-full items-center justify-between border-b border-[var(--border)] py-2"
+              >
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <Star size={14} className="text-gold" />
+                  Favourites ({favourites.data.length})
+                </span>
+                <ChevronRight
+                  size={14}
+                  className={cn(
+                    "text-ripple-muted transition-transform",
+                    favOpen && "rotate-90",
+                  )}
+                />
+              </button>
+              <div className={cn("flex flex-col", !favOpen && "hidden")}>
                 {favourites.data.map((r) => (
                   <button
                     key={r.id}

@@ -8,7 +8,6 @@ import { NearestPanel } from "../components/NearestPanel.js";
 import { RouteResultsPanel } from "../components/RouteResultsPanel.js";
 import { ActiveRoutePanel } from "../components/ActiveRoutePanel.js";
 import { MapView } from "../components/MapView.js";
-import { MrtStatus } from "../components/MrtStatus.js";
 import { useJourney } from "../lib/journey.js";
 import { usePrefs } from "../lib/prefs.js";
 import { useSearchSession } from "../lib/searchSession.js";
@@ -617,9 +616,8 @@ export function Home() {
 
             {shownTab === "transit" ? (
               <>
-                {/* §13a: line-status risk is only relevant when transit is the
-                    mode being considered — scoped here, not always-visible. */}
-                <MrtStatus />
+                {/* MRT service status now rides the merged ambient line inside
+                    RouteResultsPanel (§3), not a separate row here. */}
                 {route.isError ? (
                 <div className="m-4 rounded-md border border-error/30 bg-error/10 p-3 text-sm text-error">
                   Couldn’t calculate a route. {route.error.message}
