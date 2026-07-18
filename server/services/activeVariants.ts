@@ -209,9 +209,12 @@ export async function buildActiveMode(
   );
 
   // "Sheltered" is only offered when the OSM covered-walkway layer loaded —
-  // no data means no claim, not a hollow badge.
-  const kinds: ActiveVariantKind[] =
-    mode === "walk" ? (shelterGrid ? ["sheltered", "pcn"] : ["pcn"]) : ["pcn"];
+  // no data means no claim, not a hollow badge. Offered for cycle too (a
+  // rain-covered alternative), so both foot modes surface up to 3 options; the
+  // merge below drops it when it coincides with the fastest/PCN route.
+  const kinds: ActiveVariantKind[] = shelterGrid
+    ? ["sheltered", "pcn"]
+    : ["pcn"];
   const variants: ActiveVariant[] = [fastest];
 
   for (const kind of kinds) {
@@ -242,7 +245,8 @@ export async function buildActiveMode(
     else variants.push(v);
   }
 
-  // Display order: fastest, sheltered, pcn (cycle simply has no sheltered).
+  // Display order: fastest, sheltered, pcn (either foot mode may omit a flavour
+  // that merged into another or had no worthwhile detour).
   const order: Record<ActiveVariantKind, number> = {
     fastest: 0,
     sheltered: 1,

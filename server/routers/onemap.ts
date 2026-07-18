@@ -477,8 +477,9 @@ export async function planTransit(
     it.co2Grams = itineraryCo2Grams(it.legs);
   }
 
-  // Re-rank by realized total time, fastest first.
+  // Re-rank by realized total time, fastest first, and show up to 5 options.
   itineraries.sort((a, b) => a.duration - b.duration);
+  itineraries = itineraries.slice(0, 5);
 
   // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
   const driveKm = (haversineMeters(start, end) / 1000) * 1.35;

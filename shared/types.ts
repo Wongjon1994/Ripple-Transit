@@ -130,7 +130,8 @@ export interface Itinerary {
 // ── Active mobility (Phase 14) ────────────────────────────────
 export type ActiveMode = "walk" | "cycle";
 
-/** Route-option flavours. Walk offers all three; cycle skips "sheltered". */
+/** Route-option flavours. Walk and cycle both offer up to all three (a
+ *  rain-covered alternative suits cyclists too); merges drop coinciding ones. */
 export type ActiveVariantKind = "fastest" | "sheltered" | "pcn";
 
 /** One stop-to-stop portion of an active route (multi-stop journeys). */
@@ -159,7 +160,7 @@ export interface ActiveVariant {
 }
 
 export interface ActiveModeRoutes {
-  /** Ordered for display: walk = fastest, sheltered, pcn; cycle = fastest, pcn. */
+  /** Ordered for display: fastest, sheltered, pcn (a mode may omit flavours). */
   variants: ActiveVariant[];
 }
 

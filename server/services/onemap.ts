@@ -348,7 +348,9 @@ export async function oneMapRoute(params: {
     url.searchParams.set("date", `${m}-${d}-${y}`);
     url.searchParams.set("time", `${params.time}:00`);
     url.searchParams.set("maxWalkDistance", "1000");
-    url.searchParams.set("numItineraries", "3");
+    // Ask for more than we show so dedupe (by path, not bus number) still
+    // leaves up to 5 genuinely distinct options.
+    url.searchParams.set("numItineraries", "6");
   }
 
   let res = await fetch(url, {
