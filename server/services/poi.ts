@@ -57,7 +57,7 @@ export const POI_CATEGORIES: Record<PoiCategoryId, CategoryDef> = {
     label: "Dining",
     source: { kind: "dining" },
     disclaimer:
-      "Hygiene grades shown where NEA records match — hours not tracked.",
+      "Hygiene grades from NEA where records match; opening hours from OpenStreetMap where mapped.",
     nameKeys: [],
   },
   clinic: {
@@ -65,7 +65,7 @@ export const POI_CATEGORIES: Record<PoiCategoryId, CategoryDef> = {
     label: "Clinic",
     source: { kind: "datagov", datasetId: "d_548c33ea2d99e29ec63a7cc9edcccedc" },
     disclaimer:
-      "Hours unverified — call ahead before heading down; we never claim “open now”.",
+      "Opening hours from OpenStreetMap where mapped — call ahead to confirm.",
     nameKeys: ["HCI_NAME", "NAME"],
     addressKeys: ["ADDRESS", "BLK_HSE_NO", "STREET_NAME"],
   },

@@ -433,7 +433,7 @@ export async function oneMapActiveRoute(
 export async function oneMapDrive(
   start: LatLng,
   end: LatLng,
-): Promise<{ distanceM: number; durationS: number } | null> {
+): Promise<{ distanceM: number; durationS: number; polyline?: string } | null> {
   const token = await getOneMapToken();
   if (!token) return null;
   const url = new URL(`${BASE}/api/public/routingsvc/route`);
@@ -457,10 +457,15 @@ export async function oneMapDrive(
   if (!res.ok) return null;
   const data = (await res.json()) as {
     route_summary?: { total_time?: number; total_distance?: number };
+    route_geometry?: string;
   };
   const s = data.route_summary;
   if (!s?.total_distance) return null;
-  return { distanceM: s.total_distance, durationS: s.total_time ?? 0 };
+  return {
+    distanceM: s.total_distance,
+    durationS: s.total_time ?? 0,
+    polyline: data.route_geometry,
+  };
 }
 
 /**

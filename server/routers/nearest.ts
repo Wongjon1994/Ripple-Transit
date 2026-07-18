@@ -26,6 +26,7 @@ import {
 import { getAllLineStatuses } from "../db/helpers.js";
 import { nearbyStops, busArrivals } from "../services/lta.js";
 import { safetyFor } from "../services/diningSafety.js";
+import { openingHoursFor } from "../services/openingHours.js";
 import type {
   Itinerary,
   LatLng,
@@ -103,6 +104,33 @@ function applyBrandPrefs(
  * Dining safety gate (addendum §2a): actively-suspended establishments are
  * excluded outright; a hygiene grade attaches only on a confident NEA match.
  */
+/**
+ * Attach OpenStreetMap opening hours to the (already ranked, sliced) results.
+ * Only surfaces on a confident name+proximity match — categories/places OSM
+ * doesn't map simply keep no `hours`. Cell fetches are cached + coalesced.
+ */
+// Opening-hours enrichment is best-effort: bounded so it never delays results
+// by more than this budget. On a cold cell the Overpass fetch may lose the race
+// (results ship without hours) but it keeps warming the cache in the background,
+// so the next query for the same area returns hours instantly.
+const HOURS_BUDGET_MS = 6_000;
+
+async function attachHours(results: NearestResult[]): Promise<NearestResult[]> {
+  if (results.length === 0) return results;
+  const enriched = Promise.all(
+    results.map(async (r) => {
+      const info = await openingHoursFor({ name: r.name, point: r.point }).catch(
+        () => null,
+      );
+      return info ? { ...r, hours: info } : r;
+    }),
+  );
+  const timeout = new Promise<NearestResult[]>((resolve) =>
+    setTimeout(() => resolve(results), HOURS_BUDGET_MS),
+  );
+  return Promise.race([enriched, timeout]);
+}
+
 async function applyDiningSafety<T extends Poi>(
   cat: PoiCategoryId,
   cands: T[],
@@ -206,9 +234,10 @@ export const nearestRouter = router({
         )
       ).filter((r): r is NonNullable<typeof r> => r !== null);
 
-      const results = rankResults(evaluated)
+      const ranked = rankResults(evaluated)
         .slice(0, input.n)
         .map((r) => ({ ...r, disclaimer: def.disclaimer }));
+      const results = await attachHours(ranked);
       rankCache.set(cacheKey, { at: Date.now(), results });
       return { results };
     }),
@@ -288,7 +317,7 @@ export const nearestRouter = router({
       ).filter((r): r is NearestResult => r !== null);
 
       // Detour cost first, then the standard tie-break.
-      const results = [...evaluated]
+      const ranked = [...evaluated]
         .sort((a, b) => {
           const da = a.detourS ?? 0;
           const db = b.detourS ?? 0;
@@ -298,6 +327,7 @@ export const nearestRouter = router({
           return da - db;
         })
         .slice(0, 3);
+      const results = await attachHours(ranked);
       return { results };
     }),
 

@@ -81,4 +81,36 @@ describe("computeRouteRisk", () => {
     expect(heavy.score).toBeGreaterThan(light.score);
     expect(heavy.reasons.some((x) => /Rain/.test(x))).toBe(true);
   });
+
+  it("flags a crowded boarding MRT platform", () => {
+    const crowded: RouteLeg = { ...mrt("EW"), crowd: "h", startStation: "Bugis" };
+    const r = computeRouteRisk(itin([crowded]), dry);
+    expect(r.reasons.some((x) => /[Cc]rowded/.test(x))).toBe(true);
+    expect(r.score).toBeGreaterThanOrEqual(1);
+  });
+
+  it("flags a destination closed on arrival", () => {
+    const r = computeRouteRisk(itin([walk(3), mrt("NS")]), {
+      ...dry,
+      destination: { openAtArrival: false, closingSoon: false, arrivalLabel: "10 pm" },
+    });
+    expect(r.reasons.some((x) => /Closed when you arrive/.test(x))).toBe(true);
+    expect(r.score).toBeGreaterThanOrEqual(3);
+  });
+
+  it("flags a destination closing soon after arrival", () => {
+    const r = computeRouteRisk(itin([walk(3), mrt("NS")]), {
+      ...dry,
+      destination: { openAtArrival: true, closingSoon: true, arrivalLabel: "9:45 pm" },
+    });
+    expect(r.reasons.some((x) => /Closes soon/.test(x))).toBe(true);
+  });
+
+  it("does not flag a destination open through arrival", () => {
+    const r = computeRouteRisk(itin([walk(3), mrt("NS")]), {
+      ...dry,
+      destination: { openAtArrival: true, closingSoon: false, arrivalLabel: "2 pm" },
+    });
+    expect(r.reasons.some((x) => /[Cc]los/.test(x))).toBe(false);
+  });
 });

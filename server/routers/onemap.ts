@@ -23,7 +23,7 @@ import {
   type BusCandidate,
 } from "../services/feasibility.js";
 import { weatherAt } from "../services/weather.js";
-import { computeRouteRisk } from "../services/risk.js";
+import { computeRouteRisk, type RiskContext } from "../services/risk.js";
 import {
   itineraryCo2Grams,
   drivingCo2Grams,
@@ -33,6 +33,7 @@ import {
   incidentsOnPath,
   incidentLabel,
 } from "../services/traffic.js";
+import { rawHoursFor, readOpeningHours } from "../services/openingHours.js";
 import { getAllLineStatuses } from "../db/helpers.js";
 import type {
   Itinerary,
@@ -54,6 +55,8 @@ const routeInput = z.object({
     .string()
     .regex(/^\d{2}:\d{2}$/)
     .optional(),
+  /** Destination establishment name — enables the opening-hours arrival risk. */
+  destName: z.string().max(255).optional(),
 });
 
 function todayParts() {
@@ -237,6 +240,44 @@ async function enrichItineraries(itineraries: Itinerary[]): Promise<void> {
   );
 }
 
+/** SG wall-clock label ("7:15 pm") for an instant. */
+function sgClockLabel(d: Date): string {
+  const sg = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+  let h = sg.getUTCHours();
+  const m = sg.getUTCMinutes();
+  const ap = h < 12 ? "am" : "pm";
+  h = h % 12 || 12;
+  return m === 0 ? `${h} ${ap}` : `${h}:${String(m).padStart(2, "0")} ${ap}`;
+}
+
+/**
+ * Evaluate the destination's OSM hours against this itinerary's arrival time.
+ * Returns undefined unless the open/closed state is definite — we never flag a
+ * risk from indeterminate hours. "Closing soon" = open on arrival but shut 30
+ * minutes later.
+ */
+function destinationArrivalRisk(
+  it: Itinerary,
+  destRaw: string | null,
+): RiskContext["destination"] | undefined {
+  if (!destRaw) return undefined;
+  const lastLeg = it.legs[it.legs.length - 1];
+  const arrivalMs =
+    lastLeg?.endTimeMs ??
+    (it.startTimeMs
+      ? it.startTimeMs + it.duration * 1000
+      : Date.now() + it.duration * 1000);
+  const atArrival = readOpeningHours(destRaw, new Date(arrivalMs));
+  if (!atArrival || typeof atArrival.openNow !== "boolean") return undefined;
+  const soon = readOpeningHours(destRaw, new Date(arrivalMs + 30 * 60 * 1000));
+  return {
+    openAtArrival: atArrival.openNow,
+    closingSoon:
+      atArrival.openNow && !atArrival.alwaysOpen && soon?.openNow === false,
+    arrivalLabel: sgClockLabel(new Date(arrivalMs)),
+  };
+}
+
 /**
  * Full transit-planning pipeline for one origin→destination segment:
  * OneMap routing → dedupe → (optionally) live enrichment → risk/CO₂ →
@@ -253,6 +294,8 @@ export async function planTransit(
   date: string,
   time: string,
   live: boolean,
+  /** Destination establishment name — enables the opening-hours arrival risk. */
+  destName?: string,
 ): Promise<{
   itineraries: Itinerary[];
   weather: WeatherContext | null;
@@ -280,6 +323,11 @@ export async function planTransit(
       .map((l) => l.lineCode),
   );
 
+  // Destination opening hours (only when the To is a named establishment).
+  const destRaw = destName
+    ? await rawHoursFor({ name: destName, point: end }).catch(() => null)
+    : null;
+
   for (const it of itineraries) {
     // Flag bus legs whose road has a live traffic incident.
     const trafficAlerts: { severe: boolean; label: string }[] = [];
@@ -299,6 +347,7 @@ export async function planTransit(
       wet: wx?.wet ?? false,
       disruptedLines,
       trafficAlerts,
+      destination: destinationArrivalRisk(it, destRaw),
     });
     it.co2Grams = itineraryCo2Grams(it.legs);
 
@@ -373,6 +422,7 @@ export const onemapRouter = router({
           date,
           time,
           true,
+          input.destName,
         );
         return { plan: { itineraries }, weather, carbon };
       }

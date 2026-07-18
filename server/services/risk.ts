@@ -5,6 +5,15 @@ export interface RiskContext {
   disruptedLines: Set<string>;
   /** Live traffic incidents affecting this option's bus legs. */
   trafficAlerts?: { severe: boolean; label: string }[];
+  /** Destination opening hours vs this option's arrival time (when the
+   *  destination is a known establishment with mapped OSM hours). */
+  destination?: {
+    openAtArrival: boolean;
+    /** Open on arrival but shuts within the grace window. */
+    closingSoon: boolean;
+    /** Arrival clock label, e.g. "7:15 pm". */
+    arrivalLabel: string;
+  };
 }
 
 /**
@@ -65,6 +74,17 @@ export function computeRouteRisk(
     const severe = ctx.trafficAlerts.some((a) => a.severe);
     score += severe ? 2 : 1;
     reasons.push(ctx.trafficAlerts[0].label);
+  }
+
+  // Destination opening hours vs arrival (only when hours are known).
+  if (ctx.destination) {
+    if (!ctx.destination.openAtArrival) {
+      score += 3;
+      reasons.push(`Closed when you arrive (~${ctx.destination.arrivalLabel})`);
+    } else if (ctx.destination.closingSoon) {
+      score += 1;
+      reasons.push(`Closes soon after you arrive (~${ctx.destination.arrivalLabel})`);
+    }
   }
 
   const walkMin = Math.round(

@@ -18,6 +18,7 @@ import {
   BusFront,
   TriangleAlert,
   Pencil,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
@@ -30,6 +31,7 @@ import type {
   NearestBusStop,
   NearestCategoryId,
   NearestResult,
+  OpeningHours,
 } from "@shared/types.js";
 
 interface CatDef {
@@ -78,6 +80,62 @@ function modeIcon(mode: NearestResult["mode"], size = 12) {
   return <BusFront size={size} />;
 }
 
+/** Compact open/closed line shown under a result name (OSM opening hours). */
+function HoursStatus({ hours }: { hours: OpeningHours }) {
+  const tone =
+    hours.openNow === true
+      ? "text-ok"
+      : hours.openNow === false
+        ? "text-warning"
+        : "text-ripple-muted";
+  const dot =
+    hours.openNow === true
+      ? "bg-ok"
+      : hours.openNow === false
+        ? "bg-warning"
+        : "bg-ripple-muted";
+  return (
+    <span className={cn("mt-0.5 flex items-center gap-1 text-[11px]", tone)}>
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />
+      <span className="truncate">{hours.status}</span>
+    </span>
+  );
+}
+
+/** Expanded seven-day schedule (from today), today's row emphasised. */
+function WeeklyHours({ hours }: { hours: OpeningHours }) {
+  return (
+    <div className="border-t border-[var(--border)] bg-ripple-muted/5 px-3 py-2">
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
+        {hours.week.map((d, i) => (
+          <div key={d.day} className="contents">
+            <span
+              className={cn(
+                "font-mono uppercase tracking-[0.04em]",
+                i === 0 ? "font-bold text-fg" : "text-ripple-muted",
+              )}
+            >
+              {d.day}
+            </span>
+            <span
+              className={cn(
+                "data-voice text-right",
+                d.label === "Closed" ? "text-ripple-muted" : "text-fg",
+                i === 0 && "font-medium",
+              )}
+            >
+              {d.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 text-[10px] text-ripple-muted">
+        Hours from OpenStreetMap · verify before travelling
+      </div>
+    </div>
+  );
+}
+
 /**
  * "Nearest ___" quick recommendations (Phase 15): anchor pills, category
  * chips, top-3 results by real routing time, minimize-on-select strip, and
@@ -114,6 +172,7 @@ export function NearestPanel({
   const [showMore, setShowMore] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [picked, setPicked] = useState<NearestResult | null>(null);
+  const [hoursOpen, setHoursOpen] = useState<string | null>(null);
   const [myLocation, setMyLocation] = useState<LatLng | null>(null);
   const [locating, setLocating] = useState(false);
 
@@ -397,58 +456,86 @@ export function NearestPanel({
           ) : (
             <div className="overflow-hidden rounded-md border border-[var(--border)]">
               {results.map((r, i) => (
-                <button
+                <div
                   key={r.id}
-                  onClick={() => pick(r)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-ripple-muted/5",
-                    i > 0 && "border-t border-[var(--border)]",
-                  )}
+                  className={cn(i > 0 && "border-t border-[var(--border)]")}
                 >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 font-mono text-[10px] font-bold text-brand">
-                    {i + 1}
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm font-medium">
-                    {r.name}
-                    {(r.tag || r.grade) && (
-                      <span className="ml-1.5 inline-flex items-center gap-1 align-middle">
-                        {r.tag && (
-                          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.04em] text-ripple-muted">
-                            {r.tag}
-                          </span>
-                        )}
-                        {r.grade && (
-                          <span
-                            className={cn(
-                              "rounded px-1 font-mono text-[10px] font-bold",
-                              r.grade === "A"
-                                ? "bg-ok/10 text-ok"
-                                : r.grade === "B"
-                                  ? "bg-gold/15 text-gold"
-                                  : "bg-warning/10 text-warning",
-                            )}
-                            title="NEA hygiene grade"
-                          >
-                            {r.grade}
-                          </span>
+                  <div className="flex items-stretch">
+                    <button
+                      onClick={() => pick(r)}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left hover:bg-ripple-muted/5"
+                    >
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 font-mono text-[10px] font-bold text-brand">
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="text-sm font-medium">
+                          {r.name}
+                          {(r.tag || r.grade) && (
+                            <span className="ml-1.5 inline-flex items-center gap-1 align-middle">
+                              {r.tag && (
+                                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.04em] text-ripple-muted">
+                                  {r.tag}
+                                </span>
+                              )}
+                              {r.grade && (
+                                <span
+                                  className={cn(
+                                    "rounded px-1 font-mono text-[10px] font-bold",
+                                    r.grade === "A"
+                                      ? "bg-ok/10 text-ok"
+                                      : r.grade === "B"
+                                        ? "bg-gold/15 text-gold"
+                                        : "bg-warning/10 text-warning",
+                                  )}
+                                  title="NEA hygiene grade"
+                                >
+                                  {r.grade}
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </span>
+                        {r.hours && <HoursStatus hours={r.hours} />}
+                      </span>
+                      <span className="data-voice flex shrink-0 items-center gap-1.5 text-xs text-brand">
+                        {anchor === "route" ? (
+                          <>
+                            +{Math.round((r.detourS ?? 0) / 60)} min detour
+                            <Plus size={13} className="rounded-full bg-brand/10 p-0.5" />
+                          </>
+                        ) : (
+                          <>
+                            {modeIcon(r.mode)} {Math.round(r.durationS / 60)} min ·
+                            ${r.fare.toFixed(r.fare % 1 === 0 ? 0 : 2)}
+                          </>
                         )}
                       </span>
+                    </button>
+                    {r.hours && (
+                      <button
+                        onClick={() =>
+                          setHoursOpen((cur) => (cur === r.id ? null : r.id))
+                        }
+                        aria-label="Opening hours"
+                        aria-expanded={hoursOpen === r.id}
+                        className="flex shrink-0 items-center border-l border-[var(--border)] px-2 text-ripple-muted hover:bg-ripple-muted/5"
+                      >
+                        <Clock size={14} />
+                        <ChevronDown
+                          size={13}
+                          className={cn(
+                            "transition-transform",
+                            hoursOpen === r.id && "rotate-180",
+                          )}
+                        />
+                      </button>
                     )}
-                  </span>
-                  <span className="data-voice flex shrink-0 items-center gap-1.5 text-xs text-brand">
-                    {anchor === "route" ? (
-                      <>
-                        +{Math.round((r.detourS ?? 0) / 60)} min detour
-                        <Plus size={13} className="rounded-full bg-brand/10 p-0.5" />
-                      </>
-                    ) : (
-                      <>
-                        {modeIcon(r.mode)} {Math.round(r.durationS / 60)} min ·
-                        ${r.fare.toFixed(r.fare % 1 === 0 ? 0 : 2)}
-                      </>
-                    )}
-                  </span>
-                </button>
+                  </div>
+                  {r.hours && hoursOpen === r.id && (
+                    <WeeklyHours hours={r.hours} />
+                  )}
+                </div>
               ))}
             </div>
           )}

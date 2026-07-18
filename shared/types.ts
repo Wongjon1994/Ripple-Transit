@@ -187,6 +187,17 @@ export type NearestCategoryId =
 
 export type NearestAnchor = "you" | "destination" | "route";
 
+/** OpenStreetMap opening hours, parsed + evaluated (SG time). Present only on
+ *  a confident name+proximity match to an OSM record — never guessed. */
+export interface OpeningHours {
+  raw: string; // original OSM opening_hours string (transparency)
+  openNow?: boolean; // undefined when today's schedule is indeterminate
+  status: string; // "Open · closes 10 pm" / "Closed · opens 9 am" / "Open 24 hours"
+  alwaysOpen: boolean;
+  todayLabel: string; // e.g. "9 am – 10 pm" or "Closed"
+  week: { day: string; label: string }[]; // 7 entries, from today
+}
+
 export interface NearestResult {
   id: string;
   name: string;
@@ -204,6 +215,8 @@ export interface NearestResult {
   tag?: string;
   /** Dining: NEA hygiene grade, only on a confident record match. */
   grade?: string;
+  /** OSM opening hours, when a confident match exists. */
+  hours?: OpeningHours;
 }
 
 export interface NearestMrtStation {
@@ -267,6 +280,8 @@ export interface TaxiEstimate {
   availability: TaxiAvailability;
   nearbyCount: number;
   waitMin: number;
+  /** Live traffic incident on the driving path, e.g. "Accident on AYE". */
+  trafficAlert?: string;
 }
 
 export const RISK_COLORS: Record<RiskLevel, string> = {

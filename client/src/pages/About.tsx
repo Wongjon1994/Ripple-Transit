@@ -66,7 +66,7 @@ const SOURCES: { name: string; use: string; href: string }[] = [
   },
   {
     name: "OpenStreetMap",
-    use: "Sheltered-walkway network (covered footways) via Overpass",
+    use: "Sheltered-walkway network (covered footways) & establishment opening hours via Overpass",
     href: "https://www.openstreetmap.org/copyright",
   },
   {

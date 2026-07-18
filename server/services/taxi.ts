@@ -1,6 +1,11 @@
 import { env } from "../env.js";
 import { haversineMeters } from "./lta.js";
 import { oneMapDrive } from "./onemap.js";
+import {
+  getTrafficIncidents,
+  incidentsOnPath,
+  incidentLabel,
+} from "./traffic.js";
 import type {
   LatLng,
   TaxiAvailability,
@@ -72,12 +77,21 @@ export async function taxiEstimate(
   origin: LatLng,
   dest: LatLng,
 ): Promise<TaxiEstimate | null> {
-  const [drive, nearbyCount] = await Promise.all([
+  const [drive, nearbyCount, incidents] = await Promise.all([
     oneMapDrive(origin, dest).catch(() => null),
     taxiNearbyCount(origin).catch(() => 0),
+    getTrafficIncidents().catch(() => []),
   ]);
   if (!drive) return null;
   const { availability, waitMin } = classifyAvailability(nearbyCount);
+
+  // Live congestion on the driving path (accident / heavy traffic / breakdown).
+  const hits = incidentsOnPath(
+    { polyline: drive.polyline, start: origin, end: dest },
+    incidents,
+  );
+  const trafficAlert = hits.length ? incidentLabel(hits[0]) : undefined;
+
   return {
     fare: estimateTaxiFare(drive.distanceM),
     durationMin: Math.max(1, Math.round(drive.durationS / 60)),
@@ -85,5 +99,6 @@ export async function taxiEstimate(
     availability,
     nearbyCount,
     waitMin,
+    trafficAlert,
   };
 }

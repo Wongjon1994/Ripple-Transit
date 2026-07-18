@@ -63,6 +63,8 @@ export function Home() {
     points: LatLng[]; // origin first, then each stop in order
     date: string;
     time: string;
+    /** Destination label — drives the opening-hours arrival risk. */
+    destName?: string;
   } | null>(null);
   const [resolving, setResolving] = useState(false);
 
@@ -124,6 +126,7 @@ export function Home() {
           mode: "TRANSIT" as const,
           date: routeParams.date,
           time: routeParams.time,
+          destName: routeParams.destName,
         }
       : (undefined as never),
     {
@@ -238,7 +241,7 @@ export function Home() {
     setActiveSel(0);
     setModeTab(mode);
     const depart = timeIsAuto ? nowParts() : { date, time };
-    setRouteParams({ points, ...depart });
+    setRouteParams({ points, destName: toLabel, ...depart });
   }
 
   function handlePickNearYou(myLocation: LatLng, r: NearestResult) {
@@ -264,7 +267,7 @@ export function Home() {
     setModeTab(r.mode === "transit" ? "transit" : r.mode);
     if (from) {
       const depart = timeIsAuto ? nowParts() : { date, time };
-      setRouteParams({ points: [from, r.point], ...depart });
+      setRouteParams({ points: [from, r.point], destName: r.name, ...depart });
     }
   }
 
@@ -323,7 +326,11 @@ export function Home() {
       setWalkTabStopCode(null);
       // Auto-synced departures read the clock at the moment of search.
       const depart = timeIsAuto ? nowParts() : { date, time };
-      setRouteParams({ points, ...depart });
+      setRouteParams({
+        points,
+        destName: stops[stops.length - 1]?.text,
+        ...depart,
+      });
     } finally {
       setResolving(false);
     }
