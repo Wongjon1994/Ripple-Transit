@@ -54,6 +54,8 @@ const routeInput = z.object({
     .optional(),
   /** Destination establishment name — enables the opening-hours arrival risk. */
   destName: z.string().max(255).optional(),
+  /** When true, date/time is the target ARRIVAL; we solve for the departure. */
+  arriveBy: z.boolean().optional(),
 });
 
 function todayParts() {
@@ -77,6 +79,14 @@ function sgDepartMs(date: string, time: string): number {
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = time.split(":").map(Number);
   return Date.UTC(y, mo - 1, d, h - 8, mi);
+}
+
+/** Inverse of sgDepartMs: an epoch → SG-local { date, time } route params. */
+function msToSgParts(ms: number): { date: string; time: string } {
+  const sg = new Date(ms + 8 * 60 * 60 * 1000);
+  const date = sg.toISOString().slice(0, 10);
+  const time = sg.toISOString().slice(11, 16);
+  return { date, time };
 }
 
 /** Congestion multiplier for a bus ride departing at `boardMs`. */
@@ -534,6 +544,38 @@ export const onemapRouter = router({
     const time = input.time ?? t;
     try {
       if (input.mode === "TRANSIT") {
+        if (input.arriveBy) {
+          // Solve for the departure that lands you by the target arrival: one
+          // timetable pass to estimate the trip length, then a live plan from
+          // the implied departure. `leaveByMs` is when to leave the origin.
+          const targetMs = sgDepartMs(date, time);
+          const est = await planTransit(
+            input.start,
+            input.end,
+            date,
+            time,
+            false,
+            input.destName,
+          );
+          const estDur = est.itineraries[0]?.duration ?? 0;
+          const depParts = msToSgParts(targetMs - estDur * 1000);
+          const { itineraries, weather, carbon } = await planTransit(
+            input.start,
+            input.end,
+            depParts.date,
+            depParts.time,
+            true,
+            input.destName,
+          );
+          const leaveByMs = itineraries[0]?.startTimeMs ?? targetMs - estDur * 1000;
+          return {
+            plan: { itineraries },
+            weather,
+            carbon,
+            leaveByMs,
+            targetArrivalMs: targetMs,
+          };
+        }
         const { itineraries, weather, carbon } = await planTransit(
           input.start,
           input.end,
@@ -542,7 +584,13 @@ export const onemapRouter = router({
           true,
           input.destName,
         );
-        return { plan: { itineraries }, weather, carbon };
+        return {
+          plan: { itineraries },
+          weather,
+          carbon,
+          leaveByMs: null,
+          targetArrivalMs: null,
+        };
       }
       const itineraries = await oneMapRoute({
         start: input.start,
@@ -551,7 +599,13 @@ export const onemapRouter = router({
         date,
         time,
       });
-      return { plan: { itineraries }, weather: null, carbon: null };
+      return {
+        plan: { itineraries },
+        weather: null,
+        carbon: null,
+        leaveByMs: null,
+        targetArrivalMs: null,
+      };
     } catch (err) {
       if (err instanceof TRPCError) throw err;
       throw new TRPCError({

@@ -60,6 +60,9 @@ export function Home() {
   // Depart time follows the device clock until the user edits it manually
   // (editing means they're planning a future trip).
   const [timeIsAuto, setTimeIsAuto] = useState(saved?.timeIsAuto ?? true);
+  // "leave": date/time is the departure. "arrive": it's the target arrival and
+  // the server solves for when to leave.
+  const [departMode, setDepartMode] = useState<"leave" | "arrive">("leave");
   const [selected, setSelected] = useState(saved?.selected ?? 0);
   // Results mode: Transit | Walk | Cycle (all support multi-stop journeys).
   const [modeTab, setModeTab] = useState<ModeTab>(saved?.modeTab ?? "transit");
@@ -72,6 +75,8 @@ export function Home() {
     time: string;
     /** Destination label — drives the opening-hours arrival risk. */
     destName?: string;
+    /** date/time is a target arrival; the server solves the departure. */
+    arriveBy?: boolean;
   } | null>(saved?.routeParams ?? null);
   const [resolving, setResolving] = useState(false);
 
@@ -163,6 +168,7 @@ export function Home() {
           date: routeParams.date,
           time: routeParams.time,
           destName: routeParams.destName,
+          arriveBy: routeParams.arriveBy,
         }
       : (undefined as never),
     {
@@ -190,6 +196,17 @@ export function Home() {
   const route = isMulti ? multiRoute : singleRoute;
 
   const itineraries = route.data?.plan.itineraries ?? [];
+
+  // Arrive-by: the server returns when to leave the origin. Format for the pill.
+  const leaveByMs =
+    !isMulti && routeParams?.arriveBy ? singleRoute.data?.leaveByMs : null;
+  const leaveByLabel = leaveByMs
+    ? new Date(leaveByMs).toLocaleTimeString("en-SG", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+    : null;
 
   // Taxi estimates are point-to-point — hidden for multi-stop journeys.
   const taxi = trpc.taxi.estimate.useQuery(
@@ -360,11 +377,14 @@ export function Home() {
       setModeTab("transit");
       setActiveSel(0);
       setWalkTabStopCode(null);
-      // Auto-synced departures read the clock at the moment of search.
-      const depart = timeIsAuto ? nowParts() : { date, time };
+      // Auto-synced departures read the clock at the moment of search. In
+      // arrive-by mode the date/time is a fixed target, not the clock.
+      const depart =
+        timeIsAuto && departMode === "leave" ? nowParts() : { date, time };
       setRouteParams({
         points,
         destName: stops[stops.length - 1]?.text,
+        arriveBy: departMode === "arrive",
         ...depart,
       });
     } finally {
@@ -491,7 +511,33 @@ export function Home() {
               setTimeIsAuto(false);
             }}
             timeIsAuto={timeIsAuto}
-            onResetNow={() => setTimeIsAuto(true)}
+            onResetNow={() => {
+              setTimeIsAuto(true);
+              setDepartMode("leave");
+            }}
+            departMode={departMode}
+            onDepartMode={(m) => {
+              setDepartMode(m);
+              // Arrive-by needs a concrete target time — stop following the
+              // clock and seed a sensible default (~30 min out) if still auto.
+              if (m === "arrive") {
+                if (timeIsAuto) {
+                  const t = new Date(Date.now() + 30 * 60_000);
+                  setDate(
+                    new Date(t.getTime() + 8 * 3600e3)
+                      .toISOString()
+                      .slice(0, 10),
+                  );
+                  setTime(
+                    new Date(t.getTime() + 8 * 3600e3)
+                      .toISOString()
+                      .slice(11, 16),
+                  );
+                }
+                setTimeIsAuto(false);
+              }
+            }}
+            leaveByLabel={leaveByLabel}
             onSearch={handleSearch}
             canSearch={
               !!fromText.trim() && stops.every((s) => !!s.text.trim())

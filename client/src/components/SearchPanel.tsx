@@ -189,6 +189,9 @@ export function SearchPanel({
   onTime,
   timeIsAuto,
   onResetNow,
+  departMode,
+  onDepartMode,
+  leaveByLabel,
   onSearch,
   canSearch,
   isSearching,
@@ -213,6 +216,11 @@ export function SearchPanel({
   /** True while depart time follows the device clock ("Leave now"). */
   timeIsAuto: boolean;
   onResetNow: () => void;
+  /** Whether date/time means "leave at" or the target "arrive by". */
+  departMode: "leave" | "arrive";
+  onDepartMode: (m: "leave" | "arrive") => void;
+  /** "Leave by 6:05 PM" — shown on the pill once an arrive-by plan resolves. */
+  leaveByLabel?: string | null;
   onSearch: () => void;
   canSearch: boolean;
   isSearching: boolean;
@@ -344,7 +352,14 @@ export function SearchPanel({
         className="flex items-center gap-1.5 self-start rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium hover:bg-ripple-muted/10"
       >
         <CalendarClock size={13} className="text-brand" />
-        {timeIsAuto ? "Leave now" : `Depart ${departLabel(date, time)}`}
+        {departMode === "arrive"
+          ? `Arrive by ${departLabel(date, time)}`
+          : timeIsAuto
+            ? "Leave now"
+            : `Depart ${departLabel(date, time)}`}
+        {departMode === "arrive" && leaveByLabel && (
+          <span className="text-brand">· leave by {leaveByLabel}</span>
+        )}
         <ChevronDown size={12} className="text-ripple-muted" />
       </button>
 
@@ -352,13 +367,31 @@ export function SearchPanel({
         <Modal
           open
           onClose={() => setDepartOpen(false)}
-          title="Departure time"
+          title="When are you travelling?"
         >
           <div className="flex flex-col gap-3">
+            {/* Leave-at vs arrive-by. Choosing arrive-by fixes a custom time. */}
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-ripple-muted/10 p-1">
+              {(["leave", "arrive"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => onDepartMode(m)}
+                  className={cn(
+                    "rounded-md py-1.5 text-xs font-semibold transition-colors",
+                    departMode === m
+                      ? "bg-[var(--surface)] text-brand shadow-sm"
+                      : "text-ripple-muted",
+                  )}
+                >
+                  {m === "leave" ? "Leave at" : "Arrive by"}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="min-w-0">
                 <label className="mb-1 block eyebrow text-ripple-muted">
-                  Depart date
+                  {departMode === "arrive" ? "Arrive date" : "Depart date"}
                 </label>
                 <Input
                   type="date"
@@ -378,9 +411,13 @@ export function SearchPanel({
               </div>
             </div>
             <p className="text-xs text-ripple-muted">
-              {timeIsAuto
-                ? "Following your device clock — pick a date or time to plan ahead."
-                : "Custom departure set — the clock stops following the device."}
+              {departMode === "arrive"
+                ? leaveByLabel
+                  ? `Leave by ${leaveByLabel} to arrive by ${departLabel(date, time)}.`
+                  : "We'll work out when you need to leave to arrive on time."
+                : timeIsAuto
+                  ? "Following your device clock — pick a date or time to plan ahead."
+                  : "Custom departure set — the clock stops following the device."}
             </p>
             <div className="flex gap-2">
               <Button
