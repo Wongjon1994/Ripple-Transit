@@ -17,11 +17,7 @@ import {
   haversineMeters,
   stationCrowd,
 } from "../services/lta.js";
-import {
-  computeBusFeasibility,
-  applyLiveWaiting,
-  type BusCandidate,
-} from "../services/feasibility.js";
+import { classify } from "../services/feasibility.js";
 import { weatherAt } from "../services/weather.js";
 import { computeRouteRisk, type RiskContext } from "../services/risk.js";
 import {
@@ -41,6 +37,7 @@ import type {
   LatLng,
   WeatherContext,
   CarbonBaseline,
+  BusAlternative,
 } from "../../shared/types.js";
 
 const routeInput = z.object({
@@ -70,60 +67,43 @@ function todayParts() {
 // boarding can't be covered by live data, so we fall back to scheduled times.
 const LIVE_HORIZON_MS = 45 * 60 * 1000;
 
-/**
- * Bus-leg feasibility. The candidate set is every interchangeable bus for this
- * leg — services that board at the same stop and reach the same alighting stop.
- * The recommended bus becomes the soonest one you can catch (live timing); the
- * leg's displayed service is updated to match.
- */
-async function enrichBusLeg(
-  it: Itinerary,
+// Peak windows (SG, weekdays): buses run slower in traffic. A live incident on
+// the leg's road adds further delay on top.
+const PEAK_FACTOR = 1.2;
+const INCIDENT_FACTOR = 1.25;
+
+/** Epoch ms for an SG-local depart date/time (UTC+8, no DST). */
+function sgDepartMs(date: string, time: string): number {
+  const [y, mo, d] = date.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  return Date.UTC(y, mo - 1, d, h - 8, mi);
+}
+
+/** Congestion multiplier for a bus ride departing at `boardMs`. */
+function rideDelayFactor(boardMs: number, leg: RouteLeg): number {
+  const sg = new Date(boardMs + 8 * 60 * 60 * 1000);
+  const day = sg.getUTCDay(); // 0 Sun … 6 Sat
+  const hour = sg.getUTCHours() + sg.getUTCMinutes() / 60;
+  const weekday = day >= 1 && day <= 5;
+  const peak =
+    weekday && ((hour >= 7.5 && hour <= 9.5) || (hour >= 17.5 && hour <= 20));
+  let f = peak ? PEAK_FACTOR : 1;
+  if (leg.trafficAlert) f *= INCIDENT_FACTOR;
+  return f;
+}
+
+/** Interchangeable live buses for a leg's boarding stop, soonest first. */
+async function liveCandidatesFor(
   leg: RouteLeg,
-  idx: number,
-  now: number,
-): Promise<void> {
-  const board = leg.busStopCode!;
+): Promise<{ serviceNo: string; etaMs: number }[]> {
+  const board = leg.busStopCode;
   const alight = leg.endBusStopCode;
-
-  // Trips scheduled beyond LTA's live-arrival horizon: the next-3-buses feed
-  // only covers the near term, so live ETAs from now are meaningless for a
-  // boarding an hour out. Fall back to OTP's scheduled board time and flag it.
-  if (leg.startTimeMs != null && leg.startTimeMs - now > LIVE_HORIZON_MS) {
-    leg.busLegFeasibility = {
-      status: "ok",
-      scheduled: true,
-      buffer: 0,
-      eta: new Date(leg.startTimeMs).toISOString(),
-      serviceNo: leg.busNo,
-      walkMinutes: Math.round(
-        (it.legs[idx - 1]?.type === "walk" ? it.legs[idx - 1].duration : 0) / 60,
-      ),
-      alternatives: [],
-    };
-    return;
-  }
-
-  // Time until you actually reach this boarding stop: for the first transit
-  // leg that's just the walk; for buses boarded mid-journey it's everything
-  // before it (walks + rides), so the buffer isn't scored as though you were
-  // standing at the stop right now.
-  const enRoute = it.legs.slice(0, idx).some((l) => l.type !== "walk");
-  const leadSeconds = it.legs
-    .slice(0, idx)
-    .reduce((s, l) => s + l.duration, 0);
-  const prev = it.legs[idx - 1];
-  const walkSeconds = enRoute
-    ? leadSeconds
-    : prev?.type === "walk"
-      ? prev.duration
-      : 0;
+  if (!board) return [];
   try {
     const { services } = await busArrivals(board);
-    const candidates: BusCandidate[] = [];
+    const out: { serviceNo: string; etaMs: number }[] = [];
     await Promise.all(
       services.map(async (s) => {
-        // Keep the leg's own service, plus any service that also reaches the
-        // alighting stop (interchangeable for this leg).
         let reaches = s.serviceNo === leg.busNo;
         if (!reaches && alight) {
           reaches = await serviceConnects(s.serviceNo, board, alight).catch(
@@ -132,40 +112,122 @@ async function enrichBusLeg(
         }
         if (!reaches) return;
         for (const nb of [s.nextBus, s.nextBus2, s.nextBus3]) {
-          if (nb)
-            candidates.push({
+          if (nb?.estimatedArrival)
+            out.push({
               serviceNo: s.serviceNo,
-              eta: nb.estimatedArrival,
+              etaMs: new Date(nb.estimatedArrival).getTime(),
             });
         }
       }),
     );
-    const f = computeBusFeasibility(walkSeconds, candidates, now);
-    if (enRoute) {
-      // If none of LTA's next-3 buses arrive after you reach the stop, live
-      // data simply doesn't cover that horizon — say nothing rather than
-      // flashing a bogus MISS for a bus you were never trying to catch.
-      if (f.status === "miss" || f.status === "unknown") return;
-      f.enRoute = true;
-      f.arriveAtStopMs = now + leadSeconds * 1000;
-      // Restore the human walk time for display; the buffer already accounts
-      // for the full lead time.
-      f.walkMinutes = Math.round(
-        (prev?.type === "walk" ? prev.duration : 0) / 60,
-      );
-    }
-    leg.busLegFeasibility = f;
-    // Recommend the soonest catchable interchangeable bus for this leg.
-    if (f.serviceNo) leg.busNo = f.serviceNo;
+    return out.sort((a, b) => a.etaMs - b.etaMs);
   } catch {
-    leg.busLegFeasibility = {
-      status: "unknown",
-      buffer: 0,
-      eta: null,
-      walkMinutes: Math.round(walkSeconds / 60),
-      alternatives: [],
-    };
+    return [];
   }
+}
+
+/**
+ * Walk the legs from the departure time and compute the REALIZED schedule: each
+ * bus/train boards at the next service at-or-after your chained arrival at that
+ * stop (live within the horizon, otherwise the OTP timetable, never before you
+ * can physically reach it), adding the real wait. Ride times get a peak/incident
+ * congestion factor. Sets each leg's realized start/end, per-bus feasibility
+ * (buffer = the gap you have to the bus you catch — a tight one means an upstream
+ * delay would make you miss it), and the itinerary's total = arrival − depart
+ * (so all waits are included).
+ */
+function realizeSchedule(
+  it: Itinerary,
+  departAtMs: number,
+  now: number,
+  liveByLeg: Map<RouteLeg, { serviceNo: string; etaMs: number }[]>,
+): void {
+  let cursor = departAtMs;
+  let totalWaitMs = 0;
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  it.legs.forEach((leg, idx) => {
+    if (leg.type === "walk" || leg.type === "cycle") {
+      leg.startTimeMs = cursor;
+      cursor += leg.duration * 1000;
+      leg.endTimeMs = cursor;
+      return;
+    }
+
+    const reach = cursor; // when you arrive at this boarding stop/station
+    const schedRide =
+      leg.startTimeMs != null && leg.endTimeMs != null && leg.endTimeMs > leg.startTimeMs
+        ? leg.endTimeMs - leg.startTimeMs
+        : leg.duration * 1000;
+    const walkMinutes = Math.round(
+      (it.legs[idx - 1]?.type === "walk" ? it.legs[idx - 1].duration : 0) / 60,
+    );
+    const enRoute = it.legs.slice(0, idx).some((l) => l.type !== "walk");
+
+    if (leg.type === "bus") {
+      const cands = liveByLeg.get(leg) ?? [];
+      const withinLive = reach - now <= LIVE_HORIZON_MS;
+      // Catchable buses = those arriving at/after you reach the stop (30s grace).
+      const catchable = withinLive
+        ? cands.filter((c) => c.etaMs >= reach - 30_000)
+        : [];
+
+      let board: number;
+      let scheduled = false;
+      let svc = leg.busNo;
+      let alternatives: BusAlternative[] = [];
+
+      if (catchable.length) {
+        board = catchable[0].etaMs;
+        svc = catchable[0].serviceNo;
+        alternatives = catchable.slice(1, 5).map((c) => ({
+          serviceNo: c.serviceNo,
+          eta: iso(c.etaMs),
+          buffer: Math.round((c.etaMs - reach) / 60000),
+          feasibility: classify(Math.round((c.etaMs - reach) / 60000)),
+          reroute: c.serviceNo !== svc,
+        }));
+      } else {
+        // Beyond live coverage (or no catchable live bus): fall back to the OTP
+        // timetable, but never board before you can reach the stop.
+        board = Math.max(leg.startTimeMs ?? reach, reach);
+        scheduled = true;
+      }
+
+      const wait = Math.max(0, board - reach);
+      totalWaitMs += wait;
+      const ride = schedRide * rideDelayFactor(board, leg);
+      const arrive = board + ride;
+      const bufferMin = Math.round((board - reach) / 60000);
+
+      leg.busNo = svc;
+      leg.startTimeMs = board;
+      leg.endTimeMs = arrive;
+      leg.busLegFeasibility = {
+        status: scheduled ? "ok" : classify(bufferMin),
+        scheduled: scheduled || undefined,
+        buffer: bufferMin,
+        eta: iso(board),
+        serviceNo: svc,
+        walkMinutes,
+        alternatives,
+        enRoute: enRoute || undefined,
+        arriveAtStopMs: reach,
+      };
+      cursor = arrive;
+    } else {
+      // MRT: board the next scheduled train at-or-after you reach the platform.
+      const board = Math.max(leg.startTimeMs ?? reach, reach);
+      totalWaitMs += Math.max(0, board - reach);
+      leg.startTimeMs = board;
+      leg.endTimeMs = board + schedRide;
+      cursor = board + schedRide;
+    }
+  });
+
+  it.startTimeMs = departAtMs;
+  it.duration = Math.round((cursor - departAtMs) / 1000);
+  it.waitSeconds = Math.round(totalWaitMs / 1000);
 }
 
 /** Pick the station exit closest to where you head next (best-effort). */
@@ -241,25 +303,52 @@ async function enrichMrtCrowd(
   if (level) leg.crowd = level;
 }
 
-/** Attach live feasibility (bus) and exit + crowd guidance (MRT) to every leg. */
-async function enrichItineraries(itineraries: Itinerary[]): Promise<void> {
-  const now = Date.now();
-  const crowd = await stationCrowd().catch(
-    () => new Map<string, "l" | "m" | "h">(),
-  );
+/**
+ * Enrich MRT legs (exit + crowd), fetch live bus candidates per bus leg, then
+ * chain the realized schedule for each itinerary. Traffic alerts must already be
+ * attached to bus legs (they feed the congestion factor). When `live` is false
+ * (later multi-stop segments), the chain uses the OTP timetable only.
+ */
+async function realizeItineraries(
+  itineraries: Itinerary[],
+  departAtMs: number,
+  now: number,
+  live: boolean,
+): Promise<void> {
+  const crowd = live
+    ? await stationCrowd().catch(() => new Map<string, "l" | "m" | "h">())
+    : new Map<string, "l" | "m" | "h">();
+
   await Promise.all(
-    itineraries.flatMap((it) =>
-      it.legs.map(async (leg, idx) => {
-        if (leg.type === "bus" && leg.busStopCode) {
-          await enrichBusLeg(it, leg, idx, now);
-        } else if (leg.type === "mrt") {
+    itineraries.map(async (it) => {
+      // MRT exit + crowd guidance.
+      await Promise.all(
+        it.legs.map(async (leg, idx) => {
+          if (leg.type !== "mrt") return;
           await Promise.all([
             enrichMrtExit(it, leg, idx),
-            enrichMrtCrowd(leg, crowd),
+            live ? enrichMrtCrowd(leg, crowd) : Promise.resolve(),
           ]);
-        }
-      }),
-    ),
+        }),
+      );
+
+      // Live bus candidates per bus leg (skipped for non-live segments).
+      const liveByLeg = new Map<
+        RouteLeg,
+        { serviceNo: string; etaMs: number }[]
+      >();
+      if (live) {
+        await Promise.all(
+          it.legs
+            .filter((l) => l.type === "bus" && l.busStopCode)
+            .map(async (leg) => {
+              liveByLeg.set(leg, await liveCandidatesFor(leg));
+            }),
+        );
+      }
+
+      realizeSchedule(it, departAtMs, now, liveByLeg);
+    }),
   );
 }
 
@@ -332,13 +421,15 @@ export async function planTransit(
     time,
   });
   itineraries = dedupeItineraries(itineraries);
-  if (live) await enrichItineraries(itineraries);
+
+  const now = Date.now();
+  const departAtMs = sgDepartMs(date, time);
 
   // Context for per-option risk: weather, MRT disruptions, live traffic.
   const [wx, lineStatuses, incidents] = await Promise.all([
     weatherAt(start.lat, start.lng).catch(() => null),
     getAllLineStatuses().catch(() => []),
-    getTrafficIncidents().catch(() => []),
+    live ? getTrafficIncidents().catch(() => []) : Promise.resolve([]),
   ]);
   const disruptedLines = new Set(
     lineStatuses
@@ -346,14 +437,11 @@ export async function planTransit(
       .map((l) => l.lineCode),
   );
 
-  // Destination opening hours (only when the To is a named establishment).
-  const destRaw = destName
-    ? await rawHoursFor({ name: destName, point: end }).catch(() => null)
-    : null;
-
+  // Attach live traffic incidents to affected bus legs BEFORE realizing the
+  // schedule — they feed the congestion factor as well as the risk score.
+  const alertsByIt = new Map<Itinerary, { severe: boolean; label: string }[]>();
   for (const it of itineraries) {
-    // Flag bus legs whose road has a live traffic incident.
-    const trafficAlerts: { severe: boolean; label: string }[] = [];
+    const alerts: { severe: boolean; label: string }[] = [];
     for (const leg of it.legs) {
       if (leg.type !== "bus") continue;
       const hits = incidentsOnPath(
@@ -363,27 +451,33 @@ export async function planTransit(
       if (hits.length) {
         leg.trafficAlert = incidentLabel(hits[0]);
         for (const h of hits)
-          trafficAlerts.push({ severe: h.severe, label: incidentLabel(h) });
+          alerts.push({ severe: h.severe, label: incidentLabel(h) });
       }
     }
+    alertsByIt.set(it, alerts);
+  }
+
+  // Chain the realized schedule (waits + peak/incident congestion; downstream
+  // buses board only after you reach the stop) → sets per-leg times, bus
+  // feasibility, and the wait-inclusive total.
+  await realizeItineraries(itineraries, departAtMs, now, live);
+
+  // Destination opening hours (only when the To is a named establishment).
+  const destRaw = destName
+    ? await rawHoursFor({ name: destName, point: end }).catch(() => null)
+    : null;
+
+  for (const it of itineraries) {
     it.risk = computeRouteRisk(it, {
       wet: wx?.wet ?? false,
       disruptedLines,
-      trafficAlerts,
+      trafficAlerts: alertsByIt.get(it),
       destination: destinationArrivalRisk(it, destRaw),
     });
     it.co2Grams = itineraryCo2Grams(it.legs);
-
-    if (live) {
-      // Fold live bus waiting into the total so timing + "fastest" ranking
-      // reflect the wait you'll actually face, not just the timetable.
-      const { duration, waitSeconds } = applyLiveWaiting(it.legs, it.duration);
-      it.duration = duration;
-      it.waitSeconds = waitSeconds;
-    }
   }
 
-  // Re-rank by (live-adjusted) total time, fastest first.
+  // Re-rank by realized total time, fastest first.
   itineraries.sort((a, b) => a.duration - b.duration);
 
   // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
