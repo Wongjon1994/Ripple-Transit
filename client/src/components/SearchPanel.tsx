@@ -388,7 +388,9 @@ export function SearchPanel({
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            {/* Stack on mobile — native date/time inputs have a wide intrinsic
+                size and overflow a 2-col grid on small iOS screens. */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="min-w-0">
                 <label className="mb-1 block eyebrow text-ripple-muted">
                   {departMode === "arrive" ? "Arrive date" : "Depart date"}

@@ -433,14 +433,21 @@ export async function planTransit(
   weather: WeatherContext | null;
   carbon: CarbonBaseline;
 }> {
-  let itineraries = await oneMapRoute({
-    start,
-    end,
-    mode: "TRANSIT",
-    date,
-    time,
-  });
-  itineraries = dedupeItineraries(itineraries);
+  // OneMap returns at most 3 itineraries per call. A second, walk-tolerant pass
+  // surfaces different path shapes; merged + de-duped by path, that yields up to
+  // 5 genuinely distinct options.
+  const [base, alt] = await Promise.all([
+    oneMapRoute({ start, end, mode: "TRANSIT", date, time }),
+    oneMapRoute({
+      start,
+      end,
+      mode: "TRANSIT",
+      date,
+      time,
+      maxWalkDistance: 1600,
+    }).catch(() => [] as Itinerary[]),
+  ]);
+  let itineraries = dedupeItineraries([...base, ...alt]);
 
   const now = Date.now();
   const departAtMs = sgDepartMs(date, time);

@@ -326,6 +326,9 @@ export async function oneMapRoute(params: {
   mode: "WALK" | "TRANSIT" | "DRIVE" | "CYCLE";
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
+  /** Walk tolerance (m). A larger value surfaces different path shapes so two
+   *  passes can be merged into more distinct options. Default 1000. */
+  maxWalkDistance?: number;
 }): Promise<Itinerary[]> {
   const token = await getOneMapToken();
   if (!token) throw new Error("OneMap token unavailable");
@@ -347,10 +350,9 @@ export async function oneMapRoute(params: {
     url.searchParams.set("mode", "TRANSIT");
     url.searchParams.set("date", `${m}-${d}-${y}`);
     url.searchParams.set("time", `${params.time}:00`);
-    url.searchParams.set("maxWalkDistance", "1000");
-    // Ask for more than we show so dedupe (by path, not bus number) still
-    // leaves up to 5 genuinely distinct options.
-    url.searchParams.set("numItineraries", "6");
+    url.searchParams.set("maxWalkDistance", String(params.maxWalkDistance ?? 1000));
+    // OneMap caps this at 3 (400s above it); we merge a second pass for more.
+    url.searchParams.set("numItineraries", "3");
   }
 
   let res = await fetch(url, {
