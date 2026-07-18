@@ -9,7 +9,7 @@ import {
 } from "react-map-gl/maplibre";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { TrainFront } from "lucide-react";
+import { TrainFront, Route, Navigation } from "lucide-react";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { useTheme } from "../lib/theme.js";
@@ -164,6 +164,8 @@ export function MapView({
   bearing = 0,
   follow,
   followZoom = 18,
+  fitPoints,
+  viewToggle,
 }: {
   origin: LatLng | null;
   destination: LatLng | null;
@@ -182,6 +184,11 @@ export function MapView({
   /** When set, keep this point centered (navigation) instead of fitting bounds. */
   follow?: LatLng | null;
   followZoom?: number;
+  /** Explicit bounds target — fit to these points instead of the default set
+   *  (used by the live journey's current-leg / full-route camera). */
+  fitPoints?: LatLng[] | null;
+  /** Live-journey view toggle rendered in the control stack. */
+  viewToggle?: { mode: "leg" | "route"; onChange: () => void };
 }) {
   const { theme } = useTheme();
   const mapRef = useRef<MapRef | null>(null);
@@ -270,12 +277,19 @@ export function MapView({
 
     map.easeTo({ pitch, bearing, duration: 400 });
 
-    if (allPoints.length >= 2) {
+    // An explicit fit target (journey current-leg / full-route camera) wins
+    // over the default derived set.
+    const fitSet: [number, number][] =
+      fitPoints && fitPoints.length
+        ? fitPoints.map((p) => [p.lng, p.lat] as [number, number])
+        : allPoints;
+
+    if (fitSet.length >= 2) {
       let minLng = Infinity,
         minLat = Infinity,
         maxLng = -Infinity,
         maxLat = -Infinity;
-      for (const [lng, lat] of allPoints) {
+      for (const [lng, lat] of fitSet) {
         minLng = Math.min(minLng, lng);
         minLat = Math.min(minLat, lat);
         maxLng = Math.max(maxLng, lng);
@@ -288,12 +302,12 @@ export function MapView({
         ],
         { padding: 60, maxZoom: FIT_MAX_ZOOM, duration: 600 },
       );
-    } else if (allPoints.length === 1) {
+    } else if (fitSet.length === 1) {
       // A lone endpoint (populating From/To, or "use my location"): never zoom
       // in. Leave the map alone if the point is already on screen; otherwise
       // pan to it, capped at a neighbourhood zoom so it never snaps to street
       // level.
-      const [lng, lat] = allPoints[0];
+      const [lng, lat] = fitSet[0];
       if (!map.getBounds().contains([lng, lat])) {
         map.easeTo({
           center: [lng, lat],
@@ -302,7 +316,8 @@ export function MapView({
         });
       }
     }
-  }, [allPoints, follow, followZoom, pitch, bearing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPoints, fitPoints, follow, followZoom, pitch, bearing]);
 
   const isDark = theme === "dark";
   const handleLoad = (e: { target: MaplibreMap }) => {
@@ -420,6 +435,33 @@ export function MapView({
             <TrainFront size={16} />
           </button>
         </>
+      )}
+
+      {/* Live-journey camera toggle: current leg (tight follow) ↔ full route
+          (fit remaining journey). Always available, including during the walk
+          follow view, where the other controls are hidden. */}
+      {viewToggle && (
+        <button
+          type="button"
+          onClick={viewToggle.onChange}
+          aria-label={
+            viewToggle.mode === "leg" ? "Show full route" : "Show current leg"
+          }
+          title={
+            viewToggle.mode === "leg" ? "Show full route" : "Show current leg"
+          }
+          className="absolute left-[10px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
+          style={{
+            top: follow ? "76px" : "148px",
+            color: viewToggle.mode === "route" ? "var(--brand)" : "var(--fg)",
+          }}
+        >
+          {viewToggle.mode === "leg" ? (
+            <Route size={16} />
+          ) : (
+            <Navigation size={16} />
+          )}
+        </button>
       )}
 
       {legLines.length > 0 && (

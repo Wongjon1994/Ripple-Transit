@@ -28,6 +28,7 @@ import { lineColor, lineName } from "../lib/transit.js";
 import {
   fmtDistance,
   fmtDuration,
+  fmtTime,
   haversineMeters,
   bearingBetween,
   cn,
@@ -104,6 +105,15 @@ export function LiveJourney() {
     start: LatLng;
   } | null>(null);
   const [rerouteLoading, setRerouteLoading] = useState(false);
+  // Map + sheet view: the current leg (tight) or the whole remaining route.
+  const [viewMode, setViewMode] = useState<"leg" | "route">("leg");
+  // Re-render periodically so the ETA and live countdowns stay fresh even while
+  // the user is stationary (waiting at a stop) and GPS isn't updating.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Auto-advance the journey by GPS, for every leg type — walk/cycle when you
   // reach the next point, bus/MRT when you arrive at the alighting stop/station
@@ -194,10 +204,16 @@ export function LiveJourney() {
   const legNum = journey.currentLeg + 1;
   const total = legs.length;
   const isLast = journey.currentLeg >= total - 1;
-  const instr = leg ? instruction(leg) : { title: "", detail: "" };
   const nextLeg = legs[journey.currentLeg + 1];
-  const remainingM =
-    geo.position && leg ? haversineMeters(geo.position, leg.endPoint) : leg?.distance ?? 0;
+  // Remaining distance to the leg end. Clamp to the leg's own length: an
+  // off/fallback GPS fix can otherwise report a straight-line distance longer
+  // than the whole leg (the "3.8km · ~1 min" bug), so never show more than the
+  // planned leg distance.
+  const remainingM = leg
+    ? geo.position
+      ? Math.min(haversineMeters(geo.position, leg.endPoint), leg.distance)
+      : leg.distance
+    : 0;
   const legColor =
     leg?.type === "walk"
       ? "#22c55e"
@@ -208,11 +224,12 @@ export function LiveJourney() {
           : lineColor(leg?.lineCode);
 
   // Walk/cycle legs get a tilted, heading-up 3D navigation view that follows
-  // you; transit legs fall back to the flat overview (whole route).
+  // you — but only in the "current leg" camera mode; the "full route" mode
+  // fits the whole remaining journey instead.
   const walkCamera:
     | { pitch: number; bearing: number; follow: LatLng; followZoom: number }
     | Record<string, never> =
-    leg?.type === "walk" || leg?.type === "cycle"
+    viewMode === "leg" && (leg?.type === "walk" || leg?.type === "cycle")
       ? {
           pitch: 55,
           bearing: geo.position
@@ -243,6 +260,27 @@ export function LiveJourney() {
   // The watched bus looks gone if its ETA has already passed.
   const busDeparted =
     busLeg != null && busEta != null && new Date(busEta).getTime() < Date.now();
+
+  // Journey-wide ETA (§3.1): plan minutes from the current leg onward, projected
+  // onto the wall clock. Refreshed by the 30s tick and by GPS updates.
+  const arrivalMs = Date.now() + remainingMin * 60_000;
+  const arrivalClock = fmtTime(new Date(arrivalMs).toISOString());
+
+  // Live risk (§4): re-evaluate the catch/disruption risk against live data for
+  // the leg in progress (and the bus/MRT one leg ahead).
+  const risk = liveRisk({ leg, busLeg, busMin, remainingM, mrtDisrupted });
+
+  // Camera target (§2): full route fits the remaining journey; current-leg mode
+  // fits the current transit leg (walk/cycle use the follow camera above).
+  const remainingLegPoints = legs
+    .slice(journey.currentLeg)
+    .flatMap((l) => [l.startPoint, l.endPoint]);
+  const fitPoints: LatLng[] | null =
+    viewMode === "route"
+      ? [...remainingLegPoints, journey.destination]
+      : leg && leg.type !== "walk" && leg.type !== "cycle"
+        ? [leg.startPoint, leg.endPoint]
+        : null;
 
   async function handleReroute() {
     const start = geo.position ?? leg?.startPoint ?? journey!.origin;
@@ -278,12 +316,34 @@ export function LiveJourney() {
 
   return (
     <div className="flex h-full flex-col">
+      {/* Journey-wide ETA + progress (§3.1/§3.2): journey-scoped, so it persists
+          unchanged across leg transitions. */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
+        <div className="flex min-w-0 items-center gap-1.5 text-sm">
+          <Clock size={14} className="shrink-0 text-brand" />
+          <span className="text-ripple-muted">Arriving</span>
+          <span className="data-voice font-semibold text-brand">
+            {arrivalClock}
+          </span>
+          <span className="truncate text-ripple-muted">
+            · {remainingMin} min left
+          </span>
+        </div>
+        <ProgressDots total={total} current={journey.currentLeg} />
+      </div>
+
       <div className="relative min-h-0 flex-1">
         <MapView
           origin={journey.origin}
           destination={journey.destination}
           itinerary={journey.itinerary}
           livePosition={geo.position}
+          fitPoints={fitPoints}
+          viewToggle={{
+            mode: viewMode,
+            onChange: () =>
+              setViewMode((m) => (m === "leg" ? "route" : "leg")),
+          }}
           {...walkCamera}
         />
         {!geo.supported && (
@@ -299,66 +359,43 @@ export function LiveJourney() {
       </div>
 
       {/* Guidance sheet */}
-      <div className="shrink-0 border-t border-[var(--border)] bg-[var(--surface)] p-4">
-        <div className="mb-2 flex items-center justify-between text-xs text-ripple-muted">
+      <div className="max-h-[55%] shrink-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="mb-3 flex items-center justify-between text-xs text-ripple-muted">
           <span className="eyebrow">
-            Leg {legNum} of {total}
+            {viewMode === "route" ? "Full route" : `Leg ${legNum} of ${total}`}
           </span>
           <Button variant="ghost" size="sm" onClick={() => end()}>
             <X size={14} /> End
           </Button>
         </div>
 
-        <div className="flex items-start gap-3">
-          <span
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
-            style={{ background: legColor }}
-          >
-            {leg && legIcon(leg.type)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-base font-semibold">{instr.title}</div>
-            <div className="text-sm text-ripple-muted">{instr.detail}</div>
-            {leg?.type === "mrt" && leg.exitName && (
-              <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
-                <DoorOpen size={12} /> {leg.exitName}
-                {leg.exitDistanceM != null && ` · ${fmtDistance(leg.exitDistanceM)}`}
-              </div>
+        {viewMode === "route" ? (
+          <FullStepper legs={legs} current={journey.currentLeg} />
+        ) : (
+          <>
+            <CurrentNextStepper
+              leg={leg}
+              nextLeg={nextLeg}
+              legColor={legColor}
+              remainingM={remainingM}
+            />
+
+            {/* Live status — the single most decision-relevant live fact,
+                promoted to its own tinted container. Escalates to an amber/red
+                risk banner (with an attached re-route CTA) when live data turns
+                the catch tight/missed or a disruption newly applies (§4). */}
+            {risk ? (
+              <RiskBanner
+                risk={risk}
+                loading={rerouteLoading}
+                onReroute={handleReroute}
+              />
+            ) : (
+              <LiveStatus busLeg={busLeg} busMin={busMin} />
             )}
-            <div className="data-voice mt-1 flex items-center gap-1.5 text-xs text-ripple-muted">
-              <Navigation size={12} />
-              {leg?.type === "walk"
-                ? `${fmtDistance(remainingM)} · ~${fmtDuration(leg.duration)}`
-                : `${fmtDuration(leg?.duration ?? 0)}`}
-            </div>
-          </div>
-        </div>
 
-        {busLeg && busMin != null && (
-          <div className="mt-2.5 flex items-center gap-2 rounded-md bg-bus/10 px-3 py-2 text-xs text-bus">
-            <Clock size={14} className="shrink-0" />
-            <span>
-              <span className="font-semibold">Bus {busLeg.busNo}</span>{" "}
-              {busMin === 0 ? "arriving now" : `arrives in ${busMin} min`}
-              {busLeg.startBusStop ? ` at ${busLeg.startBusStop}` : ""}
-            </span>
-          </div>
-        )}
-
-        {mrtDisrupted && (
-          <div className="mt-2 flex items-center gap-2 rounded-md bg-warning/10 px-3 py-2 text-xs font-medium text-warning">
-            <TriangleAlert size={14} className="shrink-0" />
-            {mrtDisrupted.lineCode} line {mrtDisrupted.status}
-            {mrtDisrupted.message ? `: ${mrtDisrupted.message}` : ""}
-          </div>
-        )}
-
-        {nextLeg && (
-          <div className="mt-2.5 flex items-center gap-2 rounded-md bg-ripple-muted/5 px-3 py-1.5 text-xs text-ripple-muted">
-            <span className="font-medium">Next:</span>
-            {legIcon(nextLeg.type, 13)}
-            {instruction(nextLeg).title}
-          </div>
+            {nextLeg && <NextPreview leg={nextLeg} />}
+          </>
         )}
 
         <div className="mt-3 flex gap-2">
@@ -373,23 +410,22 @@ export function LiveJourney() {
           </Button>
         </div>
 
-        {(busLeg || mrtLeg) && (
-          <Button
-            variant="outline"
-            className={cn(
-              "mt-2 w-full",
-              busDeparted && "border-warning/50 text-warning",
-            )}
+        {/* Quiet secondary re-route — the default, no-risk affordance. When a
+            live risk is flagged the prominent attached CTA in RiskBanner takes
+            over, so this is hidden to avoid a duplicate. */}
+        {(busLeg || mrtLeg) && !risk && viewMode === "leg" && (
+          <button
             onClick={handleReroute}
             disabled={rerouteLoading}
+            className="mt-2.5 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-ripple-muted hover:text-brand"
           >
             {rerouteLoading ? (
-              <Loader2 size={15} className="animate-spin" />
+              <Loader2 size={13} className="animate-spin" />
             ) : (
-              <RotateCcw size={15} />
+              <RotateCcw size={13} />
             )}
             {busDeparted ? "Missed it? Find a better route" : "Re-route from here"}
-          </Button>
+          </button>
         )}
       </div>
 
@@ -436,6 +472,290 @@ export function LiveJourney() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+// ── Live-companion pieces ─────────────────────────────────────
+type RiskInfo = { level: "tight" | "miss"; headline: string; caption: string };
+
+/**
+ * Re-evaluate catch/disruption risk against live data for the leg in progress
+ * (and the bus/MRT one leg ahead). Amber = tight, red = miss; null = no risk.
+ */
+function liveRisk({
+  leg,
+  busLeg,
+  busMin,
+  remainingM,
+  mrtDisrupted,
+}: {
+  leg: RouteLeg | undefined;
+  busLeg: RouteLeg | undefined;
+  busMin: number | null;
+  remainingM: number;
+  mrtDisrupted: { lineCode: string; status: string; message?: string } | undefined;
+}): RiskInfo | null {
+  // Heading to a bus (not already riding it) with a live arrival: re-score the
+  // catch. The bus can now be arriving sooner than the plan assumed.
+  if (leg && leg.type !== "bus" && busLeg && busMin != null) {
+    const walkMin = remainingM / 80; // ~80 m/min on foot
+    const buffer = busMin - walkMin;
+    if (buffer < 0)
+      return {
+        level: "miss",
+        headline: `Bus arriving in ${busMin} min — you may miss it`,
+        caption: "coming sooner than planned — consider the next one",
+      };
+    if (buffer < 2)
+      return {
+        level: "tight",
+        headline: `Bus now arriving in ${busMin} min — tight`,
+        caption: "you may not make it at this pace",
+      };
+  }
+  if (mrtDisrupted)
+    return {
+      level: "tight",
+      headline: `${mrtDisrupted.lineCode} line ${mrtDisrupted.status}`,
+      caption: mrtDisrupted.message || "expect delays on the line ahead",
+    };
+  return null;
+}
+
+/** At-a-glance progress across the N legs (replaces the "Leg X of N" text). */
+function ProgressDots({ total, current }: { total: number; current: number }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      {Array.from({ length: total }, (_, i) => (
+        <span
+          key={i}
+          className={cn(
+            "h-1 rounded-full transition-all",
+            i < current
+              ? "w-2.5 bg-brand/60"
+              : i === current
+                ? "w-4 bg-brand"
+                : "w-2.5 bg-ripple-muted/30",
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Current leg: full-size filled node (with a "you are here" halo), title,
+ *  from/to detail, exit badge (MRT), and distance · duration. */
+function CurrentNextStepper({
+  leg,
+  nextLeg,
+  legColor,
+  remainingM,
+}: {
+  leg: RouteLeg | undefined;
+  nextLeg: RouteLeg | undefined;
+  legColor: string;
+  remainingM: number;
+}) {
+  if (!leg) return null;
+  const instr = instruction(leg);
+  const onFoot = leg.type === "walk" || leg.type === "cycle";
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
+          style={{ background: legColor, boxShadow: `0 0 0 5px ${legColor}33` }}
+        >
+          {legIcon(leg.type)}
+        </span>
+        {nextLeg && (
+          <span className="mt-1 min-h-[14px] w-0.5 flex-1 bg-[var(--border)]" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-base font-semibold">{instr.title}</div>
+        <div className="text-sm text-ripple-muted">{instr.detail}</div>
+        {leg.type === "mrt" && leg.exitName && (
+          <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
+            <DoorOpen size={12} /> {leg.exitName}
+            {leg.exitDistanceM != null && ` · ${fmtDistance(leg.exitDistanceM)}`}
+          </div>
+        )}
+        <div className="data-voice mt-1 flex items-center gap-1.5 text-xs text-ripple-muted">
+          <Navigation size={12} />
+          {onFoot
+            ? `${fmtDistance(remainingM)} · ~${fmtDuration(leg.duration)}`
+            : fmtDuration(leg.duration)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Dimmed one-line preview of the next leg, connected to the current node. */
+function NextPreview({ leg }: { leg: RouteLeg }) {
+  return (
+    <div className="mt-2.5 flex items-center gap-3 opacity-55">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--border)] text-ripple-muted">
+        {legIcon(leg.type, 12)}
+      </span>
+      <span className="truncate text-xs text-ripple-muted">
+        Then {instruction(leg).title} · {fmtDuration(leg.duration)}
+      </span>
+    </div>
+  );
+}
+
+/** Promoted live-status container (no risk): the current live fact, icon-led,
+ *  two-line. Renders nothing when there's no live signal. */
+function LiveStatus({
+  busLeg,
+  busMin,
+}: {
+  busLeg: RouteLeg | undefined;
+  busMin: number | null;
+}) {
+  if (!busLeg || busMin == null) return null;
+  return (
+    <div className="mt-2.5 flex items-center gap-2.5 rounded-lg bg-bus/10 px-3 py-2.5">
+      <Clock size={18} className="shrink-0 text-bus" />
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-bus">
+          Bus {busLeg.busNo}{" "}
+          {busMin === 0 ? "arriving now" : `arrives in ${busMin} min`}
+        </div>
+        <div className="data-voice text-[11px] text-bus/80">
+          {busLeg.startBusStop ? `at ${busLeg.startBusStop} · ` : ""}live
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Escalated risk banner (§4): tinted amber/red, icon-led, with its own
+ *  attached re-route CTA — the prominent state that overrides the quiet link. */
+function RiskBanner({
+  risk,
+  loading,
+  onReroute,
+}: {
+  risk: RiskInfo;
+  loading: boolean;
+  onReroute: () => void;
+}) {
+  const miss = risk.level === "miss";
+  const tone = miss
+    ? { bg: "bg-error/10", border: "border-error/30", fg: "text-error" }
+    : { bg: "bg-warning/10", border: "border-warning/30", fg: "text-warning" };
+  return (
+    <div
+      className={cn("mt-2.5 rounded-lg border p-2.5", tone.bg, tone.border)}
+    >
+      <div className="flex items-start gap-2">
+        <TriangleAlert size={18} className={cn("shrink-0", tone.fg)} />
+        <div className="min-w-0">
+          <div className={cn("text-sm font-semibold", tone.fg)}>
+            {risk.headline}
+          </div>
+          <div className={cn("data-voice text-[11px] opacity-80", tone.fg)}>
+            {risk.caption}
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={onReroute}
+        disabled={loading}
+        className={cn(
+          "mt-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-semibold text-white",
+          miss ? "bg-error" : "bg-warning",
+        )}
+      >
+        {loading ? (
+          <Loader2 size={13} className="animate-spin" />
+        ) : (
+          <RotateCcw size={13} />
+        )}
+        Re-route from here
+      </button>
+    </div>
+  );
+}
+
+/** Full-journey completion stepper (§3a) — every leg's done/current/upcoming
+ *  state, keeping the mode icon and adding a completion badge / halo. Lives in
+ *  the map toggle's "full route" state. */
+function FullStepper({ legs, current }: { legs: RouteLeg[]; current: number }) {
+  return (
+    <div className="flex flex-col">
+      {legs.map((l, i) => {
+        const done = i < current;
+        const isCurrent = i === current;
+        const instr = instruction(l);
+        const color =
+          l.type === "walk"
+            ? "#22c55e"
+            : l.type === "cycle"
+              ? "#0ea5e9"
+              : l.type === "bus"
+                ? "#3b82f6"
+                : lineColor(l.lineCode);
+        return (
+          <div key={i} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <span
+                className={cn(
+                  "relative flex shrink-0 items-center justify-center rounded-full",
+                  isCurrent ? "h-9 w-9" : "h-7 w-7",
+                )}
+                style={
+                  done || isCurrent
+                    ? {
+                        background: color,
+                        color: "#fff",
+                        boxShadow: isCurrent ? `0 0 0 5px ${color}33` : undefined,
+                      }
+                    : {
+                        background: "transparent",
+                        border: "1.5px solid var(--border)",
+                        color: "var(--muted)",
+                      }
+                }
+              >
+                {legIcon(l.type, isCurrent ? 16 : 13)}
+                {done && (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-ok ring-2 ring-[var(--surface)]">
+                    <Check size={9} strokeWidth={3} className="text-white" />
+                  </span>
+                )}
+              </span>
+              {i < legs.length - 1 && (
+                <span className="my-1 min-h-[14px] w-0.5 flex-1 bg-[var(--border)]" />
+              )}
+            </div>
+            <div
+              className={cn(
+                "min-w-0 flex-1 pb-3",
+                !done && !isCurrent && "opacity-55",
+              )}
+            >
+              <div
+                className={cn(
+                  "text-sm",
+                  isCurrent ? "font-semibold text-[var(--fg)]" : "text-[var(--fg)]",
+                  done && "text-ripple-muted",
+                )}
+              >
+                {instr.title}
+              </div>
+              <div className="data-voice text-[11px] text-ripple-muted">
+                {fmtDuration(l.duration)}
+                {isCurrent ? " · current" : done ? " · done" : ""}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
