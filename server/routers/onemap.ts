@@ -66,6 +66,10 @@ function todayParts() {
   return { date, time };
 }
 
+// LTA's live BusArrival only returns the next ~3 buses; beyond this horizon a
+// boarding can't be covered by live data, so we fall back to scheduled times.
+const LIVE_HORIZON_MS = 45 * 60 * 1000;
+
 /**
  * Bus-leg feasibility. The candidate set is every interchangeable bus for this
  * leg — services that board at the same stop and reach the same alighting stop.
@@ -80,6 +84,25 @@ async function enrichBusLeg(
 ): Promise<void> {
   const board = leg.busStopCode!;
   const alight = leg.endBusStopCode;
+
+  // Trips scheduled beyond LTA's live-arrival horizon: the next-3-buses feed
+  // only covers the near term, so live ETAs from now are meaningless for a
+  // boarding an hour out. Fall back to OTP's scheduled board time and flag it.
+  if (leg.startTimeMs != null && leg.startTimeMs - now > LIVE_HORIZON_MS) {
+    leg.busLegFeasibility = {
+      status: "ok",
+      scheduled: true,
+      buffer: 0,
+      eta: new Date(leg.startTimeMs).toISOString(),
+      serviceNo: leg.busNo,
+      walkMinutes: Math.round(
+        (it.legs[idx - 1]?.type === "walk" ? it.legs[idx - 1].duration : 0) / 60,
+      ),
+      alternatives: [],
+    };
+    return;
+  }
+
   // Time until you actually reach this boarding stop: for the first transit
   // leg that's just the walk; for buses boarded mid-journey it's everything
   // before it (walks + rides), so the buffer isn't scored as though you were

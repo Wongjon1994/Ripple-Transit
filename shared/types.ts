@@ -42,6 +42,10 @@ export interface BusLegFeasibility {
   enRoute?: boolean;
   /** Projected arrival time at the boarding stop (epoch ms), when enRoute. */
   arriveAtStopMs?: number;
+  /** True when the boarding time is beyond LTA's live-arrival horizon (a trip
+   *  scheduled for later): `eta` is the OTP timetable time, not a live arrival,
+   *  and must be labelled "scheduled". */
+  scheduled?: boolean;
 }
 
 export interface RouteLeg {

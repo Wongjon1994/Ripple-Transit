@@ -19,6 +19,7 @@ import {
   Users,
   Navigation,
   Bookmark,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -199,6 +200,40 @@ function BusFeasibility({ leg, f }: { leg: RouteLeg; f: BusLegFeasibility }) {
   const [showAlts, setShowAlts] = useState(false);
   const [showArrivals, setShowArrivals] = useState(false);
   const [chosen, setChosen] = useState<BusAlternative | null>(null);
+
+  // Trip scheduled beyond LTA's live horizon — show the timetable time, clearly
+  // flagged, rather than a misleading live arrival from now. Live board is still
+  // offered (it becomes accurate closer to departure).
+  if (f.scheduled) {
+    return (
+      <div className="mt-2.5">
+        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-full bg-mrt/10 px-2.5 py-0.5 text-xs font-semibold text-mrt">
+          <CalendarClock size={12} />
+          {f.eta ? `Departs ~${fmtTime(f.eta)}` : "Scheduled"} · scheduled
+        </span>
+        <div className="mt-1 text-xs text-ripple-muted">
+          Timetable estimate — live arrivals appear within ~45 min of departure.
+        </div>
+        {leg.busStopCode && (
+          <button
+            onClick={() => setShowArrivals((s) => !s)}
+            aria-expanded={showArrivals}
+            className="mt-1.5 text-xs font-semibold text-brand hover:underline"
+          >
+            {showArrivals ? "Hide live board" : "Live board"}
+          </button>
+        )}
+        {showArrivals && leg.busStopCode && (
+          <div className="mt-2">
+            <LiveArrivals
+              busStopCode={leg.busStopCode}
+              highlightService={leg.busNo}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const active = chosen
     ? {

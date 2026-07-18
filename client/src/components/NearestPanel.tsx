@@ -19,7 +19,9 @@ import {
   TriangleAlert,
   Pencil,
   Clock,
+  SlidersHorizontal,
 } from "lucide-react";
+import { Link } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -304,6 +306,12 @@ export function NearestPanel({
           The transit category offers Near you / Near destination only. */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="eyebrow text-ripple-muted">Nearest ___</span>
+        <Link
+          href="/preferences"
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand hover:underline"
+        >
+          <SlidersHorizontal size={12} /> Preferences
+        </Link>
       </div>
       {(canDestination || canRoute) && (
         <div className="mb-2 flex gap-1" role="radiogroup" aria-label="Anchor">

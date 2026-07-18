@@ -54,7 +54,10 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
       className={cn(
         // text-base (16px) below md: iOS Safari zooms the page into any focused
         // text input under 16px — that's the "map auto-zoom" on From/To.
-        "h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-base text-[var(--fg)] placeholder:text-ripple-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:text-sm",
+        // min-w-0 lets native date/time inputs shrink to their grid/flex cell
+        // instead of overflowing their intrinsic min-width (the modal border
+        // overlap on iOS).
+        "h-10 w-full min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-base text-[var(--fg)] placeholder:text-ripple-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:text-sm",
         className,
       )}
       {...props}

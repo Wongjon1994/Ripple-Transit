@@ -19,16 +19,17 @@ const ATM_BANKS = ["DBS", "POSB", "OCBC", "UOB", "Standard Chartered", "HSBC"];
 const WALK_OPTIONS = [10, 15, 20] as const;
 
 /**
- * Favourites — places and routes in one tab, plus the Phase 15 Preferences
- * that tune the "Nearest ___" quick recommendations.
+ * Preferences — the tab that tunes the "Nearest ___" quick recommendations
+ * (default chips, walking tolerance, brand filters), alongside saved places and
+ * favourite routes. Preferences lead since they're the tab's namesake.
  */
 export function Favourites() {
   return (
-    <PageShell title="Favourites">
+    <PageShell title="Preferences">
       <div className="flex flex-col gap-8">
+        <PreferencesSection />
         <SavedLocationsSection />
         <FavouriteRoutesSection />
-        <PreferencesSection />
       </div>
     </PageShell>
   );

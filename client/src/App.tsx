@@ -35,7 +35,7 @@ function Header() {
 
   const nav = [
     { href: "/", label: "Map" },
-    { href: "/favourites", label: "Favourites" },
+    { href: "/preferences", label: "Preferences" },
     { href: "/insights", label: "Insights" },
     { href: "/about", label: "About" },
     { href: "/settings", label: "Settings" },
@@ -189,10 +189,13 @@ export function App() {
           <Route path="/journey" component={LiveJourney} />
           <Route path="/login" component={Login} />
           <Route path="/about" component={About} />
-          <Route path="/favourites">
+          <Route path="/preferences">
             <RequireAuth>
               <Favourites />
             </RequireAuth>
+          </Route>
+          <Route path="/favourites">
+            <Redirect to="/preferences" />
           </Route>
           <Route path="/insights">
             <RequireAuth>
@@ -201,10 +204,10 @@ export function App() {
           </Route>
           {/* Old tab paths → their merged homes */}
           <Route path="/saved-locations">
-            <Redirect to="/favourites" />
+            <Redirect to="/preferences" />
           </Route>
           <Route path="/favourite-routes">
-            <Redirect to="/favourites" />
+            <Redirect to="/preferences" />
           </Route>
           <Route path="/impact">
             <Redirect to="/insights" />

@@ -77,8 +77,13 @@ export function applyLiveWaiting(
   now: number = Date.now(),
 ): { duration: number; waitSeconds: number | undefined } {
   const sumLegs = legs.reduce((s, l) => s + l.duration, 0);
+  // Only fold in a LIVE first-bus wait; scheduled-timetable legs (trips planned
+  // beyond the live horizon) keep OTP's duration unchanged.
   const bus = legs.find(
-    (l) => l.type === "bus" && l.busLegFeasibility?.eta,
+    (l) =>
+      l.type === "bus" &&
+      l.busLegFeasibility?.eta &&
+      !l.busLegFeasibility.scheduled,
   );
   const f = bus?.busLegFeasibility;
   if (!bus || !f || !f.eta) {

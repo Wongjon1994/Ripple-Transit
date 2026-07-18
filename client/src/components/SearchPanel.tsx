@@ -356,7 +356,7 @@ export function SearchPanel({
         >
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-2">
-              <div>
+              <div className="min-w-0">
                 <label className="mb-1 block eyebrow text-ripple-muted">
                   Depart date
                 </label>
@@ -366,7 +366,7 @@ export function SearchPanel({
                   onChange={(e) => onDate(e.target.value)}
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="mb-1 block eyebrow text-ripple-muted">
                   Time
                 </label>
@@ -423,7 +423,7 @@ export function SearchPanel({
         <div className="mt-1 flex flex-col gap-4">
           {saved.data && saved.data.length > 0 && (
             <section>
-              <SectionHeader title="Saved Locations" href="/favourites" />
+              <SectionHeader title="Saved Locations" href="/preferences" />
               <div className="flex flex-col">
                 {saved.data.map((loc) => (
                   <button
@@ -453,7 +453,7 @@ export function SearchPanel({
 
           {favourites.data && favourites.data.length > 0 && (
             <section>
-              <SectionHeader title="Favourite Routes" href="/favourites" />
+              <SectionHeader title="Favourite Routes" href="/preferences" />
               <div className="flex flex-col">
                 {favourites.data.map((r) => (
                   <button

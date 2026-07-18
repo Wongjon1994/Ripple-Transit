@@ -34,9 +34,9 @@ import {
 } from "../lib/utils.js";
 import type { RouteLeg, Itinerary, LatLng } from "@shared/types.js";
 
-const ARRIVE_THRESHOLD_M = 35; // walk/cycle: you're on foot, GPS is tight
-const ARRIVE_TRANSIT_M = 120; // bus/MRT: station GPS is coarser and you arrive fast
-const DEPART_MARGIN_M = 60; // must travel this far past the arrival ring before an arrival counts
+const ARRIVE_THRESHOLD_M = 45; // walk/cycle: you're on foot, GPS is fairly tight
+const ARRIVE_TRANSIT_M = 150; // bus/MRT: station GPS is coarser and you arrive fast
+const MIN_MOVE_M = 20; // must have moved this far since the leg began before an arrival counts
 
 function legIcon(type: RouteLeg["type"], size = 20) {
   if (type === "walk") return <Footprints size={size} />;
@@ -69,13 +69,11 @@ export function LiveJourney() {
   const active = !!journey && journey.status === "active";
   const geo = useGeolocation(active);
   const logged = useRef(false);
-  // Tracks, per leg, whether we've actually travelled away from the leg's end
-  // point — so an arrival only counts after real movement, never from GPS jitter
-  // at the boarding point (which would skip a leg).
-  const departedLeg = useRef<{ idx: number; departed: boolean }>({
-    idx: -1,
-    departed: false,
-  });
+  // Position where the current leg began, so an arrival only counts once we've
+  // actually moved (real travel, not GPS jitter). Survives GPS gaps — e.g. an
+  // underground MRT leg where the first fix reappears near the destination
+  // still shows a large move from the boarding point, so it advances.
+  const legStart = useRef<{ idx: number; pos: LatLng } | null>(null);
   const logTrip = trpc.sustainability.logTrip.useMutation();
 
   const legs = journey?.itinerary.legs ?? [];
@@ -114,23 +112,25 @@ export function LiveJourney() {
   useEffect(() => {
     if (!journey || !leg || !geo.position || journey.status !== "active") return;
     const idx = journey.currentLeg;
+
+    // Anchor the leg's starting position on the first fix after it becomes
+    // current.
+    if (!legStart.current || legStart.current.idx !== idx) {
+      legStart.current = { idx, pos: geo.position };
+    }
+
     const arriveAt =
       leg.type === "walk" || leg.type === "cycle"
         ? ARRIVE_THRESHOLD_M
         : ARRIVE_TRANSIT_M;
     const dist = haversineMeters(geo.position, leg.endPoint);
+    const moved = haversineMeters(legStart.current.pos, geo.position);
 
-    // New leg → reset the departure gate.
-    if (departedLeg.current.idx !== idx) {
-      departedLeg.current = { idx, departed: false };
-    }
-    // Arm the arrival check only once we've clearly moved away from the
-    // destination. Very short legs never arm and fall back to the manual button
-    // — safer than risking a false skip.
-    if (dist > arriveAt + DEPART_MARGIN_M) departedLeg.current.departed = true;
-
-    if (departedLeg.current.departed && dist < arriveAt) {
-      departedLeg.current = { idx: idx + 1, departed: false };
+    // Advance once you're at the leg's end AND have actually moved since it
+    // began — so we never skip a leg from jitter, but any real progress
+    // (including a short transfer) still auto-advances.
+    if (dist < arriveAt && moved >= MIN_MOVE_M) {
+      legStart.current = { idx: idx + 1, pos: geo.position };
       advance();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
