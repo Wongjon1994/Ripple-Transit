@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { Link } from "wouter";
+import { StatusBadge } from "./StatusBadge.js";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -495,19 +496,17 @@ export function NearestPanel({
                                 </span>
                               )}
                               {r.grade && (
-                                <span
-                                  className={cn(
-                                    "rounded px-1 font-mono text-[10px] font-bold",
+                                <StatusBadge
+                                  tier={
                                     r.grade === "A"
-                                      ? "bg-ok/10 text-ok"
+                                      ? "good"
                                       : r.grade === "B"
-                                        ? "bg-gold/15 text-gold"
-                                        : "bg-warning/10 text-warning",
-                                  )}
-                                  title="NEA hygiene grade"
-                                >
-                                  {r.grade}
-                                </span>
+                                        ? "caution"
+                                        : "block"
+                                  }
+                                  label={r.grade}
+                                  className="align-middle"
+                                />
                               )}
                             </span>
                           )}

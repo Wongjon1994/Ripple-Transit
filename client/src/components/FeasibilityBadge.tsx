@@ -1,6 +1,14 @@
 import { Check, AlertTriangle, X, HelpCircle } from "lucide-react";
 import type { FeasibilityStatus } from "@shared/types.js";
 import { cn } from "../lib/utils.js";
+import { StatusBadge, type StatusTier } from "./StatusBadge.js";
+
+const TIER_OF: Record<FeasibilityStatus, StatusTier> = {
+  ok: "good",
+  tight: "caution",
+  miss: "block",
+  unknown: "neutral",
+};
 
 const CONFIG: Record<
   FeasibilityStatus,
@@ -47,7 +55,7 @@ const CONFIG: Record<
   },
 };
 
-/** Compact pill — used in alternative rows and inline contexts. */
+/** Compact pill — the unified StatusBadge (§5), with the buffer folded in. */
 export function FeasibilityBadge({
   status,
   buffer,
@@ -57,25 +65,16 @@ export function FeasibilityBadge({
   buffer?: number;
   className?: string;
 }) {
-  const { label, icon: Icon, pill } = CONFIG[status];
+  const bufferText =
+    typeof buffer === "number" && status !== "unknown"
+      ? ` · ${buffer >= 0 ? `${buffer} min` : `${Math.abs(buffer)} min short`}`
+      : "";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold",
-        pill,
-        className,
-      )}
-      role="status"
-      aria-label={`Feasibility: ${label}`}
-    >
-      <Icon size={13} strokeWidth={2.5} aria-hidden />
-      {label}
-      {typeof buffer === "number" && status !== "unknown" && (
-        <span className="font-normal opacity-80">
-          {buffer >= 0 ? `${buffer} min` : `${Math.abs(buffer)} min short`}
-        </span>
-      )}
-    </span>
+    <StatusBadge
+      tier={TIER_OF[status]}
+      label={CONFIG[status].label + bufferText}
+      className={className}
+    />
   );
 }
 

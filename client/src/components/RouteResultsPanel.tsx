@@ -36,6 +36,7 @@ import { fmtDuration, fmtDistance, fmtTime, cn } from "../lib/utils.js";
 import { lineColor, lineName } from "../lib/transit.js";
 import { trpc } from "../lib/trpc.js";
 import { FeasibilityBadge, FeasibilityCallout } from "./FeasibilityBadge.js";
+import { StatusBadge, riskTier } from "./StatusBadge.js";
 import { LiveArrivals } from "./LiveArrivals.js";
 import { TaxiCard } from "./TaxiCard.js";
 import { Button, Card } from "./ui.js";
@@ -157,7 +158,9 @@ function LegStep({
 
         {leg.type === "mrt" && leg.exitName && (
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
+            {/* Wayfinding, not a warning (§5): neutral cyan, never the red
+                MRT-mode colour it used to borrow. */}
+            <span className="inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
               <DoorOpen size={12} /> {leg.exitName}
               {leg.exitDistanceM != null &&
                 ` · ${fmtDistance(leg.exitDistanceM)}`}
@@ -407,16 +410,7 @@ function journeyModes(it: Itinerary): ModeChip[] {
 }
 
 function RiskPill({ level }: { level: RiskLevel }) {
-  const color = RISK_COLORS[level];
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
-      style={{ color, background: `${color}1a` }}
-    >
-      <ShieldCheck size={11} />
-      {RISK_LABELS[level]}
-    </span>
-  );
+  return <StatusBadge tier={riskTier(level)} label={RISK_LABELS[level]} />;
 }
 
 /**

@@ -565,7 +565,7 @@ function CurrentNextStepper({
         <div className="text-base font-semibold">{instr.title}</div>
         <div className="text-sm text-ripple-muted">{instr.detail}</div>
         {leg.type === "mrt" && leg.exitName && (
-          <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-mrt/10 px-2 py-0.5 text-xs font-medium text-mrt">
+          <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
             <DoorOpen size={12} /> {leg.exitName}
             {leg.exitDistanceM != null && ` · ${fmtDistance(leg.exitDistanceM)}`}
           </div>
