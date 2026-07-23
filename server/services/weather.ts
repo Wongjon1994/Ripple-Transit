@@ -124,6 +124,38 @@ export function describePeriod(startHour: number): string {
   return "this evening";
 }
 
+export interface RainArea {
+  lat: number;
+  lng: number;
+  area: string;
+  /** "heavy" for thundery/heavy showers, else "light" — drives blob opacity. */
+  intensity: "light" | "heavy";
+}
+
+/**
+ * Areas the 2-hour nowcast currently flags as wet — an APPROXIMATION for the
+ * Pulse rain overlay: NEA publishes point-area forecasts (name + label
+ * location), not rain-cell polygons, so we render soft blobs at those points.
+ */
+export async function rainAreas(): Promise<RainArea[]> {
+  const fc = await cachedFetch<ForecastResponse>("2-hour-weather-forecast");
+  const meta = fc?.area_metadata ?? [];
+  const forecasts = fc?.items?.[0]?.forecasts ?? [];
+  const byArea = new Map(forecasts.map((f) => [f.area, f.forecast]));
+  const out: RainArea[] = [];
+  for (const a of meta) {
+    const f = byArea.get(a.name) ?? "";
+    if (!WET.test(f)) continue;
+    out.push({
+      lat: a.label_location.latitude,
+      lng: a.label_location.longitude,
+      area: a.name,
+      intensity: /thund|heavy/i.test(f) ? "heavy" : "light",
+    });
+  }
+  return out;
+}
+
 export interface RainWindow {
   rainingNow: boolean;
   /** End of the 2h nowcast window — the only exact time NEA supports. */

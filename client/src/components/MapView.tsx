@@ -13,9 +13,11 @@ import { TrainFront, Route, Navigation } from "lucide-react";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { useTheme } from "../lib/theme.js";
+import { trpc } from "../lib/trpc.js";
 import {
   NETWORK_LINES_GEOJSON,
   NETWORK_STATIONS_GEOJSON,
+  STATION_COORDS,
 } from "../lib/mrtNetwork.js";
 
 const SG_CENTER = { lng: 103.8198, lat: 1.3521 };
@@ -195,9 +197,68 @@ export function MapView({
   // Tap-friendly 3D toggle: MapLibre's compass only pitches via mouse-drag,
   // which touch devices can't do — so we offer an explicit 2D/3D button.
   const [is3d, setIs3d] = useState(false);
-  // Ambient MRT/LRT network overlay — on by default, off in the tilted walk
-  // navigation view (follow) where it would clutter the street.
+  // "Pulse" layer — the repurposed map toggle (Phase 16): the MRT/LRT network
+  // plus live crowding, road traffic, and an approximate rain overlay. On by
+  // default, off in the tilted walk navigation view where it would clutter.
   const [showNetwork, setShowNetwork] = useState(true);
+
+  const pulse = trpc.pulse.overlay.useQuery(undefined, {
+    enabled: showNetwork && !follow,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  // Live crowd colours joined onto station coordinates.
+  const crowdGeoJSON = useMemo(() => {
+    const CROWD: Record<string, string> = {
+      l: "#22c55e",
+      m: "#f59e0b",
+      h: "#ef4444",
+    };
+    return {
+      type: "FeatureCollection" as const,
+      features: (pulse.data?.crowd ?? [])
+        .filter((c) => STATION_COORDS[c.code])
+        .map((c) => ({
+          type: "Feature" as const,
+          properties: { color: CROWD[c.level], high: c.level === "h" ? 1 : 0 },
+          geometry: {
+            type: "Point" as const,
+            coordinates: STATION_COORDS[c.code],
+          },
+        })),
+    };
+  }, [pulse.data?.crowd]);
+
+  const trafficGeoJSON = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: (pulse.data?.traffic ?? []).map((t) => ({
+        type: "Feature" as const,
+        properties: { color: t.severe ? "#ef4444" : "#f59e0b" },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [t.lng, t.lat] as [number, number],
+        },
+      })),
+    }),
+    [pulse.data?.traffic],
+  );
+
+  const rainGeoJSON = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: (pulse.data?.rain ?? []).map((r) => ({
+        type: "Feature" as const,
+        properties: { heavy: r.intensity === "heavy" ? 1 : 0 },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [r.lng, r.lat] as [number, number],
+        },
+      })),
+    }),
+    [pulse.data?.rain],
+  );
 
   function toggle3d() {
     const map = mapRef.current?.getMap();
@@ -406,6 +467,78 @@ export function MapView({
               }}
             />
           </Source>
+
+          {/* Pulse: approximate rain areas — soft blurred blobs (NEA gives
+              point-area forecasts, not polygons). */}
+          <Source id="pulse-rain" type="geojson" data={rainGeoJSON}>
+            <Layer
+              id="pulse-rain-blobs"
+              type="circle"
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  10,
+                  30,
+                  13,
+                  70,
+                  16,
+                  140,
+                ],
+                "circle-color": "#8fa3ad",
+                "circle-blur": 1,
+                "circle-opacity": ["case", ["get", "heavy"], 0.28, 0.16],
+              }}
+            />
+          </Source>
+
+          {/* Pulse: live station crowding (green/amber/red), larger on the
+              worst platforms. */}
+          <Source id="pulse-crowd" type="geojson" data={crowdGeoJSON}>
+            <Layer
+              id="pulse-crowd-dots"
+              type="circle"
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  10,
+                  4,
+                  14,
+                  7,
+                ],
+                "circle-color": ["get", "color"],
+                "circle-opacity": 0.85,
+                "circle-stroke-color": isDark ? "#0b0f14" : "#ffffff",
+                "circle-stroke-width": 1,
+              }}
+            />
+          </Source>
+
+          {/* Pulse: live road incidents on the street. */}
+          <Source id="pulse-traffic" type="geojson" data={trafficGeoJSON}>
+            <Layer
+              id="pulse-traffic-dots"
+              type="circle"
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  10,
+                  3,
+                  14,
+                  6,
+                ],
+                "circle-color": ["get", "color"],
+                "circle-opacity": 0.9,
+                "circle-stroke-color": isDark ? "#0b0f14" : "#ffffff",
+                "circle-stroke-width": 1,
+              }}
+            />
+          </Source>
         </>
       )}
 
@@ -426,15 +559,48 @@ export function MapView({
           <button
             type="button"
             onClick={() => setShowNetwork((v) => !v)}
-            aria-label={showNetwork ? "Hide MRT network" : "Show MRT network"}
+            aria-label={showNetwork ? "Hide Pulse layer" : "Show Pulse layer"}
             aria-pressed={showNetwork}
-            title={showNetwork ? "Hide MRT network" : "Show MRT network"}
+            title={
+              showNetwork
+                ? "Pulse: MRT crowd, traffic, rain"
+                : "Show Pulse (live crowd, traffic, rain)"
+            }
             className="absolute left-[10px] top-[112px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
             style={{ color: showNetwork ? "var(--brand)" : "var(--fg)" }}
           >
             <TrainFront size={16} />
           </button>
         </>
+      )}
+
+      {/* Pulse legend — only while the layer is on and there's live data. */}
+      {!follow && showNetwork && pulse.data && (
+        <div className="absolute left-[10px] top-[152px] z-[1] rounded-lg border border-[var(--border)] bg-[var(--surface)]/90 px-2.5 py-2 text-[10px] shadow-[0_2px_8px_rgba(0,0,0,0.12)]">
+          <div className="mb-1 font-mono font-semibold uppercase tracking-[0.08em] text-ripple-muted">
+            Pulse
+          </div>
+          {[
+            ["#22c55e", "Crowd low"],
+            ["#f59e0b", "Medium / traffic"],
+            ["#ef4444", "High / incident"],
+          ].map(([c, label]) => (
+            <div key={label} className="flex items-center gap-1.5 text-ripple-muted">
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ background: c }}
+              />
+              {label}
+            </div>
+          ))}
+          <div className="flex items-center gap-1.5 text-ripple-muted">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ background: "#8fa3ad", opacity: 0.5 }}
+            />
+            Rain area (approx)
+          </div>
+        </div>
       )}
 
       {/* Live-journey camera toggle: current leg (tight follow) ↔ full route

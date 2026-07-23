@@ -77,3 +77,13 @@ export const NETWORK_STATIONS_GEOJSON = {
 };
 
 export const NETWORK_STATION_COUNT = NETWORK_STATIONS_GEOJSON.features.length;
+
+/** Every station code → its [lng, lat], for joining live data (e.g. Pulse
+ *  crowd levels keyed by code) back onto map coordinates. */
+export const STATION_COORDS: Record<string, [number, number]> = (() => {
+  const m: Record<string, [number, number]> = {};
+  for (const stations of Object.values(LINES)) {
+    for (const s of stations) m[s.code] = [s.lng, s.lat];
+  }
+  return m;
+})();

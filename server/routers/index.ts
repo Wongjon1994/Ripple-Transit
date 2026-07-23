@@ -13,6 +13,7 @@ import { sustainabilityRouter } from "./sustainability.js";
 import { savedLocationsRouter } from "./savedLocations.js";
 import { favouriteRoutesRouter } from "./favouriteRoutes.js";
 import { settingsRouter } from "./settings.js";
+import { pulseRouter } from "./pulse.js";
 
 export const appRouter = router({
   system: router({
@@ -28,6 +29,7 @@ export const appRouter = router({
   here: hereRouter,
   weather: weatherRouter,
   taxi: taxiRouter,
+  pulse: pulseRouter,
   sustainability: sustainabilityRouter,
   savedLocations: savedLocationsRouter,
   favouriteRoutes: favouriteRoutesRouter,
