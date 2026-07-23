@@ -13,6 +13,7 @@ import { usePrefs } from "../lib/prefs.js";
 import { useSearchSession } from "../lib/searchSession.js";
 import { useLocation } from "wouter";
 import { cn } from "../lib/utils.js";
+import { useAuth } from "../lib/auth.js";
 import type {
   ActiveMode,
   ActiveVariant,
@@ -80,6 +81,41 @@ export function Home() {
     arriveBy?: boolean;
   } | null>(saved?.routeParams ?? null);
   const [resolving, setResolving] = useState(false);
+
+  // Log-this-trip CTA on the selected route card.
+  const { user } = useAuth();
+  const logRoute = trpc.sustainability.logTrip.useMutation();
+  const [tripLogged, setTripLogged] = useState(false);
+  useEffect(() => setTripLogged(false), [routeParams]);
+
+  function handleLogRoute(it: Itinerary) {
+    if (!user) {
+      toast.error("Sign in to log trips to your Impact.");
+      return;
+    }
+    const mode = it.legs.some((l) => l.type === "cycle")
+      ? ("cycle" as const)
+      : it.legs.every((l) => l.type === "walk")
+        ? ("walk" as const)
+        : ("transit" as const);
+    logRoute.mutate(
+      {
+        origin: fromText || "Origin",
+        destination: stops[stops.length - 1]?.text || "Destination",
+        mode,
+        co2Grams: it.co2Grams ?? 0,
+        savedGrams: it.co2SavedGrams ?? 0,
+        distanceM: Math.round(it.legs.reduce((s, l) => s + l.distance, 0)),
+      },
+      {
+        onSuccess: () => {
+          setTripLogged(true);
+          toast.success("Logged to your Impact.");
+        },
+        onError: () => toast.error("Couldn't log — try again."),
+      },
+    );
+  }
 
   // Persist the search + results so returning to Map (or exiting a journey)
   // restores this state instead of a blank form.
@@ -637,6 +673,8 @@ export function Home() {
                   onSelect={setSelected}
                   onSave={() => toast.success("Route saving comes in Phase 11.")}
                   onStartJourney={handleStartJourney}
+                  onLogTrip={handleLogRoute}
+                  tripLogged={tripLogged}
                   weather={route.data?.weather}
                   carbon={route.data?.carbon}
                   taxi={isMulti ? null : taxi.data}

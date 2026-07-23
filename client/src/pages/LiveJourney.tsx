@@ -16,6 +16,7 @@ import {
   TriangleAlert,
   RotateCcw,
   Loader2,
+  Leaf,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -64,8 +65,47 @@ function instruction(leg: RouteLeg): { title: string; detail: string } {
   };
 }
 
+/** Impact mode: cycle if any cycle leg, walk if all walking, else transit. */
+function journeyMode(legs: RouteLeg[]): "walk" | "cycle" | "transit" {
+  return legs.some((l) => l.type === "cycle")
+    ? "cycle"
+    : legs.every((l) => l.type === "walk")
+      ? "walk"
+      : "transit";
+}
+
+/** Cumulative distance/carbon completed so far: banked prior-itinerary totals
+ *  (across re-routes) plus a distance-proportional share of the current
+ *  itinerary's completed legs. */
+function journeyProgress(j: ActiveJourney): {
+  m: number;
+  co2: number;
+  saved: number;
+} {
+  const legs = j.itinerary.legs;
+  const doneCount = j.status === "completed" ? legs.length : j.currentLeg;
+  const doneDist = legs.slice(0, doneCount).reduce((s, l) => s + l.distance, 0);
+  const totalDist = legs.reduce((s, l) => s + l.distance, 0) || 1;
+  const frac = Math.min(1, doneDist / totalDist);
+  return {
+    m: (j.bankedM ?? 0) + Math.round(doneDist),
+    co2: (j.bankedCo2 ?? 0) + Math.round((j.itinerary.co2Grams ?? 0) * frac),
+    saved:
+      (j.bankedSaved ?? 0) +
+      Math.round((j.itinerary.co2SavedGrams ?? 0) * frac),
+  };
+}
+
 export function LiveJourney() {
-  const { journey, advance, back, end, start: startJourney } = useJourney();
+  const {
+    journey,
+    advance,
+    back,
+    end,
+    start: startJourney,
+    setLogId,
+    reroute: rerouteJourney,
+  } = useJourney();
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const active = !!journey && journey.status === "active";
@@ -77,6 +117,7 @@ export function LiveJourney() {
   // still shows a large move from the boarding point, so it advances.
   const legStart = useRef<{ idx: number; pos: LatLng } | null>(null);
   const logTrip = trpc.sustainability.logTrip.useMutation();
+  const updateTrip = trpc.sustainability.updateTrip.useMutation();
 
   const legs = journey?.itinerary.legs ?? [];
   const leg = journey ? legs[journey.currentLeg] : undefined;
@@ -147,32 +188,70 @@ export function LiveJourney() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geo.position]);
 
-  // Auto-log the trip to the Impact dashboard on completion (once).
   const completed = journey?.status === "completed";
+  const progress = journey ? journeyProgress(journey) : null;
+
+  // "Log as you go": once logging is armed (a row id exists), keep the row's
+  // cumulative distance/carbon current as legs complete or a re-route banks
+  // earlier progress — so one click logs everything up to any point, then the
+  // rest dynamically.
   useEffect(() => {
-    if (!journey || !completed || !user || logged.current) return;
+    if (!journey?.logId || !progress) return;
+    updateTrip.mutate({
+      id: journey.logId,
+      co2Grams: progress.co2,
+      savedGrams: progress.saved,
+      distanceM: progress.m,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [journey?.logId, journey?.currentLeg, completed]);
+
+  // Backwards-compatible auto-log on completion — only when the user never
+  // pressed "Log trip" (no row id), so we never double-count.
+  useEffect(() => {
+    if (!journey || !completed || !user || journey.logId || logged.current)
+      return;
     logged.current = true;
-    const distanceM = legs.reduce((s, l) => s + l.distance, 0);
-    // Pure walk/cycle journeys log as their own mode and bank the emissions
-    // avoided vs driving; mixed journeys stay "transit".
-    const mode = legs.some((l) => l.type === "cycle")
-      ? ("cycle" as const)
-      : legs.every((l) => l.type === "walk")
-        ? ("walk" as const)
-        : ("transit" as const);
     logTrip.mutate(
       {
         origin: journey.originText || "Origin",
         destination: journey.destText || "Destination",
-        mode,
+        mode: journeyMode(journey.itinerary.legs),
         co2Grams: journey.itinerary.co2Grams ?? 0,
         savedGrams: journey.itinerary.co2SavedGrams ?? 0,
-        distanceM: Math.round(distanceM),
+        distanceM: Math.round(legs.reduce((s, l) => s + l.distance, 0)),
       },
       { onSuccess: () => toast.success("Journey logged to your Impact.") },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [completed]);
+
+  // The "Log trip" CTA: arm logging and create the row with progress so far.
+  function handleLogTrip() {
+    if (!journey || !progress) return;
+    if (!user) {
+      toast.error("Sign in to log trips to your Impact.");
+      return;
+    }
+    if (journey.logId) return; // already logging — the effect keeps it current
+    logTrip.mutate(
+      {
+        origin: journey.originText || "Origin",
+        destination: journey.destText || "Destination",
+        mode: journeyMode(journey.itinerary.legs),
+        co2Grams: progress.co2,
+        savedGrams: progress.saved,
+        distanceM: progress.m,
+      },
+      {
+        onSuccess: ({ id }) => {
+          setLogId(id);
+          toast.success("Logging this journey to your Impact.");
+        },
+        onError: () => toast.error("Couldn't start logging — try again."),
+      },
+    );
+  }
 
   if (!journey) {
     return (
@@ -304,13 +383,23 @@ export function LiveJourney() {
 
   function acceptReroute() {
     if (!reroute) return;
-    startJourney({
+    // Bank the distance/carbon completed on the current itinerary so an active
+    // impact log keeps a correct cumulative total across the switch.
+    const banked = journey
+      ? journeyProgress(journey)
+      : { m: 0, co2: 0, saved: 0 };
+    const params = {
       itinerary: reroute.itinerary,
       originText: "Current location",
       destText: journey!.destText,
       origin: reroute.start,
       destination: journey!.destination,
-    });
+    };
+    if (journey?.logId) {
+      rerouteJourney(params, banked);
+    } else {
+      startJourney(params);
+    }
     setReroute(null);
     toast.success("Re-routed from your current location.");
   }
@@ -407,7 +496,37 @@ export function LiveJourney() {
           </>
         )}
 
-        <div className="mt-3 flex gap-2">
+        {/* Log-this-journey CTA (§ trip logging): press once to commit the
+            distance/carbon accrued up to now; it then keeps counting (and
+            survives re-routes) until the journey ends. */}
+        {progress && (
+          <button
+            onClick={handleLogTrip}
+            disabled={!!journey.logId || logTrip.isPending}
+            className={cn(
+              "mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-semibold",
+              journey.logId
+                ? "border-ok/40 bg-ok/10 text-ok"
+                : "border-brand/40 bg-brand/5 text-brand hover:bg-brand/10",
+            )}
+          >
+            {journey.logId ? (
+              <>
+                <Check size={14} strokeWidth={2.5} /> Logging ·{" "}
+                {(progress.m / 1000).toFixed(1)} km ·{" "}
+                {(progress.co2 / 1000).toFixed(2)} kg CO₂
+              </>
+            ) : logTrip.isPending ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <>
+                <Leaf size={14} /> Log this journey to my Impact
+              </>
+            )}
+          </button>
+        )}
+
+        <div className="mt-2.5 flex gap-2">
           {journey.currentLeg > 0 && (
             <Button variant="outline" size="md" onClick={back}>
               Back

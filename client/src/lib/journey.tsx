@@ -16,15 +16,32 @@ export interface ActiveJourney {
   currentLeg: number; // index into itinerary.legs
   status: "active" | "completed";
   completedAt?: number;
+  /** Impact-log row id once the user starts logging this journey (live flow). */
+  logId?: number | null;
+  /** Distance / carbon completed on PRIOR itineraries before re-routes, so the
+   *  log's cumulative value survives a mid-journey re-route. */
+  bankedM?: number;
+  bankedCo2?: number;
+  bankedSaved?: number;
 }
+
+type StartInput = Omit<ActiveJourney, "startedAt" | "currentLeg" | "status">;
 
 interface JourneyCtx {
   journey: ActiveJourney | null;
-  start: (j: Omit<ActiveJourney, "startedAt" | "currentLeg" | "status">) => void;
+  start: (j: StartInput) => void;
   advance: () => void;
   back: () => void;
   complete: () => void;
   end: () => void;
+  /** Store the impact-log row id (live "log as I go" flow). */
+  setLogId: (id: number) => void;
+  /** Re-route mid-journey, banking the completed distance/carbon so the log
+   *  keeps a correct cumulative total across the switch. */
+  reroute: (
+    j: StartInput,
+    banked: { m: number; co2: number; saved: number },
+  ) => void;
 }
 
 const Ctx = createContext<JourneyCtx | null>(null);
@@ -38,7 +55,26 @@ export function JourneyProvider({ children }: { children: ReactNode }) {
       startedAt: Date.now(),
       currentLeg: 0,
       status: "active",
+      logId: null,
+      bankedM: 0,
+      bankedCo2: 0,
+      bankedSaved: 0,
     });
+
+  const setLogId: JourneyCtx["setLogId"] = (id) =>
+    setJourney((j) => (j ? { ...j, logId: id } : j));
+
+  const reroute: JourneyCtx["reroute"] = (j, banked) =>
+    setJourney((prev) => ({
+      ...j,
+      startedAt: prev?.startedAt ?? Date.now(),
+      currentLeg: 0,
+      status: "active",
+      logId: prev?.logId ?? null,
+      bankedM: (prev?.bankedM ?? 0) + banked.m,
+      bankedCo2: (prev?.bankedCo2 ?? 0) + banked.co2,
+      bankedSaved: (prev?.bankedSaved ?? 0) + banked.saved,
+    }));
 
   const advance = () =>
     setJourney((j) => {
@@ -63,7 +99,9 @@ export function JourneyProvider({ children }: { children: ReactNode }) {
   const end = () => setJourney(null);
 
   return (
-    <Ctx.Provider value={{ journey, start, advance, back, complete, end }}>
+    <Ctx.Provider
+      value={{ journey, start, advance, back, complete, end, setLogId, reroute }}
+    >
       {children}
     </Ctx.Provider>
   );

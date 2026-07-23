@@ -279,8 +279,24 @@ export async function addTripLog(entry: {
   co2Grams: number;
   savedGrams: number;
   distanceM: number;
-}) {
-  await db.insert(tripLog).values(entry);
+}): Promise<number> {
+  const [row] = await db
+    .insert(tripLog)
+    .values(entry)
+    .returning({ id: tripLog.id });
+  return row.id;
+}
+
+/** Update a trip log the user owns — used by the live "log as I go" flow. */
+export async function updateTripLog(
+  userId: number,
+  id: number,
+  patch: { co2Grams: number; savedGrams: number; distanceM: number },
+) {
+  await db
+    .update(tripLog)
+    .set(patch)
+    .where(and(eq(tripLog.id, id), eq(tripLog.userId, userId)));
 }
 
 /** Aggregate a user's trips since a cutoff date. */

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc.js";
-import { addTripLog, getTripStats } from "../db/helpers.js";
+import { addTripLog, updateTripLog, getTripStats } from "../db/helpers.js";
 import { equivalents } from "../services/sustainability.js";
 
 export const sustainabilityRouter = router({
@@ -18,7 +18,23 @@ export const sustainabilityRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await addTripLog({ userId: ctx.user.id, ...input });
+      const id = await addTripLog({ userId: ctx.user.id, ...input });
+      return { success: true as const, id };
+    }),
+
+  /** Update a log created mid-journey as more progress accrues (re-routes etc). */
+  updateTrip: protectedProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        co2Grams: z.number().int().nonnegative(),
+        savedGrams: z.number().int().default(0),
+        distanceM: z.number().int().nonnegative().default(0),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...patch } = input;
+      await updateTripLog(ctx.user.id, id, patch);
       return { success: true as const };
     }),
 

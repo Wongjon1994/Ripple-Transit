@@ -532,6 +532,8 @@ export function RouteResultsPanel({
   onSelect,
   onSave,
   onStartJourney,
+  onLogTrip,
+  tripLogged = false,
   weather,
   carbon,
   taxi,
@@ -543,6 +545,9 @@ export function RouteResultsPanel({
   onSelect: (i: number) => void;
   onSave?: () => void;
   onStartJourney?: () => void;
+  /** Log the whole selected itinerary to Impact (carbon + distance). */
+  onLogTrip?: (it: Itinerary) => void;
+  tripLogged?: boolean;
   weather?: WeatherContext | null;
   carbon?: CarbonBaseline | null;
   taxi?: TaxiEstimate | null;
@@ -713,26 +718,53 @@ export function RouteResultsPanel({
                       ))}
                     </div>
 
-                    {(onStartJourney || onSave) && (
-                      <div className="flex gap-2 px-3 pb-3">
-                        {onStartJourney && (
-                          <Button
-                            variant="accent"
-                            className="flex-1"
-                            onClick={onStartJourney}
+                    {(onStartJourney || onSave || onLogTrip) && (
+                      <div className="flex flex-col gap-2 px-3 pb-3">
+                        <div className="flex gap-2">
+                          {onStartJourney && (
+                            <Button
+                              variant="accent"
+                              className="flex-1"
+                              onClick={onStartJourney}
+                            >
+                              <Navigation size={16} /> Start journey
+                            </Button>
+                          )}
+                          {onSave && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              aria-label="Save route"
+                              onClick={onSave}
+                            >
+                              <Bookmark size={16} />
+                            </Button>
+                          )}
+                        </div>
+                        {onLogTrip && (
+                          <button
+                            onClick={() => onLogTrip(it)}
+                            disabled={tripLogged}
+                            className={cn(
+                              "flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-semibold",
+                              tripLogged
+                                ? "border-ok/40 bg-ok/10 text-ok"
+                                : "border-brand/40 bg-brand/5 text-brand hover:bg-brand/10",
+                            )}
                           >
-                            <Navigation size={16} /> Start journey
-                          </Button>
-                        )}
-                        {onSave && (
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            aria-label="Save route"
-                            onClick={onSave}
-                          >
-                            <Bookmark size={16} />
-                          </Button>
+                            {tripLogged ? (
+                              <>
+                                <Check size={14} strokeWidth={2.5} /> Logged to
+                                your Impact
+                              </>
+                            ) : (
+                              <>
+                                <Leaf size={14} /> Log this trip
+                                {it.co2SavedGrams != null &&
+                                  ` · saves ${(it.co2SavedGrams / 1000).toFixed(2)} kg`}
+                              </>
+                            )}
+                          </button>
                         )}
                       </div>
                     )}
