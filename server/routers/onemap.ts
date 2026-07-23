@@ -16,6 +16,7 @@ import {
   serviceConnects,
   haversineMeters,
   stationCrowd,
+  nearbyStops,
 } from "../services/lta.js";
 import { classify } from "../services/feasibility.js";
 import { weatherAt } from "../services/weather.js";
@@ -433,10 +434,17 @@ export async function planTransit(
   weather: WeatherContext | null;
   carbon: CarbonBaseline;
 }> {
-  // OneMap returns at most 3 itineraries per call. A second, walk-tolerant pass
-  // surfaces different path shapes; merged + de-duped by path, that yields up to
-  // 5 genuinely distinct options.
-  const [base, alt] = await Promise.all([
+  // Optimise the first leg's walk to the nearest bus stop. OneMap's OTP can send
+  // you well past a stop on your doorstep to board a marginally faster bus. A
+  // near-boarding pass (tight access-walk cap, sized to the closest stop) forces
+  // short walks so the nearest-stop option is always surfaced, then a relative
+  // filter drops options whose first walk is disproportionately longer than the
+  // shortest available.
+  const near = await nearbyStops(start.lat, start.lng, 1200).catch(() => []);
+  const nearestD = near.length ? Math.round(near[0].distance) : 800;
+  const nearCap = Math.min(900, Math.max(500, nearestD + 300));
+
+  const [base, nearPass] = await Promise.all([
     oneMapRoute({ start, end, mode: "TRANSIT", date, time }),
     oneMapRoute({
       start,
@@ -444,10 +452,20 @@ export async function planTransit(
       mode: "TRANSIT",
       date,
       time,
-      maxWalkDistance: 1600,
+      maxWalkDistance: nearCap,
     }).catch(() => [] as Itinerary[]),
   ]);
-  let itineraries = dedupeItineraries([...base, ...alt]);
+  let itineraries = dedupeItineraries([...nearPass, ...base]);
+
+  // Drop options whose first walk is much longer than the shortest one — so a
+  // 20/33-min access walk never shows when a closer boarding exists (relative to
+  // the actual pedestrian network, not straight-line distance).
+  const firstWalkM = (it: Itinerary) =>
+    it.legs[0]?.type === "walk" ? it.legs[0].distance : 0;
+  if (itineraries.length > 1) {
+    const minWalk = Math.min(...itineraries.map(firstWalkM));
+    itineraries = itineraries.filter((it) => firstWalkM(it) <= minWalk + 500);
+  }
 
   const now = Date.now();
   const departAtMs = sgDepartMs(date, time);
