@@ -280,11 +280,11 @@ export async function addTripLog(entry: {
   savedGrams: number;
   distanceM: number;
 }): Promise<number> {
-  const [row] = await db
-    .insert(tripLog)
-    .values(entry)
-    .returning({ id: tripLog.id });
-  return row.id;
+  // NB: `.returning()` fails against Turso's HTTP libSQL (works on the local
+  // file driver), so read the autoincrement id from lastInsertRowid instead.
+  const res = await db.insert(tripLog).values(entry);
+  const rowid = (res as { lastInsertRowid?: bigint | number }).lastInsertRowid;
+  return rowid != null ? Number(rowid) : 0;
 }
 
 /** Update a trip log the user owns — used by the live "log as I go" flow. */
