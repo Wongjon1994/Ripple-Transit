@@ -64,7 +64,7 @@ export function SustainabilitySection() {
                 </span>
               </div>
               <div className="mt-1 text-xs text-ripple-muted">
-                vs taking taxis for the same trips
+                vs driving the same trips
               </div>
             </div>
             <div className="text-center">

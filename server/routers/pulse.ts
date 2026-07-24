@@ -1,6 +1,11 @@
+import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
 import { stationCrowd } from "../services/lta.js";
-import { getTrafficIncidents, incidentLabel } from "../services/traffic.js";
+import {
+  getTrafficIncidents,
+  incidentLabel,
+  incidentsOnPath,
+} from "../services/traffic.js";
 import { rainAreas } from "../services/weather.js";
 
 export interface PulseOverlay {
@@ -39,4 +44,25 @@ export const pulseRouter = router({
       })),
     };
   }),
+
+  /**
+   * Live road incidents on ONE leg's path — the live journey polls this for the
+   * bus it's riding, so a jam that appeared after the route was planned still
+   * gets flagged amber/red while you're on board.
+   */
+  legTraffic: publicProcedure
+    .input(
+      z.object({
+        polyline: z.string().optional(),
+        start: z.object({ lat: z.number(), lng: z.number() }),
+        end: z.object({ lat: z.number(), lng: z.number() }),
+      }),
+    )
+    .query(async ({ input }) => {
+      const incidents = await getTrafficIncidents().catch(() => []);
+      return incidentsOnPath(input, incidents).map((i) => ({
+        severe: i.severe,
+        label: incidentLabel(i),
+      }));
+    }),
 });

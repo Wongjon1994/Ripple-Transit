@@ -134,6 +134,12 @@ function LegStep({
           </div>
         ) : null}
 
+        {leg.walkEstimated && (
+          <div className="mt-0.5 text-xs text-ripple-muted">
+            Estimated walk — we couldn't map a footpath from this address
+          </div>
+        )}
+
         {leg.type === "bus" && leg.startBusStop && (
           <div className="mt-0.5 text-xs text-ripple-muted">
             Board{" "}

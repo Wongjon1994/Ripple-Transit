@@ -11,7 +11,8 @@
       "name": "preview",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "preview:serve"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

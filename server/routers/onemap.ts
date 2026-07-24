@@ -292,6 +292,69 @@ function pathKey(it: Itinerary): string {
     .join("|");
 }
 
+/** Distance of an itinerary's access walk (0 when it opens on a transit leg). */
+function firstWalkM(it: Itinerary): number {
+  return it.legs[0]?.type === "walk" ? it.legs[0].distance : 0;
+}
+
+// Access-walk estimate used when OneMap's pedestrian graph can't be trusted:
+// real footpaths wander, so straight-line × 1.3 at 80 m/min.
+const ACCESS_DETOUR = 1.3;
+const WALK_M_PER_MIN = 80;
+
+/**
+ * OneMap's pedestrian graph occasionally traps a geocoded address in a pocket
+ * that only reconnects to the street network via a long detour, so EVERY
+ * itinerary opens with an absurd access walk. The Hillside is the reference
+ * case: blk 341 (588195) walks 258 m to board, while blk 343 (588196) — 120 m
+ * further along the same condo — is routed 1.0 km to Blk 267, even though
+ * "Aft Old Jurong Rd" is 334 m away straight-line. The walk router agrees
+ * (1.8 km / 23 min), so this is graph topology, not a real detour, and no
+ * maxWalkDistance cap can fix it: the short path simply isn't in the graph.
+ *
+ * Detection is free — we compare the access walk we got against the
+ * straight-line distance to a stop we know is close. When it's out of all
+ * proportion, we re-plan the transit portion from the nearest stops instead
+ * and prepend an ESTIMATED access walk (marked `walkEstimated`), so the
+ * genuinely nearest boarding stop is always on offer.
+ */
+export function originIsGraphTrapped(
+  itineraries: Itinerary[],
+  nearestD: number,
+  hasNearbyStop: boolean,
+): boolean {
+  if (!hasNearbyStop || !itineraries.length) return false;
+  // Only meaningful when a stop really is within easy walking distance.
+  if (nearestD > 700) return false;
+  const best = Math.min(...itineraries.map(firstWalkM));
+  return best > Math.max(nearestD * 2.5, nearestD + 400);
+}
+
+/** Re-plan from `stop`, prepending the origin→stop access walk we estimated. */
+function prependAccessWalk(
+  it: Itinerary,
+  origin: LatLng,
+  stop: LatLng,
+  stopName: string,
+  walkM: number,
+  walkS: number,
+): Itinerary {
+  const access: RouteLeg = {
+    type: "walk",
+    startPoint: origin,
+    endPoint: stop,
+    distance: walkM,
+    duration: walkS,
+    toName: stopName,
+    walkEstimated: true,
+  };
+  // OTP opens with its own short walk from the stop coordinate onto the stop
+  // node; absorb it rather than showing two walks back to back.
+  const rest =
+    it.legs[0]?.type === "walk" ? it.legs.slice(1) : it.legs;
+  return { ...it, legs: [access, ...rest] };
+}
+
 /** Keep one itinerary per distinct path (OneMap returns them fastest-first). */
 function dedupeItineraries(itineraries: Itinerary[]): Itinerary[] {
   const seen = new Set<string>();
@@ -457,11 +520,37 @@ export async function planTransit(
   ]);
   let itineraries = dedupeItineraries([...nearPass, ...base]);
 
+  // Rescue a graph-trapped origin: when every option's access walk dwarfs the
+  // straight-line distance to a stop on the doorstep, plan from the two nearest
+  // stops instead and estimate the walk to them.
+  if (originIsGraphTrapped(itineraries, nearestD, near.length > 0)) {
+    const anchored = await Promise.all(
+      near.slice(0, 2).map(async (s) => {
+        const stop = { lat: s.Latitude, lng: s.Longitude };
+        const walkM = Math.round(haversineMeters(start, stop) * ACCESS_DETOUR);
+        const walkS = Math.round((walkM / WALK_M_PER_MIN) * 60);
+        // Board on the timetable you can actually reach, not the one at `time`.
+        const at = advanceClock(date, time, walkS);
+        const its = await oneMapRoute({
+          start: stop,
+          end,
+          mode: "TRANSIT",
+          date: at.date,
+          time: at.time,
+        }).catch(() => [] as Itinerary[]);
+        return its.map((it) =>
+          prependAccessWalk(it, start, stop, s.Description, walkM, walkS),
+        );
+      }),
+    );
+    // Merge rather than replace — the relative first-walk filter below then
+    // drops the trapped originals, and keeps them if the rescue found nothing.
+    itineraries = dedupeItineraries([...anchored.flat(), ...itineraries]);
+  }
+
   // Drop options whose first walk is much longer than the shortest one — so a
   // 20/33-min access walk never shows when a closer boarding exists (relative to
   // the actual pedestrian network, not straight-line distance).
-  const firstWalkM = (it: Itinerary) =>
-    it.legs[0]?.type === "walk" ? it.legs[0].distance : 0;
   if (itineraries.length > 1) {
     const minWalk = Math.min(...itineraries.map(firstWalkM));
     itineraries = itineraries.filter((it) => firstWalkM(it) <= minWalk + 500);
@@ -512,6 +601,10 @@ export async function planTransit(
     ? await rawHoursFor({ name: destName, point: end }).catch(() => null)
     : null;
 
+  // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
+  const driveKm = (haversineMeters(start, end) / 1000) * 1.35;
+  const carbon: CarbonBaseline = { driveKm, ...drivingCo2Grams(driveKm) };
+
   for (const it of itineraries) {
     it.risk = computeRouteRisk(it, {
       wet: wx?.wet ?? false,
@@ -520,6 +613,9 @@ export async function planTransit(
       destination: destinationArrivalRisk(it, destRaw),
     });
     it.co2Grams = itineraryCo2Grams(it.legs);
+    // Emissions avoided vs driving the same trip — the figure the Impact
+    // dashboard banks. Without it, every logged transit trip saved 0 g.
+    it.co2SavedGrams = Math.max(0, carbon.carGrams - it.co2Grams);
   }
 
   // Rank by the chosen priority (duration is always the tie-breaker), and show
@@ -536,13 +632,7 @@ export async function planTransit(
   itineraries.sort((a, b) => key(a) - key(b) || a.duration - b.duration);
   itineraries = itineraries.slice(0, 5);
 
-  // Driving baseline (~1.35× straight-line road factor) for CO₂ comparison.
-  const driveKm = (haversineMeters(start, end) / 1000) * 1.35;
-  return {
-    itineraries,
-    weather: wx,
-    carbon: { driveKm, ...drivingCo2Grams(driveKm) },
-  };
+  return { itineraries, weather: wx, carbon };
 }
 
 /** Advance a naive local date/time pair by `seconds` (SG has no DST). */
@@ -754,6 +844,10 @@ export const onemapRouter = router({
             }
           : undefined,
         co2Grams: segments.reduce((s, it) => s + (it.co2Grams ?? 0), 0),
+        co2SavedGrams: segments.reduce(
+          (s, it) => s + (it.co2SavedGrams ?? 0),
+          0,
+        ),
         waitSeconds: segments[0]?.waitSeconds,
         startTimeMs: segments[0]?.startTimeMs,
       };

@@ -13,7 +13,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "start": "tsx server/index.ts",
     "start:prod": "npm run db:migrate && npm run db:seed && npm run start",
-    "preview:serve": "cross-env NODE_ENV=production PORT=5173 CLIENT_ORIGIN=http://localhost:5173 tsx server/index.ts",
+    "preview:serve": "cross-env NODE_ENV=production tsx server/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx drizzle/migrate.ts",
     "db:seed": "tsx drizzle/seed.ts",

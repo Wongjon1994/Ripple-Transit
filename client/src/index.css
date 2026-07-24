@@ -101,6 +101,26 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* iOS Safari sizes date/time inputs to their native control's intrinsic width
+   and ignores `width: 100%`, so the pickers in the depart modal spilled past
+   the card's right edge on an iPhone. Dropping the native appearance makes them
+   respect the box like any other field; the tap-to-open picker is unaffected. */
+input[type="date"],
+input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* …and its inner value block, which carries its own intrinsic width. */
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: left;
+  min-width: 0;
+  margin: 0;
+}
+
 /* MapLibre GL controls should respect the theme */
 .maplibregl-ctrl-group {
   border: 1px solid var(--border) !important;

@@ -63,6 +63,10 @@ export interface RouteLeg {
 
   // walk
   polyline?: string;
+  /** True when this access walk is our own straight-line estimate, because
+   *  OneMap's pedestrian graph couldn't route out of the origin (see
+   *  originIsGraphTrapped). Shown to the user as an estimate, never as fact. */
+  walkEstimated?: boolean;
 
   // mrt
   lineCode?: string;
@@ -122,7 +126,7 @@ export interface Itinerary {
   legs: RouteLeg[];
   risk?: RouteRisk;
   co2Grams?: number; // this route's carbon footprint
-  co2SavedGrams?: number; // walk/cycle journeys: emissions avoided vs driving
+  co2SavedGrams?: number; // emissions avoided vs driving the same trip
   startTimeMs?: number; // scheduled journey start (epoch ms, from OTP)
   waitSeconds?: number; // live waiting time at the first bus stop, if known
 }

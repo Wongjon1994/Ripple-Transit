@@ -11,6 +11,13 @@ const LINES: Record<string, { color: string; name: string }> = {
   BP: { color: "#748477", name: "Bukit Panjang LRT" },
   SK: { color: "#748477", name: "Sengkang LRT" },
   PG: { color: "#748477", name: "Punggol LRT" },
+  // OneMap names the Sengkang/Punggol loops by direction (SW/SE, PW/PE) and
+  // that's the code routing actually returns — without these an LRT leg fell
+  // through to grey and read "SW Line" instead of "Sengkang LRT".
+  SW: { color: "#748477", name: "Sengkang LRT" },
+  SE: { color: "#748477", name: "Sengkang LRT" },
+  PW: { color: "#748477", name: "Punggol LRT" },
+  PE: { color: "#748477", name: "Punggol LRT" },
 };
 
 export function lineColor(code?: string): string {

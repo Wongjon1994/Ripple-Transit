@@ -40,6 +40,7 @@ import type { RouteLeg, Itinerary, LatLng } from "@shared/types.js";
 const ARRIVE_THRESHOLD_M = 45; // walk/cycle: you're on foot, GPS is fairly tight
 const ARRIVE_TRANSIT_M = 150; // bus/MRT: station GPS is coarser and you arrive fast
 const MIN_MOVE_M = 20; // must have moved this far since the leg began before an arrival counts
+const GPS_FRESH_MS = 45_000; // beyond this a fix is stale: count down by the clock instead
 
 function legIcon(type: RouteLeg["type"], size = 20) {
   if (type === "walk") return <Footprints size={size} />;
@@ -63,6 +64,54 @@ function instruction(leg: RouteLeg): { title: string; detail: string } {
     title: `${leg.lineCode ? leg.lineCode + " · " : ""}${lineName(leg.lineCode)}`,
     detail: `Ride to ${leg.endStation ?? "your station"}`,
   };
+}
+
+/**
+ * Minutes left in the journey, measured from HERE rather than from the top of
+ * the current leg. This used to sum whole leg durations, so the countdown only
+ * moved when you advanced a leg — halfway through an 11-minute bus ride with a
+ * 3-minute walk to follow, it still claimed 14 minutes.
+ */
+export function remainingMinutes({
+  legs,
+  currentLeg,
+  remainingM,
+  gpsFixedAt,
+  legStartedAt,
+  nowMs,
+}: {
+  legs: RouteLeg[];
+  currentLeg: number;
+  /** Distance still to cover on the current leg (clamped to its length). */
+  remainingM: number;
+  /** When the position fix was taken, or null if there's no fix. */
+  gpsFixedAt: number | null;
+  legStartedAt: number;
+  nowMs: number;
+}): number {
+  const leg = legs[currentLeg];
+  if (!leg) return 0;
+  const gpsFresh = gpsFixedAt != null && nowMs - gpsFixedAt < GPS_FRESH_MS;
+  const legRemainingS =
+    gpsFresh && leg.distance > 0
+      ? // Fresh fix: pro-rate by how much of the leg is still ahead of you.
+        leg.duration * Math.min(1, Math.max(0, remainingM / leg.distance))
+      : // Stale/absent fix (underground, backgrounded): fall back to the clock
+        // since this leg began, so the countdown still ticks.
+        Math.max(0, leg.duration - (nowMs - legStartedAt) / 1000);
+  // Later legs carry their ride time PLUS the scheduled gap before boarding —
+  // otherwise the header quietly dropped every transfer wait and undercut the
+  // total the user picked the route on (36 min plan showing as 25 min left).
+  let later = 0;
+  for (let i = currentLeg + 1; i < legs.length; i++) {
+    const prev = legs[i - 1];
+    const wait =
+      legs[i].startTimeMs != null && prev.endTimeMs != null
+        ? Math.max(0, (legs[i].startTimeMs! - prev.endTimeMs!) / 1000)
+        : 0;
+    later += legs[i].duration + wait;
+  }
+  return Math.round((legRemainingS + later) / 60);
 }
 
 /** Impact mode: cycle if any cycle leg, walk if all walking, else transit. */
@@ -135,6 +184,19 @@ export function LiveJourney() {
       ? { busStopCode: busLeg.busStopCode, serviceNo: busLeg.busNo }
       : (undefined as never),
     { enabled: active && !!busLeg?.busStopCode, refetchInterval: 15_000 },
+  );
+  // Road jams on the bus you're riding (or about to board): re-checked live, so
+  // an incident that appeared after planning still surfaces.
+  const roadLeg = busLeg;
+  const legTraffic = trpc.pulse.legTraffic.useQuery(
+    roadLeg
+      ? {
+          polyline: roadLeg.polyline,
+          start: roadLeg.startPoint,
+          end: roadLeg.endPoint,
+        }
+      : (undefined as never),
+    { enabled: active && !!roadLeg, refetchInterval: 120_000 },
   );
   const lineStatuses = trpc.mrt.lineStatuses.useQuery(undefined, {
     enabled: active && !!mrtLeg,
@@ -333,10 +395,15 @@ export function LiveJourney() {
       )
     : undefined;
 
-  // Remaining time on the original plan (from the current leg onward).
-  const remainingMin = Math.round(
-    legs.slice(journey.currentLeg).reduce((s, l) => s + l.duration, 0) / 60,
-  );
+  const nowMs = Date.now();
+  const remainingMin = remainingMinutes({
+    legs,
+    currentLeg: journey.currentLeg,
+    remainingM,
+    gpsFixedAt: geo.updatedAt,
+    legStartedAt: journey.legStartedAt,
+    nowMs,
+  });
   // The watched bus looks gone if its ETA has already passed.
   const busDeparted =
     busLeg != null && busEta != null && new Date(busEta).getTime() < Date.now();
@@ -348,7 +415,14 @@ export function LiveJourney() {
 
   // Live risk (§4): re-evaluate the catch/disruption risk against live data for
   // the leg in progress (and the bus/MRT one leg ahead).
-  const risk = liveRisk({ leg, busLeg, busMin, remainingM, mrtDisrupted });
+  const risk = liveRisk({
+    leg,
+    busLeg,
+    busMin,
+    remainingM,
+    mrtDisrupted,
+    traffic: legTraffic.data ?? [],
+  });
 
   // Camera target (§2): full route fits the remaining journey; current-leg mode
   // fits the current transit leg (walk/cycle use the follow camera above).
@@ -617,12 +691,15 @@ function liveRisk({
   busMin,
   remainingM,
   mrtDisrupted,
+  traffic,
 }: {
   leg: RouteLeg | undefined;
   busLeg: RouteLeg | undefined;
   busMin: number | null;
   remainingM: number;
   mrtDisrupted: { lineCode: string; status: string; message?: string } | undefined;
+  /** Live road incidents matched to the bus leg's path. */
+  traffic: { severe: boolean; label: string }[];
 }): RiskInfo | null {
   // Heading to a bus (not already riding it) with a live arrival: re-score the
   // catch. The bus can now be arriving sooner than the plan assumed.
@@ -648,6 +725,19 @@ function liveRisk({
       headline: `${mrtDisrupted.lineCode} line ${mrtDisrupted.status}`,
       caption: mrtDisrupted.message || "expect delays on the line ahead",
     };
+  // Road jam on the bus's path. Severe types (accident, heavy traffic, road
+  // block) go red; roadworks and the like stay amber.
+  if (traffic.length) {
+    const worst = traffic.find((t) => t.severe) ?? traffic[0];
+    const more = traffic.length - 1;
+    return {
+      level: worst.severe ? "miss" : "tight",
+      headline: worst.label,
+      caption: more
+        ? `on your bus route · ${more} more incident${more > 1 ? "s" : ""} ahead`
+        : "on your bus route — expect delays",
+    };
+  }
   return null;
 }
 

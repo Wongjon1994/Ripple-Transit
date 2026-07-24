@@ -4,6 +4,9 @@ import type { LatLng } from "@shared/types.js";
 export interface GeoState {
   position: LatLng | null;
   accuracy: number | null;
+  /** When `position` was fixed (epoch ms) — lets callers tell a live fix from a
+   *  stale one that stopped updating (tunnel, backgrounded tab). */
+  updatedAt: number | null;
   error: string | null;
   supported: boolean;
 }
@@ -14,6 +17,7 @@ export function useGeolocation(enabled: boolean): GeoState {
   const [state, setState] = useState<GeoState>({
     position: null,
     accuracy: null,
+    updatedAt: null,
     error: null,
     supported,
   });
@@ -25,6 +29,7 @@ export function useGeolocation(enabled: boolean): GeoState {
         setState({
           position: { lat: pos.coords.latitude, lng: pos.coords.longitude },
           accuracy: pos.coords.accuracy,
+          updatedAt: pos.timestamp,
           error: null,
           supported,
         }),

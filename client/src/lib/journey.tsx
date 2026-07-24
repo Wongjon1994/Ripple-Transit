@@ -13,6 +13,9 @@ export interface ActiveJourney {
   origin: LatLng;
   destination: LatLng;
   startedAt: number; // ms
+  /** When the CURRENT leg became current (ms) — the clock fallback for the
+   *  live ETA when GPS is stale (underground, backgrounded). */
+  legStartedAt: number;
   currentLeg: number; // index into itinerary.legs
   status: "active" | "completed";
   completedAt?: number;
@@ -25,7 +28,10 @@ export interface ActiveJourney {
   bankedSaved?: number;
 }
 
-type StartInput = Omit<ActiveJourney, "startedAt" | "currentLeg" | "status">;
+type StartInput = Omit<
+  ActiveJourney,
+  "startedAt" | "legStartedAt" | "currentLeg" | "status"
+>;
 
 interface JourneyCtx {
   journey: ActiveJourney | null;
@@ -53,6 +59,7 @@ export function JourneyProvider({ children }: { children: ReactNode }) {
     setJourney({
       ...j,
       startedAt: Date.now(),
+      legStartedAt: Date.now(),
       currentLeg: 0,
       status: "active",
       logId: null,
@@ -68,6 +75,7 @@ export function JourneyProvider({ children }: { children: ReactNode }) {
     setJourney((prev) => ({
       ...j,
       startedAt: prev?.startedAt ?? Date.now(),
+      legStartedAt: Date.now(),
       currentLeg: 0,
       status: "active",
       logId: prev?.logId ?? null,
@@ -83,12 +91,18 @@ export function JourneyProvider({ children }: { children: ReactNode }) {
       if (nextLeg >= j.itinerary.legs.length) {
         return { ...j, status: "completed", completedAt: Date.now() };
       }
-      return { ...j, currentLeg: nextLeg };
+      return { ...j, currentLeg: nextLeg, legStartedAt: Date.now() };
     });
 
   const back = () =>
     setJourney((j) =>
-      j ? { ...j, currentLeg: Math.max(0, j.currentLeg - 1) } : j,
+      j
+        ? {
+            ...j,
+            currentLeg: Math.max(0, j.currentLeg - 1),
+            legStartedAt: Date.now(),
+          }
+        : j,
     );
 
   const complete = () =>
