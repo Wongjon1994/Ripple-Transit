@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "./index.js";
 import {
   users,
@@ -13,6 +13,7 @@ import {
   type UserRole,
   type MrtStatus,
 } from "../../drizzle/schema.js";
+import type { TripRecord } from "../services/tripInsights.js";
 
 // ── Helpers ───────────────────────────────────────────────────
 /** Current month as "YYYY-MM" in UTC — the partition key for usage counters. */
@@ -297,6 +298,32 @@ export async function updateTripLog(
     .update(tripLog)
     .set(patch)
     .where(and(eq(tripLog.id, id), eq(tripLog.userId, userId)));
+}
+
+/** A user's trips within a window, for the personalised-insights aggregation. */
+export async function getTripsBetween(
+  userId: number,
+  since: Date,
+  until: Date,
+): Promise<TripRecord[]> {
+  const rows = await db
+    .select()
+    .from(tripLog)
+    .where(
+      and(
+        eq(tripLog.userId, userId),
+        gte(tripLog.createdAt, since),
+        lt(tripLog.createdAt, until),
+      ),
+    );
+  return rows.map((r) => ({
+    origin: r.origin,
+    destination: r.destination,
+    mode: r.mode,
+    savedGrams: r.savedGrams,
+    distanceM: r.distanceM,
+    createdAt: r.createdAt,
+  }));
 }
 
 /** Aggregate a user's trips since a cutoff date. */

@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc.js";
-import { addTripLog, updateTripLog, getTripStats } from "../db/helpers.js";
+import {
+  addTripLog,
+  updateTripLog,
+  getTripStats,
+  getTripsBetween,
+} from "../db/helpers.js";
 import { equivalents } from "../services/sustainability.js";
+import { tripInsights } from "../services/tripInsights.js";
 
 export const sustainabilityRouter = router({
   logTrip: protectedProcedure
@@ -45,5 +51,22 @@ export const sustainabilityRouter = router({
     since.setHours(0, 0, 0, 0);
     const s = await getTripStats(ctx.user.id, since);
     return { ...s, equivalents: equivalents(s.totalSavedGrams) };
+  }),
+
+  /**
+   * Personalised insights (Phase 16) over a rolling 30-day window, compared
+   * against the 30 days before it. A rolling window rather than the calendar
+   * month the Impact tiles use: on the 1st of a month there is nothing to say.
+   */
+  insights: protectedProcedure.query(async ({ ctx }) => {
+    const now = new Date();
+    const WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+    const since = new Date(now.getTime() - WINDOW_MS);
+    const priorSince = new Date(since.getTime() - WINDOW_MS);
+    const [trips, prior] = await Promise.all([
+      getTripsBetween(ctx.user.id, since, now),
+      getTripsBetween(ctx.user.id, priorSince, since),
+    ]);
+    return { windowDays: 30, ...tripInsights(trips, prior, now) };
   }),
 });
