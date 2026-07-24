@@ -5,6 +5,7 @@ import { SavedLocationsSection } from "./SavedLocations.js";
 import { FavouriteRoutesSection } from "./FavouriteRoutes.js";
 import { ALL_CATS, DEFAULT_CHIP_IDS } from "../components/NearestPanel.js";
 import { usePrefs } from "../lib/prefs.js";
+import { FluxSliders } from "../components/FluxSliders.js";
 import { cn } from "../lib/utils.js";
 import type { NearestCategoryId, UserPrefs } from "@shared/types.js";
 
@@ -109,25 +110,20 @@ function PreferencesSection() {
           </div>
         </div>
 
-        {/* Route priority per mode */}
+        {/* Route priority per mode. Transit gets the Flux sliders (Phase 16) —
+            they replaced the coarse chips, since weights both order the results
+            and drive the match badge. Walk/cycle keep their variant chips. */}
         <div>
           <div className="mb-1 text-sm font-semibold">Route priority</div>
           <p className="mb-2 text-xs text-ripple-muted">
-            How each mode’s options are ordered — your pick leads the list.
+            How each mode’s options are ordered — the best fit leads the list.
           </p>
+          <div className="mb-4">
+            <FluxSliders prefs={prefs} setPrefs={setPrefs} />
+          </div>
           <div className="flex flex-col gap-2.5">
             {(
               [
-                [
-                  "transit",
-                  "Transit",
-                  [
-                    ["fastest", "Fastest"],
-                    ["fewest_transfers", "Fewest transfers"],
-                    ["least_walking", "Least walking"],
-                    ["greenest", "Greenest"],
-                  ],
-                ],
                 [
                   "walk",
                   "Walk",

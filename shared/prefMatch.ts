@@ -47,7 +47,7 @@ export interface PrefMatch {
 
 /** Weight given to dimensions the user hasn't singled out — they still matter
  *  a little (nobody wants the priciest, slowest option), just far less. */
-const BASE_WEIGHT = 0.2;
+export const BASE_WEIGHT = 0.2;
 
 /** Route priority → dimension weights, until the Flux sliders land. */
 const PRIORITY_WEIGHTS: Record<string, PrefWeights> = {

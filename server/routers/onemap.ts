@@ -31,6 +31,7 @@ import {
   incidentLabel,
 } from "../services/traffic.js";
 import { rawHoursFor, readOpeningHours } from "../services/openingHours.js";
+import { matchScores, type PrefWeights } from "../../shared/prefMatch.js";
 import { getAllLineStatuses } from "../db/helpers.js";
 import type {
   Itinerary,
@@ -57,9 +58,21 @@ const routeInput = z.object({
   destName: z.string().max(255).optional(),
   /** When true, date/time is the target ARRIVAL; we solve for the departure. */
   arriveBy: z.boolean().optional(),
-  /** Result ordering preference (Preferences → Route priority). */
+  /** Result ordering preference (Preferences → Route priority). Superseded by
+   *  `prefWeights` when the user has moved the Flux sliders. */
   transitPriority: z
     .enum(["fastest", "fewest_transfers", "least_walking", "greenest"])
+    .optional(),
+  /** Flux slider weights (0–1 per dimension) — preference-weighted ordering. */
+  prefWeights: z
+    .object({
+      time: z.number().min(0).max(1).optional(),
+      transfers: z.number().min(0).max(1).optional(),
+      walking: z.number().min(0).max(1).optional(),
+      crowds: z.number().min(0).max(1).optional(),
+      cost: z.number().min(0).max(1).optional(),
+      carbon: z.number().min(0).max(1).optional(),
+    })
     .optional(),
 });
 
@@ -492,6 +505,8 @@ export async function planTransit(
     | "fewest_transfers"
     | "least_walking"
     | "greenest" = "fastest",
+  /** Flux slider weights — when set, they order the results instead. */
+  prefWeights?: PrefWeights,
 ): Promise<{
   itineraries: Itinerary[];
   weather: WeatherContext | null;
@@ -618,18 +633,34 @@ export async function planTransit(
     it.co2SavedGrams = Math.max(0, carbon.carGrams - it.co2Grams);
   }
 
-  // Rank by the chosen priority (duration is always the tie-breaker), and show
-  // up to 5 options.
-  const walkSecs = (it: Itinerary) =>
-    it.legs.filter((l) => l.type === "walk").reduce((s, l) => s + l.duration, 0);
-  const primary: Record<typeof transitPriority, (it: Itinerary) => number> = {
-    fastest: (it) => it.duration,
-    fewest_transfers: (it) => it.transfers,
-    least_walking: (it) => walkSecs(it),
-    greenest: (it) => it.co2Grams ?? Infinity,
-  };
-  const key = primary[transitPriority];
-  itineraries.sort((a, b) => key(a) - key(b) || a.duration - b.duration);
+  // Rank, then show up to 5 options. With Flux sliders set we order by the very
+  // same preference-match engine that scores the badge, so the list order and
+  // the "% match" can never tell the user two different stories. Without them
+  // we fall back to the single-key priority pick. Duration always tie-breaks.
+  const usingWeights =
+    prefWeights != null && Object.values(prefWeights).some((w) => (w ?? 0) > 0);
+  if (usingWeights) {
+    const scores = matchScores(itineraries, { prefWeights });
+    const scoreOf = new Map(
+      itineraries.map((it, i) => [it, scores[i]?.score ?? 0]),
+    );
+    itineraries.sort(
+      (a, b) => scoreOf.get(b)! - scoreOf.get(a)! || a.duration - b.duration,
+    );
+  } else {
+    const walkSecs = (it: Itinerary) =>
+      it.legs
+        .filter((l) => l.type === "walk")
+        .reduce((s, l) => s + l.duration, 0);
+    const primary: Record<typeof transitPriority, (it: Itinerary) => number> = {
+      fastest: (it) => it.duration,
+      fewest_transfers: (it) => it.transfers,
+      least_walking: (it) => walkSecs(it),
+      greenest: (it) => it.co2Grams ?? Infinity,
+    };
+    const key = primary[transitPriority];
+    itineraries.sort((a, b) => key(a) - key(b) || a.duration - b.duration);
+  }
   itineraries = itineraries.slice(0, 5);
 
   return { itineraries, weather: wx, carbon };
@@ -702,6 +733,7 @@ export const onemapRouter = router({
             true,
             input.destName,
             input.transitPriority,
+            input.prefWeights,
           );
           const leaveByMs = itineraries[0]?.startTimeMs ?? targetMs - estDur * 1000;
           return {
@@ -720,6 +752,7 @@ export const onemapRouter = router({
           true,
           input.destName,
           input.transitPriority,
+          input.prefWeights,
         );
         return {
           plan: { itineraries },

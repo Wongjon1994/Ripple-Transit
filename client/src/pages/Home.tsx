@@ -207,6 +207,7 @@ export function Home() {
           destName: routeParams.destName,
           arriveBy: routeParams.arriveBy,
           transitPriority: prefs.routePriority?.transit,
+          prefWeights: prefs.prefWeights,
         }
       : (undefined as never),
     {

@@ -81,7 +81,8 @@
       "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\).on\\(\"end\",\\(\\)=>{try{const j=JSON.parse\\(d\\);console.log\\(\\(j.items||[]\\).map\\(i=>i.title+\" \\(\"+Math.round\\(i.distance\\)+\"m\\)\"\\).join\\(\" | \"\\)||\"none / \"+JSON.stringify\\(j\\).slice\\(0,120\\)\\);}catch\\(e\\){console.log\\(\"err\",d.slice\\(0,120\\)\\)}}\\)')",
       "Bash(npx tsx *)",
       "Bash(npm test *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(python3 -)"
     ]
   }
 }
