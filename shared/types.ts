@@ -280,7 +280,20 @@ export interface UserPrefs extends NearestPrefs {
   maxWalkMin?: 10 | 15 | 20;
   /** Per-mode ordering preference for route results. */
   routePriority?: RoutePriority;
+  /** Phase 16 (Flux): 0–1 weight per preference dimension, from the Insights
+   *  sliders. When set it supersedes `routePriority.transit` for the
+   *  preference-match score (see shared/prefMatch.ts). */
+  prefWeights?: Partial<Record<PrefDimensionKey, number>>;
 }
+
+/** Mirrors PrefDimension in shared/prefMatch.ts (kept here to avoid a cycle). */
+export type PrefDimensionKey =
+  | "time"
+  | "transfers"
+  | "walking"
+  | "crowds"
+  | "cost"
+  | "carbon";
 
 /** Driving-baseline carbon for the same origin→destination. */
 export interface CarbonBaseline {

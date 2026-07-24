@@ -35,6 +35,17 @@ const prefsSchema = z.object({
       cycle: activePriority.optional(),
     })
     .optional(),
+  // Phase 16 (Flux): per-dimension weights behind the preference-match score.
+  prefWeights: z
+    .object({
+      time: z.number().min(0).max(1).optional(),
+      transfers: z.number().min(0).max(1).optional(),
+      walking: z.number().min(0).max(1).optional(),
+      crowds: z.number().min(0).max(1).optional(),
+      cost: z.number().min(0).max(1).optional(),
+      carbon: z.number().min(0).max(1).optional(),
+    })
+    .optional(),
 });
 
 export const prefsRouter = router({

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   Footprints,
   TrainFront,
@@ -37,6 +37,9 @@ import { lineColor, lineName } from "../lib/transit.js";
 import { trpc } from "../lib/trpc.js";
 import { FeasibilityBadge, FeasibilityCallout } from "./FeasibilityBadge.js";
 import { StatusBadge, riskTier } from "./StatusBadge.js";
+import { PrefMatchBadge, PrefMatchDetail } from "./PrefMatchBadge.js";
+import { matchScores } from "@shared/prefMatch.js";
+import { usePrefs } from "../lib/prefs.js";
 import { LiveArrivals } from "./LiveArrivals.js";
 import { TaxiCard } from "./TaxiCard.js";
 import { Button, Card } from "./ui.js";
@@ -567,6 +570,14 @@ export function RouteResultsPanel({
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   useEffect(() => setExpandedIdx(null), [collapseKey]);
 
+  // §4.4 preference match — relative to this search only, and only when the
+  // user has actually stated a preference (otherwise every entry is null).
+  const { prefs } = usePrefs();
+  const matches = useMemo(
+    () => matchScores(itineraries, prefs),
+    [itineraries, prefs],
+  );
+
   if (itineraries.length === 0) return null;
   const fastest = Math.min(...itineraries.map((it) => it.duration));
 
@@ -665,8 +676,9 @@ export function RouteResultsPanel({
                     </span>
                   </div>
 
-                  {/* De-emphasised secondary metrics (§3). */}
-                  <div className="mt-0.5 border-t border-[var(--border)] pt-1.5">
+                  {/* De-emphasised secondary metrics (§3) — the preference
+                      match rides this row so it can't rival the ETA/risk hero. */}
+                  <div className="mt-0.5 flex items-center gap-2 border-t border-[var(--border)] pt-1.5">
                     <span className="data-voice text-[11px] text-ripple-muted">
                       ${it.fare.toFixed(2)} ·{" "}
                       {it.transfers === 0
@@ -674,6 +686,9 @@ export function RouteResultsPanel({
                         : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
                       {it.co2Grams != null && ` · ${fmtCo2(it.co2Grams)} CO₂`}
                     </span>
+                    {matches[i] && (
+                      <PrefMatchBadge match={matches[i]!} className="ml-auto" />
+                    )}
                   </div>
                 </button>
 
@@ -689,6 +704,12 @@ export function RouteResultsPanel({
                           {RISK_LABELS[it.risk.level]}
                         </span>{" "}
                         · {it.risk.reasons.join(" · ")}
+                      </div>
+                    )}
+
+                    {matches[i] && (
+                      <div className="border-b border-[var(--border)] px-3 py-2">
+                        <PrefMatchDetail match={matches[i]!} prefs={prefs} />
                       </div>
                     )}
 
