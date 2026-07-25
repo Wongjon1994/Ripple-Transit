@@ -9,22 +9,22 @@ import {
 } from "react-map-gl/maplibre";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import {
-  Route,
-  Navigation,
-  ChevronDown,
-  ChevronRight,
-  Activity,
-} from "lucide-react";
+import { Route, Navigation, Activity } from "lucide-react";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { cn } from "../lib/utils.js";
 import { useTheme } from "../lib/theme.js";
 import { trpc } from "../lib/trpc.js";
+import { useAuth } from "../lib/auth.js";
+import { usePrefs } from "../lib/prefs.js";
+import { weightsFor } from "@shared/prefMatch.js";
+import { pulseSummary } from "../lib/pulseSummary.js";
+import { PulsePanel } from "./PulsePanel.js";
 import {
   NETWORK_LINES_GEOJSON,
   NETWORK_STATIONS_GEOJSON,
   STATION_COORDS,
+  STATION_NAMES,
 } from "../lib/mrtNetwork.js";
 
 const SG_CENTER = { lng: 103.8198, lat: 1.3521 };
@@ -216,6 +216,46 @@ export function MapView({
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+
+  // Personalisation inputs for the dynamic Pulse panel: what the user cares
+  // about (Flux weights) and where their saved places are (proximity callouts).
+  const { user } = useAuth();
+  const { prefs } = usePrefs();
+  const savedPlaces = trpc.savedLocations.list.useQuery(undefined, {
+    enabled: !!user && showNetwork && !follow,
+    staleTime: 5 * 60_000,
+  });
+
+  // The dynamic summary — a "worst right now" headline, live tallies ordered by
+  // preference, and proximity callouts. Recomputed only when live data moves.
+  const summary = useMemo(() => {
+    if (!pulse.data) return null;
+    const congestion = pulse.data.congestion.map((c) => ({
+      level: c.level,
+      road: c.road,
+      lat: (c.startLat + c.endLat) / 2,
+      lng: (c.startLng + c.endLng) / 2,
+    }));
+    const crowd = pulse.data.crowd
+      .filter((c) => STATION_COORDS[c.code])
+      .map((c) => ({
+        name: STATION_NAMES[c.code] ?? c.code,
+        level: c.level,
+        lng: STATION_COORDS[c.code][0],
+        lat: STATION_COORDS[c.code][1],
+      }));
+    const places = (savedPlaces.data ?? [])
+      .map((p) => ({ label: p.label, lat: Number(p.lat), lng: Number(p.lng) }))
+      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    return pulseSummary({
+      congestion,
+      crowd,
+      incidents: pulse.data.traffic,
+      rain: pulse.data.rain,
+      weights: weightsFor(prefs),
+      places,
+    });
+  }, [pulse.data, savedPlaces.data, prefs]);
 
   // Live crowd colours joined onto station coordinates. Only busy stations
   // arrive from the server now (low crowd is filtered out), so the palette is
@@ -726,69 +766,23 @@ export function MapView({
         </>
       )}
 
-      {/* Pulse legend — only while the layer is on and there's live data.
-          Collapsible: tap the header to fold it to a single chip so it never
-          covers the map the user is trying to read. */}
-      {!follow && showNetwork && pulse.data && (
-        <div className="absolute left-[10px] top-[152px] z-[1] rounded-lg border border-[var(--border)] bg-[var(--surface)]/90 text-[10px] shadow-[0_2px_8px_rgba(0,0,0,0.12)]">
-          <button
-            type="button"
-            onClick={() => setLegendOpen((v) => !v)}
-            aria-expanded={legendOpen}
-            className="flex w-full items-center gap-1.5 px-2.5 py-1.5 font-mono font-semibold uppercase tracking-[0.08em] text-ripple-muted"
-          >
-            {legendOpen ? (
-              <ChevronDown size={11} className="text-brand" />
-            ) : (
-              <ChevronRight size={11} className="text-brand" />
-            )}
-            Pulse
-          </button>
-          {legendOpen && (
-            <div className="flex flex-col gap-1 px-2.5 pb-2">
-              {/* Road congestion = lines */}
-              {[
-                ["#ef4444", "Heavy traffic"],
-                ["#f59e0b", "Slow traffic"],
-              ].map(([c, label]) => (
-                <div key={label} className="flex items-center gap-1.5 text-ripple-muted">
-                  <span
-                    className="inline-block h-[3px] w-4 rounded-full"
-                    style={{ background: c }}
-                  />
-                  {label}
-                </div>
-              ))}
-              {/* Crowd = filled dots */}
-              {[
-                ["#ef4444", "Packed platform"],
-                ["#f59e0b", "Busy platform"],
-              ].map(([c, label]) => (
-                <div key={label} className="flex items-center gap-1.5 text-ripple-muted">
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{ background: c }}
-                  />
-                  {label}
-                </div>
-              ))}
-              {/* Incident = hollow ring */}
-              <div className="flex items-center gap-1.5 text-ripple-muted">
-                <span
-                  className="inline-block h-2 w-2 rounded-full border-2 border-[#ef4444] bg-transparent"
-                />
-                Incident
-              </div>
-              <div className="flex items-center gap-1.5 text-ripple-muted">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ background: "#8fa3ad", opacity: 0.5 }}
-                />
-                Rain area (approx)
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Dynamic Pulse panel — live tallies + a "worst right now" headline +
+          personalised proximity callouts. Replaces the old static legend so the
+          key doubles as a real-time read of the city. Collapses to a chip. */}
+      {!follow && showNetwork && summary && (
+        <PulsePanel
+          summary={summary}
+          open={legendOpen}
+          onToggle={() => setLegendOpen((v) => !v)}
+          timeLabel={
+            pulse.dataUpdatedAt
+              ? new Date(pulse.dataUpdatedAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : ""
+          }
+        />
       )}
 
       {/* Live-journey camera toggle: current leg (tight follow) ↔ full route

@@ -87,3 +87,13 @@ export const STATION_COORDS: Record<string, [number, number]> = (() => {
   }
   return m;
 })();
+
+/** Station code → display name (e.g. "EW14" → "Raffles Place"), so live crowd
+ *  data keyed by code can be shown as a place the rider recognises. */
+export const STATION_NAMES: Record<string, string> = (() => {
+  const m: Record<string, string> = {};
+  for (const stations of Object.values(LINES)) {
+    for (const s of stations) m[s.code] = s.name;
+  }
+  return m;
+})();

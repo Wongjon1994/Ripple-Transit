@@ -66,9 +66,13 @@ export interface CongestionSegment {
   endLat: number;
   endLng: number;
   level: "red" | "amber";
+  /** Road name — so the summary can count distinct affected ROADS (one jam is
+   *  many ~150m links), not raw segments. */
+  road: string;
 }
 
 interface SpeedBandRow {
+  RoadName: string;
   RoadCategory: string;
   SpeedBand: number;
   StartLat: string;
@@ -135,7 +139,14 @@ async function fetchCongestion(): Promise<CongestionSegment[]> {
         const endLat = Number(r.EndLat);
         const endLng = Number(r.EndLon);
         if (!startLat || !startLng || !endLat || !endLng) continue;
-        out.push({ startLat, startLng, endLat, endLng, level });
+        out.push({
+          startLat,
+          startLng,
+          endLat,
+          endLng,
+          level,
+          road: r.RoadName,
+        });
       }
     }
     base += BATCH * PAGE;
