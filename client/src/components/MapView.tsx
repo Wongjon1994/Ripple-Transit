@@ -252,10 +252,53 @@ export function MapView({
       crowd,
       incidents: pulse.data.traffic,
       rain: pulse.data.rain,
+      mrtDisruptions: pulse.data.mrtDisruptions,
+      mrtPlanned: pulse.data.mrtPlanned,
       weights: weightsFor(prefs),
       places,
     });
   }, [pulse.data, savedPlaces.data, prefs]);
+
+  // Set of line prefixes with a live disruption — fade those lines and ring
+  // their affected stations so the outage reads as distinct from crowd/traffic.
+  const disruptedLines = useMemo(
+    () => new Set((pulse.data?.mrtDisruptions ?? []).flatMap((d) => d.lines)),
+    [pulse.data?.mrtDisruptions],
+  );
+  const affectedStationsGeoJSON = useMemo(() => {
+    const codes = new Set(
+      (pulse.data?.mrtDisruptions ?? []).flatMap((d) => d.stations),
+    );
+    return {
+      type: "FeatureCollection" as const,
+      features: [...codes]
+        .filter((code) => STATION_COORDS[code])
+        .map((code) => ({
+          type: "Feature" as const,
+          properties: {},
+          geometry: {
+            type: "Point" as const,
+            coordinates: STATION_COORDS[code],
+          },
+        })),
+    };
+  }, [pulse.data?.mrtDisruptions]);
+
+  // Rail lines with a `disrupted` flag, so a downed line can be greyed + faded
+  // (it recedes — reads as "not running", not as faint colour).
+  const networkLinesGeoJSON = useMemo(
+    () => ({
+      ...NETWORK_LINES_GEOJSON,
+      features: NETWORK_LINES_GEOJSON.features.map((f) => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          disrupted: disruptedLines.has(f.properties.prefix) ? 1 : 0,
+        },
+      })),
+    }),
+    [disruptedLines],
+  );
 
   // Live crowd colours joined onto station coordinates. Only busy stations
   // arrive from the server now (low crowd is filtered out), so the palette is
@@ -487,10 +530,14 @@ export function MapView({
           toggle reliably clears it. */}
       {!follow && showNetwork && (
         <>
-          <Source id="mrt-network" type="geojson" data={NETWORK_LINES_GEOJSON}>
+          <Source id="mrt-network" type="geojson" data={networkLinesGeoJSON}>
+            {/* Operational lines: solid, official colour. (line-dasharray can't
+                be data-driven in MapLibre, so disrupted lines are a separate
+                layer below rather than a case expression here.) */}
             <Layer
               id="mrt-network-lines"
               type="line"
+              filter={["!=", ["get", "disrupted"], 1]}
               layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
                 "line-color": ["get", "color"],
@@ -506,6 +553,80 @@ export function MapView({
                   16,
                   4,
                 ],
+              }}
+            />
+            {/* Disrupted lines: colour drains to grey and the line goes dashed
+                — reads as "not running" while staying traceable. */}
+            <Layer
+              id="mrt-network-lines-disrupted"
+              type="line"
+              filter={["==", ["get", "disrupted"], 1]}
+              layout={{
+                "line-cap": "butt",
+                "line-join": "round",
+              }}
+              paint={{
+                "line-color": isDark ? "#6b7684" : "#9aa5b1",
+                "line-opacity": isDark ? 0.5 : 0.42,
+                "line-dasharray": [2, 2],
+                "line-width": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  10,
+                  1.4,
+                  13,
+                  2.6,
+                  16,
+                  4,
+                ],
+              }}
+            />
+          </Source>
+
+          {/* Affected stations on a disrupted line — a hollow ring in the
+              disruption tone, the same visual language as a road incident, so
+              the outage's location reads at a glance. */}
+          <Source
+            id="pulse-mrt-affected"
+            type="geojson"
+            data={affectedStationsGeoJSON}
+          >
+            <Layer
+              id="pulse-mrt-affected-glow"
+              type="circle"
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  10,
+                  8,
+                  14,
+                  16,
+                ],
+                "circle-color": "#ef4444",
+                "circle-blur": 1,
+                "circle-opacity": 0.25,
+              }}
+            />
+            <Layer
+              id="pulse-mrt-affected-ring"
+              type="circle"
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  10,
+                  4,
+                  14,
+                  7,
+                ],
+                "circle-color": isDark ? "#0b0f14" : "#ffffff",
+                "circle-opacity": 0.9,
+                "circle-stroke-color": "#ef4444",
+                "circle-stroke-width": 2.5,
               }}
             />
           </Source>
@@ -555,7 +676,9 @@ export function MapView({
                   16,
                   12,
                 ],
-                "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+                // Must be a font the CARTO glyph set actually ships, or the
+                // composite glyph request 404s and labels silently vanish.
+                "text-font": ["Open Sans Regular", "Noto Sans Regular"],
                 "text-anchor": "top",
                 "text-offset": [0, 0.6],
                 "text-max-width": 8,

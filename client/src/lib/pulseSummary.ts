@@ -36,11 +36,25 @@ export interface PulsePlace {
   lng: number;
 }
 
+export interface PulseMrtDisruption {
+  lines: string[];
+  stations: string[];
+  message: string;
+}
+export interface PulseMrtPlanned {
+  line?: string;
+  label: string;
+}
+
 export interface PulseSummaryInput {
   congestion: PulseCongestion[];
   crowd: PulseCrowd[];
   incidents: PulseIncident[];
   rain: PulseRain[];
+  /** Live MRT/LRT disruptions — the highest-priority Pulse signal. */
+  mrtDisruptions: PulseMrtDisruption[];
+  /** Planned rail adjustments — informational footer. */
+  mrtPlanned: PulseMrtPlanned[];
   /** Flux weights (or null) — order the tallies by what the user prioritises. */
   weights: PrefWeights | null;
   /** Saved Home/Work etc. — drives the "for you" proximity callouts. */
@@ -55,17 +69,48 @@ export interface PulseTallyItem {
 }
 export interface PulseRow {
   kind: "traffic" | "crowd" | "alerts";
-  items: PulseTallyItem[];
+  /** Tally items (crowd, alerts). Traffic uses `text` instead (area-based). */
+  items?: PulseTallyItem[];
+  /** Area-based summary line, e.g. "Central, East +1" (traffic row). */
+  text?: string;
 }
 export interface PulseCallout {
-  tone: PulseTone | "muted";
+  tone: PulseTone | "mrt" | "muted";
   text: string;
 }
 export interface PulseSummary {
   headline: PulseCallout | null;
   rows: PulseRow[];
   personal: PulseCallout[];
+  /** Planned rail adjustments — a muted informational footer. */
+  planned: string[];
   allClear: boolean;
+}
+
+/**
+ * Singapore's five URA planning regions by centroid — a point is assigned to
+ * the nearest. Cheap and dependency-free; precise enough to say "heavy traffic
+ * in Central & East" without a boundary dataset.
+ */
+const REGIONS: { name: string; lat: number; lng: number }[] = [
+  { name: "Central", lat: 1.30, lng: 103.83 },
+  { name: "East", lat: 1.34, lng: 103.94 },
+  { name: "North-East", lat: 1.38, lng: 103.88 },
+  { name: "North", lat: 1.43, lng: 103.80 },
+  { name: "West", lat: 1.34, lng: 103.72 },
+];
+
+export function regionOf(lat: number, lng: number): string {
+  let best = REGIONS[0];
+  let bestD = Infinity;
+  for (const r of REGIONS) {
+    const d = (r.lat - lat) ** 2 + (r.lng - lng) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = r;
+    }
+  }
+  return best.name;
 }
 
 /** Metres between two lat/lng points (equirectangular — plenty for <2km). */
@@ -149,10 +194,11 @@ function calloutForPlace(
 }
 
 const TONE_RANK: Record<PulseCallout["tone"], number> = {
-  red: 0,
-  amber: 1,
-  rain: 2,
-  muted: 3,
+  mrt: 0,
+  red: 1,
+  amber: 2,
+  rain: 3,
+  muted: 4,
 };
 
 /** Distinct road names among congestion of one level — so "12 heavy" means 12
@@ -166,6 +212,36 @@ function distinctRoads(
   return roads.size;
 }
 
+/** Region names with heavy traffic, busiest first, e.g. "Central, East +1". */
+function heavyAreasText(congestion: PulseCongestion[]): string | null {
+  // Distinct roads per region (roads, not segments, so a big road isn't
+  // double-counted across the region it dominates).
+  const roadsByRegion = new Map<string, Set<string>>();
+  for (const c of congestion) {
+    if (c.level !== "red" || !c.road) continue;
+    const region = regionOf(c.lat, c.lng);
+    if (!roadsByRegion.has(region)) roadsByRegion.set(region, new Set());
+    roadsByRegion.get(region)!.add(c.road);
+  }
+  if (roadsByRegion.size === 0) return null;
+  const ranked = [...roadsByRegion.entries()]
+    .map(([name, roads]) => ({ name, n: roads.size }))
+    .sort((a, b) => b.n - a.n);
+  const top = ranked.slice(0, 2).map((r) => r.name);
+  const extra = ranked.length - top.length;
+  return extra > 0 ? `${top.join(", ")} +${extra}` : top.join(", ");
+}
+
+/** Short label for an MRT disruption headline/callout ("NE line disrupted"). */
+function mrtDisruptionLabel(d: PulseMrtDisruption): string {
+  const lines = d.lines.join("/");
+  const where =
+    d.stations.length > 0
+      ? ` · ${d.stations.length} station${d.stations.length > 1 ? "s" : ""}`
+      : "";
+  return `${lines} line disrupted${where}`;
+}
+
 export function pulseSummary(input: PulseSummaryInput): PulseSummary {
   const heavy = distinctRoads(input.congestion, "red");
   const slow = distinctRoads(input.congestion, "amber");
@@ -173,24 +249,26 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
   const busy = input.crowd.filter((c) => c.level === "m");
   const incidents = input.incidents.length;
   const rain = input.rain.length;
+  const disruptions = input.mrtDisruptions;
+  const planned = input.mrtPlanned.map((p) => p.label);
 
   const allClear =
-    heavy + slow + packed.length + busy.length + incidents + rain === 0;
+    heavy + slow + packed.length + busy.length + incidents + rain === 0 &&
+    disruptions.length === 0;
 
   if (allClear) {
     return {
       headline: { tone: "muted", text: "Network flowing — all clear" },
       rows: [],
       personal: [],
+      planned,
       allClear: true,
     };
   }
 
-  // Tally rows — only items with a non-zero count survive.
-  const trafficItems: PulseTallyItem[] = [
-    { tone: "red" as const, count: heavy, label: "heavy" },
-    { tone: "amber" as const, count: slow, label: "slow" },
-  ].filter((i) => i.count > 0);
+  // Traffic is area-based and heavy-only (the panel shows trends; road-level
+  // red/amber stays on the map). Crowd + alerts keep their live tallies.
+  const heavyAreas = heavyAreasText(input.congestion);
   const crowdItems: PulseTallyItem[] = [
     { tone: "red" as const, count: packed.length, label: "packed" },
     { tone: "amber" as const, count: busy.length, label: "busy" },
@@ -207,31 +285,36 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
     // incidents bite travel time; rain matters most on foot.
     alerts: Math.max(w?.time ?? BASE_RELEVANCE, w?.walking ?? BASE_RELEVANCE),
   };
-  const rows: PulseRow[] = (
-    [
-      { kind: "traffic" as const, items: trafficItems, r: rel.traffic },
-      { kind: "crowd" as const, items: crowdItems, r: rel.crowd },
-      { kind: "alerts" as const, items: alertItems, r: rel.alerts },
-    ]
-      .filter((row) => row.items.length > 0)
-      // Descending relevance; stable so ties keep the natural order.
-      .sort((a, b) => b.r - a.r)
-      .map(({ kind, items }) => ({ kind, items }))
-  );
+  const candidates: (PulseRow & { r: number; keep: boolean })[] = [
+    {
+      kind: "traffic",
+      text: heavyAreas ?? undefined,
+      r: rel.traffic,
+      keep: heavyAreas != null,
+    },
+    { kind: "crowd", items: crowdItems, r: rel.crowd, keep: crowdItems.length > 0 },
+    { kind: "alerts", items: alertItems, r: rel.alerts, keep: alertItems.length > 0 },
+  ];
+  const rows: PulseRow[] = candidates
+    .filter((row) => row.keep)
+    .sort((a, b) => b.r - a.r)
+    .map(({ kind, items, text }) => ({ kind, items, text }));
 
-  // Headline: the single worst thing citywide, most severe first.
+  // Headline: the single worst thing citywide. MRT disruption tops everything —
+  // a downed line strands more people than any road jam.
   let headline: PulseCallout | null = null;
   const severe = input.incidents.find((i) => i.severe);
-  if (severe) headline = { tone: "red", text: severe.label };
+  if (disruptions.length)
+    headline = { tone: "mrt", text: mrtDisruptionLabel(disruptions[0]) };
+  else if (severe) headline = { tone: "red", text: severe.label };
   else if (packed.length)
     headline = { tone: "red", text: `${packed[0].name} packed — busiest now` };
-  else if (heavy >= 8)
-    headline = { tone: "red", text: `Heavy traffic on ${plural(heavy, "road")}` };
+  else if (heavyAreas)
+    headline = { tone: "red", text: `Heavy traffic · ${heavyAreas}` };
   else if (incidents) headline = { tone: "amber", text: input.incidents[0].label };
   else if (busy.length)
     headline = { tone: "amber", text: `${busy[0].name} — busy platform` };
-  else if (heavy || slow)
-    headline = { tone: "amber", text: `${plural(heavy + slow, "road")} running slow` };
+  else if (slow) headline = { tone: "amber", text: `${plural(slow, "road")} running slow` };
 
   // Personalised proximity callouts — worst 2, deduped.
   const personal: PulseCallout[] = [];
@@ -245,5 +328,11 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
   }
   personal.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
 
-  return { headline, rows, personal: personal.slice(0, 2), allClear: false };
+  return {
+    headline,
+    rows,
+    personal: personal.slice(0, 2),
+    planned,
+    allClear: false,
+  };
 }

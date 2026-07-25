@@ -9,6 +9,11 @@ import {
   type CongestionSegment,
 } from "../services/traffic.js";
 import { rainAreas } from "../services/weather.js";
+import {
+  getTrainAlerts,
+  type TrainDisruption,
+  type TrainPlanned,
+} from "../services/trainAlerts.js";
 
 export interface PulseOverlay {
   /** Live platform crowd, keyed by station code (joined to the map network).
@@ -20,6 +25,10 @@ export interface PulseOverlay {
   congestion: CongestionSegment[];
   /** Approximate wet areas (soft blobs) from the 2h nowcast. */
   rain: { lat: number; lng: number; intensity: "light" | "heavy" }[];
+  /** Live MRT/LRT disruptions (fade the line + ring affected stations). */
+  mrtDisruptions: TrainDisruption[];
+  /** Planned service adjustments (informational footer). */
+  mrtPlanned: TrainPlanned[];
 }
 
 /**
@@ -29,11 +38,16 @@ export interface PulseOverlay {
  */
 export const pulseRouter = router({
   overlay: publicProcedure.query(async (): Promise<PulseOverlay> => {
-    const [crowdMap, incidents, congestion, rain] = await Promise.all([
+    const [crowdMap, incidents, congestion, rain, trains] = await Promise.all([
       stationCrowd().catch(() => new Map<string, "l" | "m" | "h">()),
       getTrafficIncidents().catch(() => []),
       getTrafficCongestion().catch(() => []),
       rainAreas().catch(() => []),
+      getTrainAlerts().catch(() => ({
+        disrupted: false,
+        disruptions: [],
+        planned: [],
+      })),
     ]);
     return {
       // Drop low-crowd stations — Pulse surfaces problems, not the calm.
@@ -52,6 +66,8 @@ export const pulseRouter = router({
         lng: r.lng,
         intensity: r.intensity,
       })),
+      mrtDisruptions: trains.disruptions,
+      mrtPlanned: trains.planned,
     };
   }),
 

@@ -1,4 +1,11 @@
-import { ChevronDown, ChevronRight, TriangleAlert, CloudRain } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  TriangleAlert,
+  CloudRain,
+  TrainFront,
+  Info,
+} from "lucide-react";
 import type {
   PulseSummary,
   PulseRow,
@@ -37,9 +44,18 @@ function Swatch({ kind, tone }: { kind: PulseRow["kind"]; tone: PulseTallyItem["
 }
 
 function TallyRow({ row }: { row: PulseRow }) {
+  // Traffic is area-based: a red line swatch + "Heavy · <areas>", not a tally.
+  if (row.kind === "traffic")
+    return (
+      <div className="flex items-center gap-1.5 text-ripple-muted">
+        <Swatch kind="traffic" tone="red" />
+        Heavy ·{" "}
+        <span className="font-medium text-[var(--fg)]">{row.text}</span>
+      </div>
+    );
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-      {row.items.map((it, i) => (
+      {(row.items ?? []).map((it, i) => (
         <span key={i} className="flex items-center gap-1 text-ripple-muted">
           <Swatch kind={row.kind} tone={it.tone} />
           <span className="data-voice font-semibold text-[var(--fg)]">
@@ -53,31 +69,37 @@ function TallyRow({ row }: { row: PulseRow }) {
 }
 
 const CALLOUT_HEX: Record<PulseCallout["tone"], string> = {
+  mrt: "#ef4444",
   red: "#ef4444",
   amber: "#f59e0b",
   rain: "#8fa3ad",
   muted: "var(--muted)",
 };
 
-function CalloutLine({
-  callout,
-  icon = true,
-}: {
-  callout: PulseCallout;
-  icon?: boolean;
-}) {
-  const Icon = callout.tone === "rain" ? CloudRain : TriangleAlert;
+function CalloutLine({ callout }: { callout: PulseCallout }) {
+  // MRT disruption gets a train icon (red) so it reads distinctly from a road
+  // incident; rain gets a cloud; everything else the warning triangle.
+  const Icon =
+    callout.tone === "mrt"
+      ? TrainFront
+      : callout.tone === "rain"
+        ? CloudRain
+        : TriangleAlert;
   return (
     <div className="flex items-start gap-1.5">
-      {icon && callout.tone !== "muted" && (
+      {callout.tone !== "muted" && (
         <Icon
-          size={11}
+          size={12}
+          strokeWidth={callout.tone === "mrt" ? 2.5 : 2}
           className="mt-[1px] shrink-0"
           style={{ color: CALLOUT_HEX[callout.tone] }}
         />
       )}
       <span
-        className="leading-snug"
+        className={cn(
+          "leading-snug",
+          callout.tone === "mrt" && "font-semibold",
+        )}
         style={{
           color: callout.tone === "muted" ? "var(--muted)" : "var(--fg)",
         }}
@@ -164,6 +186,27 @@ export function PulsePanel({
               {summary.personal.map((c, i) => (
                 <CalloutLine key={i} callout={c} />
               ))}
+            </div>
+          )}
+
+          {/* Planned rail adjustments — informational, muted, at most two so
+              they never crowd out the live signals above. */}
+          {summary.planned.length > 0 && (
+            <div className="mt-0.5 flex flex-col gap-1 border-t border-[var(--border)]/60 pt-1.5">
+              <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-ripple-muted">
+                Planned
+              </span>
+              {summary.planned.slice(0, 2).map((text, i) => (
+                <div key={i} className="flex items-start gap-1.5 text-ripple-muted">
+                  <Info size={11} className="mt-[1px] shrink-0" />
+                  <span className="leading-snug">{text}</span>
+                </div>
+              ))}
+              {summary.planned.length > 2 && (
+                <span className="pl-[18px] text-[10px] text-ripple-muted">
+                  +{summary.planned.length - 2} more
+                </span>
+              )}
             </div>
           )}
         </div>
