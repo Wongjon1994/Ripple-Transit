@@ -284,6 +284,10 @@ export interface UserPrefs extends NearestPrefs {
    *  sliders. When set it supersedes `routePriority.transit` for the
    *  preference-match score (see shared/prefMatch.ts). */
   prefWeights?: Partial<Record<PrefDimensionKey, number>>;
+  /** Phase 16 consent: may we use this user's trip history to learn their
+   *  patterns (personalised Insights, adaptive learning)? Captured at signup,
+   *  editable in Preferences. Undefined = not yet asked. */
+  tripHistoryConsent?: boolean;
 }
 
 /** Mirrors PrefDimension in shared/prefMatch.ts (kept here to avoid a cycle). */

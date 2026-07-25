@@ -46,6 +46,8 @@ const prefsSchema = z.object({
       carbon: z.number().min(0).max(1).optional(),
     })
     .optional(),
+  // Phase 16 consent: use trip history for personalised insights / learning.
+  tripHistoryConsent: z.boolean().optional(),
 });
 
 export const prefsRouter = router({

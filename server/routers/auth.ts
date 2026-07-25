@@ -14,6 +14,7 @@ import {
   createUser,
   createSession,
   deleteSession,
+  upsertUserPrefs,
 } from "../db/helpers.js";
 
 const credentials = z.object({
@@ -21,12 +22,18 @@ const credentials = z.object({
   password: z.string().min(8).max(128),
 });
 
+const registration = credentials.extend({
+  /** Signup consent (Phase 16): may we learn from this user's trip history?
+   *  Recorded into their prefs so Insights/Flux know whether to personalise. */
+  tripHistoryConsent: z.boolean().optional(),
+});
+
 export const authRouter = router({
   // Current user (null when logged out) — safe to call publicly.
   me: publicProcedure.query(({ ctx }) => ctx.user),
 
   register: publicProcedure
-    .input(credentials)
+    .input(registration)
     .mutation(async ({ input, ctx }) => {
       const existing = await getUserByEmail(input.email);
       if (existing) {
@@ -37,6 +44,13 @@ export const authRouter = router({
       }
       const passwordHash = await hashPassword(input.password);
       const user = await createUser(input.email, passwordHash);
+
+      // Record the trip-history consent decision made at signup (defaults to
+      // false — no learning unless the user opts in). Best-effort: a prefs
+      // write failure must never block account creation.
+      await upsertUserPrefs(user.id, {
+        tripHistoryConsent: input.tripHistoryConsent ?? false,
+      }).catch(() => {});
 
       const token = newSessionToken();
       const expires = sessionExpiry();

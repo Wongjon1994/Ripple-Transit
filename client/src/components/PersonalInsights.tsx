@@ -10,8 +10,10 @@ import {
   Car,
   TriangleAlert,
 } from "lucide-react";
+import { Link } from "wouter";
 import { trpc } from "../lib/trpc.js";
 import { useAuth } from "../lib/auth.js";
+import { usePrefs } from "../lib/prefs.js";
 import { Card } from "./ui.js";
 import { fmtDistance, cn } from "../lib/utils.js";
 
@@ -54,9 +56,34 @@ function Tile({
  */
 export function PersonalInsights() {
   const { user } = useAuth();
+  const { prefs } = usePrefs();
+  // Adaptive learning is consent-gated: only read history into patterns once
+  // the user has opted in (at signup or in Preferences).
+  const consented = prefs.tripHistoryConsent === true;
   const q = trpc.sustainability.insights.useQuery(undefined, {
-    enabled: !!user,
+    enabled: !!user && consented,
   });
+
+  if (user && !consented) {
+    return (
+      <Section>
+        <Card className="flex items-start gap-3 p-4">
+          <Sparkles size={16} className="mt-0.5 shrink-0 text-match" />
+          <p className="text-sm leading-relaxed text-ripple-muted">
+            Personalised patterns are off. Turn on{" "}
+            <Link
+              href="/preferences"
+              className="font-medium text-brand hover:underline"
+            >
+              trip-history learning in Preferences
+            </Link>{" "}
+            to see your repeated routes, mode split and CO₂ streak — we only ever
+            analyse your own journeys.
+          </p>
+        </Card>
+      </Section>
+    );
+  }
 
   if (!user) {
     return (

@@ -5,6 +5,7 @@ import { SavedLocationsSection } from "./SavedLocations.js";
 import { FavouriteRoutesSection } from "./FavouriteRoutes.js";
 import { ALL_CATS, DEFAULT_CHIP_IDS } from "../components/NearestPanel.js";
 import { usePrefs } from "../lib/prefs.js";
+import { useAuth } from "../lib/auth.js";
 import { FluxSliders } from "../components/FluxSliders.js";
 import { cn } from "../lib/utils.js";
 import type { NearestCategoryId, UserPrefs } from "@shared/types.js";
@@ -38,6 +39,7 @@ export function Favourites() {
 
 function PreferencesSection() {
   const { prefs, setPrefs } = usePrefs();
+  const { user } = useAuth();
   const saved =
     prefs.defaultChips && prefs.defaultChips.length === 4
       ? prefs.defaultChips
@@ -237,6 +239,32 @@ function PreferencesSection() {
             ))}
           </div>
         </div>
+
+        {/* Trip-history learning consent (Phase 16) — the same decision offered
+            at signup, editable here. Only shown to signed-in users, since
+            guests have no history to learn from. */}
+        {user && (
+          <div>
+            <div className="mb-1 text-sm font-semibold">
+              Personalised learning
+            </div>
+            <label className="flex cursor-pointer items-start gap-2.5 text-xs text-ripple-muted">
+              <input
+                type="checkbox"
+                checked={prefs.tripHistoryConsent === true}
+                onChange={(e) =>
+                  setPrefs({ tripHistoryConsent: e.target.checked })
+                }
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand)]"
+              />
+              <span>
+                Use my trip history to personalise my Insights (repeated routes,
+                mode split, CO₂ streak) and improve route suggestions. Only your
+                own journeys are analysed; turn this off anytime.
+              </span>
+            </label>
+          </div>
+        )}
       </Card>
     </section>
   );

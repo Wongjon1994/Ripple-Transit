@@ -10,6 +10,7 @@ import {
   mrtLineStatuses,
   settings,
   tripLog,
+  userPrefs,
   type UserRole,
   type MrtStatus,
 } from "../../drizzle/schema.js";
@@ -324,6 +325,21 @@ export async function getTripsBetween(
     distanceM: r.distanceM,
     createdAt: r.createdAt,
   }));
+}
+
+/** Write a user's preferences blob (used at signup to record consent). */
+export async function upsertUserPrefs(
+  userId: number,
+  prefs: Record<string, unknown>,
+) {
+  const json = JSON.stringify(prefs);
+  await db
+    .insert(userPrefs)
+    .values({ userId, prefs: json })
+    .onConflictDoUpdate({
+      target: userPrefs.userId,
+      set: { prefs: json, updatedAt: new Date() },
+    });
 }
 
 /** Aggregate a user's trips since a cutoff date. */

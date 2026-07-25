@@ -10,6 +10,8 @@ export function Login() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Signup consent (Phase 16): opt-in, so it starts unchecked.
+  const [tripConsent, setTripConsent] = useState(false);
   const utils = trpc.useUtils();
 
   const onDone = async () => {
@@ -34,7 +36,8 @@ export function Login() {
       toast.error("Password must be at least 8 characters.");
       return;
     }
-    (mode === "login" ? login : register).mutate({ email, password });
+    if (mode === "login") login.mutate({ email, password });
+    else register.mutate({ email, password, tripHistoryConsent: tripConsent });
   }
 
   return (
@@ -81,6 +84,21 @@ export function Login() {
               placeholder="At least 8 characters"
             />
           </div>
+          {mode === "register" && (
+            <label className="flex cursor-pointer items-start gap-2 rounded-md bg-ripple-muted/10 p-2.5 text-xs text-ripple-muted">
+              <input
+                type="checkbox"
+                checked={tripConsent}
+                onChange={(e) => setTripConsent(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--brand)]"
+              />
+              <span>
+                Use my trip history to personalise my routes and Insights. We
+                only ever analyse your own journeys, and you can change this
+                anytime in Preferences.
+              </span>
+            </label>
+          )}
           <Button type="submit" variant="accent" disabled={pending}>
             {pending && <Loader2 size={16} className="animate-spin" />}
             {mode === "login" ? "Sign in" : "Create account"}
