@@ -9,7 +9,13 @@ import {
 } from "react-map-gl/maplibre";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { TrainFront, Route, Navigation } from "lucide-react";
+import {
+  TrainFront,
+  Route,
+  Navigation,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { useTheme } from "../lib/theme.js";
@@ -201,6 +207,8 @@ export function MapView({
   // plus live crowding, road traffic, and an approximate rain overlay. On by
   // default, off in the tilted walk navigation view where it would clutter.
   const [showNetwork, setShowNetwork] = useState(true);
+  // Legend folds to a single "Pulse" chip so it never blocks the map.
+  const [legendOpen, setLegendOpen] = useState(true);
 
   const pulse = trpc.pulse.overlay.useQuery(undefined, {
     enabled: showNetwork && !follow,
@@ -208,13 +216,11 @@ export function MapView({
     staleTime: 30_000,
   });
 
-  // Live crowd colours joined onto station coordinates.
+  // Live crowd colours joined onto station coordinates. Only busy stations
+  // arrive from the server now (low crowd is filtered out), so the palette is
+  // amber/red only — Pulse shows problems, never the calm.
   const crowdGeoJSON = useMemo(() => {
-    const CROWD: Record<string, string> = {
-      l: "#22c55e",
-      m: "#f59e0b",
-      h: "#ef4444",
-    };
+    const CROWD: Record<string, string> = { m: "#f59e0b", h: "#ef4444" };
     return {
       type: "FeatureCollection" as const,
       features: (pulse.data?.crowd ?? [])
@@ -229,6 +235,30 @@ export function MapView({
         })),
     };
   }, [pulse.data?.crowd]);
+
+  // Live road congestion as coloured lines (LTA speed bands). Each segment is a
+  // short LineString; a blurred wide copy under a crisp line gives the faded
+  // "heatmap" glow along the road.
+  const congestionGeoJSON = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: (pulse.data?.congestion ?? []).map((c) => ({
+        type: "Feature" as const,
+        properties: {
+          color: c.level === "red" ? "#ef4444" : "#f59e0b",
+          red: c.level === "red" ? 1 : 0,
+        },
+        geometry: {
+          type: "LineString" as const,
+          coordinates: [
+            [c.startLng, c.startLat],
+            [c.endLng, c.endLat],
+          ] as [number, number][],
+        },
+      })),
+    }),
+    [pulse.data?.congestion],
+  );
 
   const trafficGeoJSON = useMemo(
     () => ({
@@ -468,6 +498,60 @@ export function MapView({
             />
           </Source>
 
+          {/* Pulse: live road congestion (LTA speed bands). A wide blurred copy
+              under a crisp line gives the faded heatmap glow along the road. */}
+          <Source id="pulse-congestion" type="geojson" data={congestionGeoJSON}>
+            <Layer
+              id="pulse-congestion-glow"
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": ["get", "color"],
+                "line-width": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  11,
+                  6,
+                  14,
+                  14,
+                  17,
+                  26,
+                ],
+                "line-blur": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  11,
+                  4,
+                  17,
+                  16,
+                ],
+                "line-opacity": ["case", ["get", "red"], 0.3, 0.22],
+              }}
+            />
+            <Layer
+              id="pulse-congestion-line"
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": ["get", "color"],
+                "line-width": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  11,
+                  1.5,
+                  14,
+                  3,
+                  17,
+                  5,
+                ],
+                "line-opacity": ["case", ["get", "red"], 0.9, 0.75],
+              }}
+            />
+          </Source>
+
           {/* Pulse: approximate rain areas — soft blurred blobs (NEA gives
               point-area forecasts, not polygons). */}
           <Source id="pulse-rain" type="geojson" data={rainGeoJSON}>
@@ -493,9 +577,28 @@ export function MapView({
             />
           </Source>
 
-          {/* Pulse: live station crowding (green/amber/red), larger on the
-              worst platforms. */}
+          {/* Pulse: live station crowding — amber (busy) / red (packed); low
+              crowd is filtered out server-side. A soft glow under the crisp dot
+              gives the same faded heatmap feel as the road congestion. */}
           <Source id="pulse-crowd" type="geojson" data={crowdGeoJSON}>
+            <Layer
+              id="pulse-crowd-glow"
+              type="circle"
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  10,
+                  ["case", ["get", "high"], 16, 12],
+                  14,
+                  ["case", ["get", "high"], 30, 22],
+                ],
+                "circle-color": ["get", "color"],
+                "circle-blur": 1,
+                "circle-opacity": ["case", ["get", "high"], 0.3, 0.2],
+              }}
+            />
             <Layer
               id="pulse-crowd-dots"
               type="circle"
@@ -510,14 +613,16 @@ export function MapView({
                   7,
                 ],
                 "circle-color": ["get", "color"],
-                "circle-opacity": 0.85,
+                "circle-opacity": 0.9,
                 "circle-stroke-color": isDark ? "#0b0f14" : "#ffffff",
                 "circle-stroke-width": 1,
               }}
             />
           </Source>
 
-          {/* Pulse: live road incidents on the street. */}
+          {/* Pulse: live road incidents (accident, breakdown…) — a hollow ring
+              so a point event reads distinctly from the filled crowd dots and
+              the congestion lines it sits on. */}
           <Source id="pulse-traffic" type="geojson" data={trafficGeoJSON}>
             <Layer
               id="pulse-traffic-dots"
@@ -528,14 +633,14 @@ export function MapView({
                   ["linear"],
                   ["zoom"],
                   10,
-                  3,
+                  4,
                   14,
-                  6,
+                  7,
                 ],
-                "circle-color": ["get", "color"],
+                "circle-color": isDark ? "#0b0f14" : "#ffffff",
                 "circle-opacity": 0.9,
-                "circle-stroke-color": isDark ? "#0b0f14" : "#ffffff",
-                "circle-stroke-width": 1,
+                "circle-stroke-color": ["get", "color"],
+                "circle-stroke-width": 2.5,
               }}
             />
           </Source>
@@ -574,32 +679,68 @@ export function MapView({
         </>
       )}
 
-      {/* Pulse legend — only while the layer is on and there's live data. */}
+      {/* Pulse legend — only while the layer is on and there's live data.
+          Collapsible: tap the header to fold it to a single chip so it never
+          covers the map the user is trying to read. */}
       {!follow && showNetwork && pulse.data && (
-        <div className="absolute left-[10px] top-[152px] z-[1] rounded-lg border border-[var(--border)] bg-[var(--surface)]/90 px-2.5 py-2 text-[10px] shadow-[0_2px_8px_rgba(0,0,0,0.12)]">
-          <div className="mb-1 font-mono font-semibold uppercase tracking-[0.08em] text-ripple-muted">
+        <div className="absolute left-[10px] top-[152px] z-[1] rounded-lg border border-[var(--border)] bg-[var(--surface)]/90 text-[10px] shadow-[0_2px_8px_rgba(0,0,0,0.12)]">
+          <button
+            type="button"
+            onClick={() => setLegendOpen((v) => !v)}
+            aria-expanded={legendOpen}
+            className="flex w-full items-center gap-1.5 px-2.5 py-1.5 font-mono font-semibold uppercase tracking-[0.08em] text-ripple-muted"
+          >
+            {legendOpen ? (
+              <ChevronDown size={11} className="text-brand" />
+            ) : (
+              <ChevronRight size={11} className="text-brand" />
+            )}
             Pulse
-          </div>
-          {[
-            ["#22c55e", "Crowd low"],
-            ["#f59e0b", "Medium / traffic"],
-            ["#ef4444", "High / incident"],
-          ].map(([c, label]) => (
-            <div key={label} className="flex items-center gap-1.5 text-ripple-muted">
-              <span
-                className="inline-block h-2 w-2 rounded-full"
-                style={{ background: c }}
-              />
-              {label}
+          </button>
+          {legendOpen && (
+            <div className="flex flex-col gap-1 px-2.5 pb-2">
+              {/* Road congestion = lines */}
+              {[
+                ["#ef4444", "Heavy traffic"],
+                ["#f59e0b", "Slow traffic"],
+              ].map(([c, label]) => (
+                <div key={label} className="flex items-center gap-1.5 text-ripple-muted">
+                  <span
+                    className="inline-block h-[3px] w-4 rounded-full"
+                    style={{ background: c }}
+                  />
+                  {label}
+                </div>
+              ))}
+              {/* Crowd = filled dots */}
+              {[
+                ["#ef4444", "Packed platform"],
+                ["#f59e0b", "Busy platform"],
+              ].map(([c, label]) => (
+                <div key={label} className="flex items-center gap-1.5 text-ripple-muted">
+                  <span
+                    className="inline-block h-2 w-2 rounded-full"
+                    style={{ background: c }}
+                  />
+                  {label}
+                </div>
+              ))}
+              {/* Incident = hollow ring */}
+              <div className="flex items-center gap-1.5 text-ripple-muted">
+                <span
+                  className="inline-block h-2 w-2 rounded-full border-2 border-[#ef4444] bg-transparent"
+                />
+                Incident
+              </div>
+              <div className="flex items-center gap-1.5 text-ripple-muted">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  style={{ background: "#8fa3ad", opacity: 0.5 }}
+                />
+                Rain area (approx)
+              </div>
             </div>
-          ))}
-          <div className="flex items-center gap-1.5 text-ripple-muted">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{ background: "#8fa3ad", opacity: 0.5 }}
-            />
-            Rain area (approx)
-          </div>
+          )}
         </div>
       )}
 

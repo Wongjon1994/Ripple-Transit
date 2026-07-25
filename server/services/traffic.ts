@@ -52,6 +52,123 @@ export async function getTrafficIncidents(): Promise<TrafficIncident[]> {
   }
 }
 
+// ── Road congestion (TrafficSpeedBands) ───────────────────────
+// LTA publishes a live speed band (1 = 0-9 km/h … 8 = >70 km/h) for every road
+// LINK. We turn the congested ones into red/amber road lines. A low band on a
+// SMALL road is normal (56-81% of minor roads sit at band ≤3 all day), so we
+// only surface it on roads where slowness genuinely means a jam: expressways
+// (cat A, ~1% ever slow) and major/arterial roads (B, C). Minor roads (D/E/F)
+// are dropped — drawing them is noise, not signal.
+
+export interface CongestionSegment {
+  startLat: number;
+  startLng: number;
+  endLat: number;
+  endLng: number;
+  level: "red" | "amber";
+}
+
+interface SpeedBandRow {
+  RoadCategory: string;
+  SpeedBand: number;
+  StartLat: string;
+  StartLon: string;
+  EndLat: string;
+  EndLon: string;
+}
+
+/**
+ * Congestion severity for a road link, or null to skip it. Tuned per road
+ * class so the map shows real jams, not naturally-slow side streets:
+ *  - Expressway (A): any band ≤3 is abnormal → red ≤2, amber at 3.
+ *  - Major/arterial (B, C): band 1 (crawling) red, band 2 amber; band 3
+ *    (20-29 km/h) is normal for these, so ignored.
+ */
+export function congestionLevel(
+  cat: string,
+  band: number,
+): "red" | "amber" | null {
+  if (band < 1) return null; // 0 = no reading
+  if (cat === "A") return band <= 2 ? "red" : band === 3 ? "amber" : null;
+  if (cat === "B" || cat === "C")
+    return band === 1 ? "red" : band === 2 ? "amber" : null;
+  return null; // D/E/F minor roads: always slow, never drawn
+}
+
+const SPEED_TTL_MS = 90 * 1000;
+const SPEED_BASE = `${BASE}/v3/TrafficSpeedBands`;
+let speedCache: { at: number; data: CongestionSegment[] } | null = null;
+let speedInflight: Promise<CongestionSegment[]> | null = null;
+
+async function fetchSpeedPage(skip: number): Promise<SpeedBandRow[]> {
+  const url = new URL(SPEED_BASE);
+  url.searchParams.set("$skip", String(skip));
+  const res = await fetch(url, {
+    headers: { AccountKey: env.LTA_ACCOUNT_KEY ?? "", Accept: "application/json" },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!res.ok) throw new Error(`speedbands ${res.status}`);
+  const j = (await res.json()) as { value?: SpeedBandRow[] };
+  return j.value ?? [];
+}
+
+/** Fetch + filter the whole feed. ~57k links over ~114 pages; fetched in
+ *  parallel batches so a refresh takes a couple of seconds, not ~11. */
+async function fetchCongestion(): Promise<CongestionSegment[]> {
+  const PAGE = 500;
+  const BATCH = 12; // parallel pages per round
+  const out: CongestionSegment[] = [];
+  let base = 0;
+  let done = false;
+  while (!done) {
+    const skips = Array.from({ length: BATCH }, (_, i) => base + i * PAGE);
+    const pages = await Promise.all(
+      skips.map((s) => fetchSpeedPage(s).catch(() => [] as SpeedBandRow[])),
+    );
+    for (const rows of pages) {
+      if (rows.length < PAGE) done = true; // a short page = end of feed
+      for (const r of rows) {
+        const level = congestionLevel(r.RoadCategory, r.SpeedBand);
+        if (!level) continue;
+        const startLat = Number(r.StartLat);
+        const startLng = Number(r.StartLon);
+        const endLat = Number(r.EndLat);
+        const endLng = Number(r.EndLon);
+        if (!startLat || !startLng || !endLat || !endLng) continue;
+        out.push({ startLat, startLng, endLat, endLng, level });
+      }
+    }
+    base += BATCH * PAGE;
+    if (base > 120_000) break; // hard safety cap
+  }
+  return out;
+}
+
+/**
+ * Live congested road segments, cached 90s with stale-while-revalidate: a stale
+ * cache is served immediately while a refresh runs in the background, so the
+ * ~2s feed fetch never blocks the Pulse overlay after the first load.
+ */
+export async function getTrafficCongestion(): Promise<CongestionSegment[]> {
+  const fresh = speedCache && Date.now() - speedCache.at < SPEED_TTL_MS;
+  if (fresh) return speedCache!.data;
+
+  if (!speedInflight) {
+    speedInflight = fetchCongestion()
+      .then((data) => {
+        speedCache = { at: Date.now(), data };
+        return data;
+      })
+      .catch(() => speedCache?.data ?? [])
+      .finally(() => {
+        speedInflight = null;
+      });
+  }
+  // Serve stale immediately if we have anything; only the first-ever call waits.
+  if (speedCache) return speedCache.data;
+  return speedInflight;
+}
+
 /** Decode an encoded polyline (precision 5) into lat/lng points. */
 export function decodePolyline(str: string): LatLng[] {
   let index = 0,

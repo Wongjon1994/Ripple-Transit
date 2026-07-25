@@ -3,16 +3,21 @@ import { router, publicProcedure } from "../trpc.js";
 import { stationCrowd } from "../services/lta.js";
 import {
   getTrafficIncidents,
+  getTrafficCongestion,
   incidentLabel,
   incidentsOnPath,
+  type CongestionSegment,
 } from "../services/traffic.js";
 import { rainAreas } from "../services/weather.js";
 
 export interface PulseOverlay {
-  /** Live platform crowd, keyed by station code (joined to the map network). */
-  crowd: { code: string; level: "l" | "m" | "h" }[];
+  /** Live platform crowd, keyed by station code (joined to the map network).
+   *  Only busy stations (medium/high) — low crowd isn't a problem to surface. */
+  crowd: { code: string; level: "m" | "h" }[];
   /** Live road incidents to render on the street geometry. */
   traffic: { lat: number; lng: number; severe: boolean; label: string }[];
+  /** Live congested road segments (red/amber lines) from LTA speed bands. */
+  congestion: CongestionSegment[];
   /** Approximate wet areas (soft blobs) from the 2h nowcast. */
   rain: { lat: number; lng: number; intensity: "light" | "heavy" }[];
 }
@@ -24,13 +29,18 @@ export interface PulseOverlay {
  */
 export const pulseRouter = router({
   overlay: publicProcedure.query(async (): Promise<PulseOverlay> => {
-    const [crowdMap, incidents, rain] = await Promise.all([
+    const [crowdMap, incidents, congestion, rain] = await Promise.all([
       stationCrowd().catch(() => new Map<string, "l" | "m" | "h">()),
       getTrafficIncidents().catch(() => []),
+      getTrafficCongestion().catch(() => []),
       rainAreas().catch(() => []),
     ]);
     return {
-      crowd: [...crowdMap].map(([code, level]) => ({ code, level })),
+      // Drop low-crowd stations — Pulse surfaces problems, not the calm.
+      crowd: [...crowdMap]
+        .filter(([, level]) => level === "m" || level === "h")
+        .map(([code, level]) => ({ code, level: level as "m" | "h" })),
+      congestion,
       traffic: incidents.map((i) => ({
         lat: i.lat,
         lng: i.lng,

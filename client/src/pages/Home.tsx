@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { BusFront, Footprints, Bike } from "lucide-react";
+import {
+  BusFront,
+  Footprints,
+  Bike,
+  ChevronDown,
+  ChevronRight,
+  Search,
+} from "lucide-react";
 import { trpc } from "../lib/trpc.js";
 import { SearchPanel, MAX_STOPS, type Place } from "../components/SearchPanel.js";
 import { NearestPanel } from "../components/NearestPanel.js";
@@ -153,6 +160,9 @@ export function Home() {
   const [snapIdx, setSnapIdx] = useState(0);
   const [dragH, setDragH] = useState<number | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  // Collapse the whole planning panel to a full-screen map for zooming/panning
+  // Singapore — a floating pill brings it back.
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   useEffect(() => {
@@ -511,19 +521,36 @@ export function Home() {
 
   return (
     <div className="relative h-full md:flex md:overflow-hidden">
-      {/* Panel: bottom sheet on mobile, sidebar on desktop */}
+      {/* Panel: bottom sheet on mobile, sidebar on desktop. Collapsible to a
+          full-screen map — hidden here, restored by the floating pill below. */}
       <aside
-        style={isMobile ? { height: sheetHeight } : undefined}
-        className="absolute inset-x-0 bottom-0 z-[500] flex flex-col overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[var(--border)] bg-[var(--bg)] shadow-[0_-4px_24px_rgba(0,0,0,0.18)] md:relative md:inset-auto md:z-10 md:h-auto md:w-[380px] md:rounded-none md:border-r md:border-t-0 md:shadow-none"
+        style={isMobile && !panelCollapsed ? { height: sheetHeight } : undefined}
+        className={cn(
+          "absolute inset-x-0 bottom-0 z-[500] flex flex-col overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[var(--border)] bg-[var(--bg)] shadow-[0_-4px_24px_rgba(0,0,0,0.18)] md:relative md:inset-auto md:z-10 md:h-auto md:w-[380px] md:rounded-none md:border-r md:border-t-0 md:shadow-none",
+          panelCollapsed && "hidden",
+        )}
       >
-        {/* Grab handle (mobile only) — drag to resize the sheet */}
-        <div
-          onPointerDown={onHandleDown}
-          onPointerMove={onHandleMove}
-          onPointerUp={onHandleUp}
-          className="sticky top-0 z-10 flex shrink-0 cursor-grab touch-none justify-center bg-[var(--bg)] pb-1 pt-2 active:cursor-grabbing md:hidden"
-        >
-          <span className="h-1 w-10 rounded-full bg-ripple-muted/40" />
+        {/* Grab handle (mobile only) — drag to resize the sheet. The collapse
+            chevron (both platforms) tucks the whole panel away. */}
+        <div className="sticky top-0 z-10 flex shrink-0 items-center bg-[var(--bg)] pb-1 pt-2">
+          <div
+            onPointerDown={onHandleDown}
+            onPointerMove={onHandleMove}
+            onPointerUp={onHandleUp}
+            className="flex flex-1 cursor-grab touch-none justify-center active:cursor-grabbing md:cursor-default"
+          >
+            <span className="h-1 w-10 rounded-full bg-ripple-muted/40 md:hidden" />
+          </div>
+          <button
+            type="button"
+            onClick={() => setPanelCollapsed(true)}
+            aria-label="Collapse panel for full map"
+            title="Collapse for full map"
+            className="absolute right-3 flex h-7 w-7 items-center justify-center rounded-full text-ripple-muted hover:bg-ripple-muted/10 hover:text-[var(--fg)]"
+          >
+            <ChevronDown size={18} className="md:hidden" />
+            <ChevronRight size={18} className="hidden md:block" />
+          </button>
         </div>
         <div className="px-4 pb-4 pt-2 md:pt-4">
           <SearchPanel
@@ -715,6 +742,18 @@ export function Home() {
           }
         />
       </main>
+
+      {/* Restore the collapsed planning panel. Bottom-centre on mobile,
+          top-left on desktop where the sidebar lived. */}
+      {panelCollapsed && (
+        <button
+          type="button"
+          onClick={() => setPanelCollapsed(false)}
+          className="absolute bottom-5 left-1/2 z-[600] flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold text-brand shadow-[var(--shadow-card)] md:bottom-auto md:left-4 md:top-4 md:translate-x-0"
+        >
+          <Search size={15} /> Plan a route
+        </button>
+      )}
     </div>
   );
 }
