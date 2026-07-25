@@ -161,8 +161,12 @@ export function Home() {
   const [dragH, setDragH] = useState<number | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   // Collapse the whole planning panel to a full-screen map for zooming/panning
-  // Singapore — a floating pill brings it back.
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  // Singapore — a floating pill brings it back. A fresh landing starts
+  // collapsed, so the map + "Plan a route" is the clear next action; returning
+  // to an in-progress search (restored session) keeps the panel open.
+  const [panelCollapsed, setPanelCollapsed] = useState(
+    !(saved?.fromText || saved?.stops?.some((s) => s.text) || saved?.routeParams),
+  );
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   useEffect(() => {

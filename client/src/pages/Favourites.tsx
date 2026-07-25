@@ -74,7 +74,8 @@ function PreferencesSection() {
 
   return (
     <section>
-      <h2 className="eyebrow mb-2 text-ripple-muted">Preferences</h2>
+      {/* No section header here — the PageShell already titles the page
+          "Preferences", and a second identical heading read as a duplicate. */}
       <Card className="flex flex-col gap-5 p-4">
         {/* Default chips */}
         <div>
