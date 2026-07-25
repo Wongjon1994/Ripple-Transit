@@ -1,10 +1,13 @@
 import {
   Waves,
   Radio,
+  Activity,
+  SlidersHorizontal,
   Route as RouteIcon,
   Footprints,
   MapPin,
   Leaf,
+  Sparkles,
   CloudSun,
   ShieldCheck,
 } from "lucide-react";
@@ -12,9 +15,19 @@ import { Card, PageShell } from "../components/ui.js";
 
 const FEATURES: { Icon: typeof Radio; title: string; body: string }[] = [
   {
+    Icon: Activity,
+    title: "Pulse — the city in real time",
+    body: "One map layer for how the city is moving right now: road congestion drawn as red/amber heat along the actual streets (LTA speed bands), live MRT platform crowding, incidents, and approximate rain. A live panel tallies it — heavy vs slow roads, packed vs busy platforms, incidents, rain — and calls out anything near your saved places.",
+  },
+  {
+    Icon: SlidersHorizontal,
+    title: "Flux — routes weighted to you",
+    body: "Say what matters — travel time, fewer transfers, less walking, avoiding crowds, saving money, lower emissions — on six sliders, and options are ordered by that mix. Each route shows a match score against your stated preferences, honest about where it works against them.",
+  },
+  {
     Icon: Radio,
     title: "Live, not timetabled",
-    body: "Bus arrivals from LTA fold into each route's total time and re-rank the options every minute — so “fastest” means fastest right now, waiting included, not a printed schedule.",
+    body: "Bus arrivals from LTA fold into each route's total time and re-rank the options every minute — so “fastest” means fastest right now, waiting included, not a printed schedule. Congestion on the roads your bus takes is priced into the estimate.",
   },
   {
     Icon: ShieldCheck,
@@ -37,16 +50,16 @@ const FEATURES: { Icon: typeof Radio; title: string; body: string }[] = [
     body: "Chain up to five destinations; each leg departs when the last one arrives, with live timing on the segment you're about to start and honest estimates on the rest.",
   },
   {
-    Icon: Leaf,
-    title: "Your impact, tracked",
-    body: "Completed journeys log the carbon you saved versus driving, building a running tally in Insights — quietly making the greener option the obvious one.",
+    Icon: Sparkles,
+    title: "Insights from your own journeys",
+    body: "With your consent, Ripple reads your trip history back to you — the routes you repeat, how your modes split, your CO₂ streak and month-on-month trend — alongside the carbon each completed journey saved versus driving. Off by default; yours to turn on or off anytime.",
   },
 ];
 
 const SOURCES: { name: string; use: string; href: string }[] = [
   {
     name: "LTA DataMall",
-    use: "Live bus arrivals, bus stops & routes, MRT station data, road incidents",
+    use: "Live bus arrivals, bus stops & routes, MRT station data & platform crowding, road incidents & live traffic speed bands",
     href: "https://datamall.lta.gov.sg",
   },
   {
@@ -91,8 +104,10 @@ export function About() {
             </h1>
             <p className="mt-1 text-sm leading-relaxed text-ripple-muted">
               Real-time urban mobility intelligence for Singapore. Ripple fuses
-              live transit data into a single decision layer — so getting around
-              is a confident choice, not a guess. Part of the Ripple suite.
+              live transit data into a single decision layer — <strong>Pulse</strong>{" "}
+              for how the city is moving right now, <strong>Flux</strong> for
+              routes weighted to what you care about — so getting around is a
+              confident choice, not a guess. Part of the Ripple suite.
             </p>
           </div>
         </div>
