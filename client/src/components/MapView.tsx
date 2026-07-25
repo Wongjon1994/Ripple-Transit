@@ -138,9 +138,20 @@ function add3dBuildings(map: MaplibreMap, dark: boolean) {
         type: "fill-extrusion",
         minzoom: 14,
         paint: {
-          // Solid, legible massing (vertical gradient shades the sides for depth).
-          "fill-extrusion-color": dark ? "#3a4250" : "#d5d8dd",
-          "fill-extrusion-opacity": 0.92,
+          // Height-shaded massing: taller floors read lighter, giving buildings
+          // real depth instead of the flat grey slab they were in daylight.
+          // Warm paper tones in light mode; cool slate at night. The vertical
+          // gradient still darkens each face for solidity.
+          "fill-extrusion-color": [
+            "interpolate",
+            ["linear"],
+            ["coalesce", ["get", "render_height"], 8],
+            0,
+            dark ? "#2f3644" : "#e3e1da",
+            120,
+            dark ? "#4a5568" : "#f3f1ec",
+          ],
+          "fill-extrusion-opacity": dark ? 0.9 : 0.82,
           "fill-extrusion-vertical-gradient": true,
           "fill-extrusion-height": [
             "interpolate",
@@ -247,17 +258,59 @@ export function MapView({
     const places = (savedPlaces.data ?? [])
       .map((p) => ({ label: p.label, lat: Number(p.lat), lng: Number(p.lng) }))
       .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    // Resolve affected station codes → coords so the headline can frame them.
+    const mrtDisruptions = pulse.data.mrtDisruptions.map((d) => ({
+      ...d,
+      stationPoints: d.stations
+        .filter((code) => STATION_COORDS[code])
+        .map((code) => ({
+          lng: STATION_COORDS[code][0],
+          lat: STATION_COORDS[code][1],
+        })),
+    }));
     return pulseSummary({
       congestion,
       crowd,
       incidents: pulse.data.traffic,
       rain: pulse.data.rain,
-      mrtDisruptions: pulse.data.mrtDisruptions,
+      mrtDisruptions,
       mrtPlanned: pulse.data.mrtPlanned,
+      weather: pulse.data.weather,
       weights: weightsFor(prefs),
       places,
     });
   }, [pulse.data, savedPlaces.data, prefs]);
+
+  // Tap the Pulse headline → frame the impacted points on the map.
+  function focusPoints(points: { lat: number; lng: number }[]) {
+    const map = mapRef.current?.getMap();
+    if (!map || points.length === 0) return;
+    if (points.length === 1) {
+      map.easeTo({
+        center: [points[0].lng, points[0].lat],
+        zoom: Math.max(map.getZoom(), 14),
+        duration: 700,
+      });
+      return;
+    }
+    let minLng = Infinity,
+      minLat = Infinity,
+      maxLng = -Infinity,
+      maxLat = -Infinity;
+    for (const p of points) {
+      minLng = Math.min(minLng, p.lng);
+      maxLng = Math.max(maxLng, p.lng);
+      minLat = Math.min(minLat, p.lat);
+      maxLat = Math.max(maxLat, p.lat);
+    }
+    map.fitBounds(
+      [
+        [minLng, minLat],
+        [maxLng, maxLat],
+      ],
+      { padding: 60, maxZoom: 15, duration: 700 },
+    );
+  }
 
   // Set of line prefixes with a live disruption — fade those lines and ring
   // their affected stations so the outage reads as distinct from crowd/traffic.
@@ -347,14 +400,18 @@ export function MapView({
   const trafficGeoJSON = useMemo(
     () => ({
       type: "FeatureCollection" as const,
-      features: (pulse.data?.traffic ?? []).map((t) => ({
-        type: "Feature" as const,
-        properties: { color: t.severe ? "#ef4444" : "#f59e0b" },
-        geometry: {
-          type: "Point" as const,
-          coordinates: [t.lng, t.lat] as [number, number],
-        },
-      })),
+      // Severe incidents only — Pulse shows reds + rain, so minor (amber)
+      // roadworks etc. are omitted from the map.
+      features: (pulse.data?.traffic ?? [])
+        .filter((t) => t.severe)
+        .map((t) => ({
+          type: "Feature" as const,
+          properties: {},
+          geometry: {
+            type: "Point" as const,
+            coordinates: [t.lng, t.lat] as [number, number],
+          },
+        })),
     }),
     [pulse.data?.traffic],
   );
@@ -695,15 +752,17 @@ export function MapView({
             />
           </Source>
 
-          {/* Pulse: live road congestion (LTA speed bands). A wide blurred copy
-              under a crisp line gives the faded heatmap glow along the road. */}
+          {/* Pulse: heavy road congestion only (LTA speed bands, red). A wide
+              blurred copy under a crisp line gives the faded heatmap glow along
+              the road. Amber (slow) is omitted — Pulse shows reds + rain. */}
           <Source id="pulse-congestion" type="geojson" data={congestionGeoJSON}>
             <Layer
               id="pulse-congestion-glow"
               type="line"
+              filter={["==", ["get", "red"], 1]}
               layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
-                "line-color": ["get", "color"],
+                "line-color": "#ef4444",
                 "line-width": [
                   "interpolate",
                   ["linear"],
@@ -724,15 +783,16 @@ export function MapView({
                   17,
                   16,
                 ],
-                "line-opacity": ["case", ["get", "red"], 0.3, 0.22],
+                "line-opacity": 0.3,
               }}
             />
             <Layer
               id="pulse-congestion-line"
               type="line"
+              filter={["==", ["get", "red"], 1]}
               layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
-                "line-color": ["get", "color"],
+                "line-color": "#ef4444",
                 "line-width": [
                   "interpolate",
                   ["linear"],
@@ -744,7 +804,7 @@ export function MapView({
                   17,
                   5,
                 ],
-                "line-opacity": ["case", ["get", "red"], 0.9, 0.75],
+                "line-opacity": 0.9,
               }}
             />
           </Source>
@@ -774,31 +834,33 @@ export function MapView({
             />
           </Source>
 
-          {/* Pulse: live station crowding — amber (busy) / red (packed); low
-              crowd is filtered out server-side. A soft glow under the crisp dot
-              gives the same faded heatmap feel as the road congestion. */}
+          {/* Pulse: packed platforms only (red). Busy (amber) is omitted —
+              Pulse shows reds + rain. A soft glow under the crisp dot gives the
+              same faded heatmap feel as the road congestion. */}
           <Source id="pulse-crowd" type="geojson" data={crowdGeoJSON}>
             <Layer
               id="pulse-crowd-glow"
               type="circle"
+              filter={["==", ["get", "high"], 1]}
               paint={{
                 "circle-radius": [
                   "interpolate",
                   ["linear"],
                   ["zoom"],
                   10,
-                  ["case", ["get", "high"], 16, 12],
+                  16,
                   14,
-                  ["case", ["get", "high"], 30, 22],
+                  30,
                 ],
-                "circle-color": ["get", "color"],
+                "circle-color": "#ef4444",
                 "circle-blur": 1,
-                "circle-opacity": ["case", ["get", "high"], 0.3, 0.2],
+                "circle-opacity": 0.3,
               }}
             />
             <Layer
               id="pulse-crowd-dots"
               type="circle"
+              filter={["==", ["get", "high"], 1]}
               paint={{
                 "circle-radius": [
                   "interpolate",
@@ -809,7 +871,7 @@ export function MapView({
                   14,
                   7,
                 ],
-                "circle-color": ["get", "color"],
+                "circle-color": "#ef4444",
                 "circle-opacity": 0.9,
                 "circle-stroke-color": isDark ? "#0b0f14" : "#ffffff",
                 "circle-stroke-width": 1,
@@ -836,7 +898,7 @@ export function MapView({
                 ],
                 "circle-color": isDark ? "#0b0f14" : "#ffffff",
                 "circle-opacity": 0.9,
-                "circle-stroke-color": ["get", "color"],
+                "circle-stroke-color": "#ef4444",
                 "circle-stroke-width": 2.5,
               }}
             />
@@ -897,6 +959,7 @@ export function MapView({
           summary={summary}
           open={legendOpen}
           onToggle={() => setLegendOpen((v) => !v)}
+          onHeadlineFocus={focusPoints}
           timeLabel={
             pulse.dataUpdatedAt
               ? new Date(pulse.dataUpdatedAt).toLocaleTimeString([], {

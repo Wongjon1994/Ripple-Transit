@@ -40,10 +40,22 @@ export interface PulseMrtDisruption {
   lines: string[];
   stations: string[];
   message: string;
+  /** Affected station coordinates (resolved by the caller from codes), so the
+   *  headline can frame the outage on tap. */
+  stationPoints?: { lat: number; lng: number }[];
 }
 export interface PulseMrtPlanned {
   line?: string;
   label: string;
+}
+
+/** Live + forward-looking weather for the Pulse header. */
+export interface PulseWeather {
+  temperature?: number;
+  /** Current condition, e.g. "Partly Cloudy", "Light Rain". */
+  condition: string;
+  /** A short forward look, e.g. "Showers later this afternoon" — when known. */
+  outlook?: string;
 }
 
 export interface PulseSummaryInput {
@@ -55,10 +67,17 @@ export interface PulseSummaryInput {
   mrtDisruptions: PulseMrtDisruption[];
   /** Planned rail adjustments — informational footer. */
   mrtPlanned: PulseMrtPlanned[];
+  /** Current + forecast weather (optional; shown as a header line). */
+  weather?: PulseWeather | null;
   /** Flux weights (or null) — order the tallies by what the user prioritises. */
   weights: PrefWeights | null;
   /** Saved Home/Work etc. — drives the "for you" proximity callouts. */
   places: PulsePlace[];
+}
+
+export interface PulsePoint {
+  lat: number;
+  lng: number;
 }
 
 export type PulseTone = "red" | "amber" | "rain";
@@ -77,6 +96,8 @@ export interface PulseRow {
 export interface PulseCallout {
   tone: PulseTone | "mrt" | "muted";
   text: string;
+  /** Map points the headline refers to — tapping it frames these. */
+  focus?: PulsePoint[];
 }
 export interface PulseSummary {
   headline: PulseCallout | null;
@@ -84,6 +105,8 @@ export interface PulseSummary {
   personal: PulseCallout[];
   /** Planned rail adjustments — a muted informational footer. */
   planned: string[];
+  /** Current + forecast weather for the header line, when available. */
+  weather?: PulseWeather | null;
   allClear: boolean;
 }
 
@@ -168,24 +191,8 @@ function calloutForPlace(
   if (packed && packed.d <= 700)
     return { tone: "red", text: `${packed.item.name} packed · near ${place.label}` };
 
-  const anyInc = nearest(place, input.incidents);
-  if (anyInc && anyInc.d <= 1000)
-    return { tone: "amber", text: `${anyInc.item.label} · near ${place.label}` };
-
-  const slow = nearest(
-    place,
-    input.congestion.filter((c) => c.level === "amber"),
-  );
-  if (slow && slow.d <= 700)
-    return { tone: "amber", text: `Slow traffic near ${place.label}` };
-
-  const busy = nearest(
-    place,
-    input.crowd.filter((c) => c.level === "m"),
-  );
-  if (busy && busy.d <= 700)
-    return { tone: "amber", text: `${busy.item.name} busy · near ${place.label}` };
-
+  // Amber signals (slow traffic, busy platforms, minor incidents) are
+  // intentionally NOT surfaced — Pulse flags reds + rain only.
   const rain = nearest(place, input.rain);
   if (rain && rain.d <= 1500)
     return { tone: "rain", text: `Rain near ${place.label}` };
@@ -212,24 +219,34 @@ function distinctRoads(
   return roads.size;
 }
 
-/** Region names with heavy traffic, busiest first, e.g. "Central, East +1". */
-function heavyAreasText(congestion: PulseCongestion[]): string | null {
-  // Distinct roads per region (roads, not segments, so a big road isn't
-  // double-counted across the region it dominates).
+/**
+ * Heavy (red) traffic grouped by URA region, busiest first: the display text
+ * ("Central, East +1") and the heavy points per region (for the tap-to-focus).
+ */
+function heavyRegions(congestion: PulseCongestion[]): {
+  text: string | null;
+  points: PulsePoint[];
+} {
   const roadsByRegion = new Map<string, Set<string>>();
+  const pointsByRegion = new Map<string, PulsePoint[]>();
   for (const c of congestion) {
     if (c.level !== "red" || !c.road) continue;
     const region = regionOf(c.lat, c.lng);
-    if (!roadsByRegion.has(region)) roadsByRegion.set(region, new Set());
+    if (!roadsByRegion.has(region)) {
+      roadsByRegion.set(region, new Set());
+      pointsByRegion.set(region, []);
+    }
     roadsByRegion.get(region)!.add(c.road);
+    pointsByRegion.get(region)!.push({ lat: c.lat, lng: c.lng });
   }
-  if (roadsByRegion.size === 0) return null;
+  if (roadsByRegion.size === 0) return { text: null, points: [] };
   const ranked = [...roadsByRegion.entries()]
     .map(([name, roads]) => ({ name, n: roads.size }))
     .sort((a, b) => b.n - a.n);
   const top = ranked.slice(0, 2).map((r) => r.name);
   const extra = ranked.length - top.length;
-  return extra > 0 ? `${top.join(", ")} +${extra}` : top.join(", ");
+  const text = extra > 0 ? `${top.join(", ")} +${extra}` : top.join(", ");
+  return { text, points: pointsByRegion.get(ranked[0].name) ?? [] };
 }
 
 /** Short label for an MRT disruption headline/callout ("NE line disrupted"). */
@@ -243,17 +260,18 @@ function mrtDisruptionLabel(d: PulseMrtDisruption): string {
 }
 
 export function pulseSummary(input: PulseSummaryInput): PulseSummary {
+  // Pulse surfaces reds + rain only — amber (slow traffic, busy platforms,
+  // minor incidents) is intentionally omitted from both panel and map.
   const heavy = distinctRoads(input.congestion, "red");
-  const slow = distinctRoads(input.congestion, "amber");
   const packed = input.crowd.filter((c) => c.level === "h");
-  const busy = input.crowd.filter((c) => c.level === "m");
-  const incidents = input.incidents.length;
+  const severeIncidents = input.incidents.filter((i) => i.severe);
   const rain = input.rain.length;
   const disruptions = input.mrtDisruptions;
   const planned = input.mrtPlanned.map((p) => p.label);
+  const weather = input.weather ?? null;
 
   const allClear =
-    heavy + slow + packed.length + busy.length + incidents + rain === 0 &&
+    heavy + packed.length + severeIncidents.length + rain === 0 &&
     disruptions.length === 0;
 
   if (allClear) {
@@ -262,19 +280,23 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
       rows: [],
       personal: [],
       planned,
+      weather,
       allClear: true,
     };
   }
 
   // Traffic is area-based and heavy-only (the panel shows trends; road-level
-  // red/amber stays on the map). Crowd + alerts keep their live tallies.
-  const heavyAreas = heavyAreasText(input.congestion);
+  // detail stays on the map). Crowd = packed only; alerts = severe + rain.
+  const heavyAreas = heavyRegions(input.congestion);
   const crowdItems: PulseTallyItem[] = [
     { tone: "red" as const, count: packed.length, label: "packed" },
-    { tone: "amber" as const, count: busy.length, label: "busy" },
   ].filter((i) => i.count > 0);
   const alertItems: PulseTallyItem[] = [
-    { tone: "red" as const, count: incidents, label: incidents === 1 ? "incident" : "incidents" },
+    {
+      tone: "red" as const,
+      count: severeIncidents.length,
+      label: severeIncidents.length === 1 ? "incident" : "incidents",
+    },
     { tone: "rain" as const, count: rain, label: rain === 1 ? "rain area" : "rain areas" },
   ].filter((i) => i.count > 0);
 
@@ -288,9 +310,9 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
   const candidates: (PulseRow & { r: number; keep: boolean })[] = [
     {
       kind: "traffic",
-      text: heavyAreas ?? undefined,
+      text: heavyAreas.text ?? undefined,
       r: rel.traffic,
-      keep: heavyAreas != null,
+      keep: heavyAreas.text != null,
     },
     { kind: "crowd", items: crowdItems, r: rel.crowd, keep: crowdItems.length > 0 },
     { kind: "alerts", items: alertItems, r: rel.alerts, keep: alertItems.length > 0 },
@@ -300,21 +322,40 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
     .sort((a, b) => b.r - a.r)
     .map(({ kind, items, text }) => ({ kind, items, text }));
 
-  // Headline: the single worst thing citywide. MRT disruption tops everything —
-  // a downed line strands more people than any road jam.
+  // Headline: the single worst thing citywide, with the map points it refers to
+  // so tapping it frames them. MRT disruption tops everything — a downed line
+  // strands more people than any road jam.
   let headline: PulseCallout | null = null;
-  const severe = input.incidents.find((i) => i.severe);
   if (disruptions.length)
-    headline = { tone: "mrt", text: mrtDisruptionLabel(disruptions[0]) };
-  else if (severe) headline = { tone: "red", text: severe.label };
+    headline = {
+      tone: "mrt",
+      text: mrtDisruptionLabel(disruptions[0]),
+      focus: disruptions.flatMap((d) => d.stationPoints ?? []),
+    };
+  else if (severeIncidents.length)
+    headline = {
+      tone: "red",
+      text: severeIncidents[0].label,
+      focus: [{ lat: severeIncidents[0].lat, lng: severeIncidents[0].lng }],
+    };
   else if (packed.length)
-    headline = { tone: "red", text: `${packed[0].name} packed — busiest now` };
-  else if (heavyAreas)
-    headline = { tone: "red", text: `Heavy traffic · ${heavyAreas}` };
-  else if (incidents) headline = { tone: "amber", text: input.incidents[0].label };
-  else if (busy.length)
-    headline = { tone: "amber", text: `${busy[0].name} — busy platform` };
-  else if (slow) headline = { tone: "amber", text: `${plural(slow, "road")} running slow` };
+    headline = {
+      tone: "red",
+      text: `${packed[0].name} packed — busiest now`,
+      focus: [{ lat: packed[0].lat, lng: packed[0].lng }],
+    };
+  else if (heavyAreas.text)
+    headline = {
+      tone: "red",
+      text: `Heavy traffic · ${heavyAreas.text}`,
+      focus: heavyAreas.points,
+    };
+  else if (rain)
+    headline = {
+      tone: "rain",
+      text: `Showers in ${plural(rain, "area")}`,
+      focus: input.rain.map((r) => ({ lat: r.lat, lng: r.lng })),
+    };
 
   // Personalised proximity callouts — worst 2, deduped.
   const personal: PulseCallout[] = [];
@@ -333,6 +374,7 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
     rows,
     personal: personal.slice(0, 2),
     planned,
+    weather,
     allClear: false,
   };
 }

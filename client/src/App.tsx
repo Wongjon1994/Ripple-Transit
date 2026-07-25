@@ -11,7 +11,6 @@ import { Favourites } from "./pages/Favourites.js";
 import { Insights } from "./pages/Insights.js";
 import { About } from "./pages/About.js";
 import { LiveJourney } from "./pages/LiveJourney.js";
-import { Settings } from "./pages/Settings.js";
 import { Button } from "./components/ui.js";
 import { cn } from "./lib/utils.js";
 
@@ -35,7 +34,6 @@ function Header() {
 
   const nav = [
     { href: "/", label: "Map" },
-    { href: "/preferences", label: "Preferences" },
     { href: "/insights", label: "Insights" },
     { href: "/about", label: "About" },
     { href: "/settings", label: "Settings" },
@@ -184,13 +182,12 @@ export function App() {
           <Route path="/journey" component={LiveJourney} />
           <Route path="/login" component={Login} />
           <Route path="/about" component={About} />
-          <Route path="/preferences">
+          {/* Settings absorbed the old Preferences tab + the account/theme/API
+              controls; the Favourites component is that merged page. */}
+          <Route path="/settings">
             <RequireAuth>
               <Favourites />
             </RequireAuth>
-          </Route>
-          <Route path="/favourites">
-            <Redirect to="/preferences" />
           </Route>
           <Route path="/insights">
             <RequireAuth>
@@ -198,19 +195,20 @@ export function App() {
             </RequireAuth>
           </Route>
           {/* Old tab paths → their merged homes */}
+          <Route path="/preferences">
+            <Redirect to="/settings" />
+          </Route>
+          <Route path="/favourites">
+            <Redirect to="/settings" />
+          </Route>
           <Route path="/saved-locations">
-            <Redirect to="/preferences" />
+            <Redirect to="/settings" />
           </Route>
           <Route path="/favourite-routes">
-            <Redirect to="/preferences" />
+            <Redirect to="/settings" />
           </Route>
           <Route path="/impact">
             <Redirect to="/insights" />
-          </Route>
-          <Route path="/settings">
-            <RequireAuth>
-              <Settings />
-            </RequireAuth>
           </Route>
           <Route>
             <div className="flex h-full items-center justify-center p-8 text-center">

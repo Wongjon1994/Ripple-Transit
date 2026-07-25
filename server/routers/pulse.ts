@@ -8,7 +8,7 @@ import {
   incidentsOnPath,
   type CongestionSegment,
 } from "../services/traffic.js";
-import { rainAreas } from "../services/weather.js";
+import { rainAreas, pulseWeather, type PulseWeather } from "../services/weather.js";
 import {
   getTrainAlerts,
   type TrainDisruption,
@@ -29,6 +29,8 @@ export interface PulseOverlay {
   mrtDisruptions: TrainDisruption[];
   /** Planned service adjustments (informational footer). */
   mrtPlanned: TrainPlanned[];
+  /** City-wide current + forecast weather for the Pulse header. */
+  weather: PulseWeather | null;
 }
 
 /**
@@ -38,17 +40,19 @@ export interface PulseOverlay {
  */
 export const pulseRouter = router({
   overlay: publicProcedure.query(async (): Promise<PulseOverlay> => {
-    const [crowdMap, incidents, congestion, rain, trains] = await Promise.all([
-      stationCrowd().catch(() => new Map<string, "l" | "m" | "h">()),
-      getTrafficIncidents().catch(() => []),
-      getTrafficCongestion().catch(() => []),
-      rainAreas().catch(() => []),
-      getTrainAlerts().catch(() => ({
-        disrupted: false,
-        disruptions: [],
-        planned: [],
-      })),
-    ]);
+    const [crowdMap, incidents, congestion, rain, trains, weather] =
+      await Promise.all([
+        stationCrowd().catch(() => new Map<string, "l" | "m" | "h">()),
+        getTrafficIncidents().catch(() => []),
+        getTrafficCongestion().catch(() => []),
+        rainAreas().catch(() => []),
+        getTrainAlerts().catch(() => ({
+          disrupted: false,
+          disruptions: [],
+          planned: [],
+        })),
+        pulseWeather().catch(() => null),
+      ]);
     return {
       // Drop low-crowd stations — Pulse surfaces problems, not the calm.
       crowd: [...crowdMap]
@@ -68,6 +72,7 @@ export const pulseRouter = router({
       })),
       mrtDisruptions: trains.disruptions,
       mrtPlanned: trains.planned,
+      weather,
     };
   }),
 

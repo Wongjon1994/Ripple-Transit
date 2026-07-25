@@ -5,6 +5,11 @@ import {
   CloudRain,
   TrainFront,
   Info,
+  Crosshair,
+  Cloud,
+  CloudSun,
+  Sun,
+  CloudLightning,
 } from "lucide-react";
 import type {
   PulseSummary,
@@ -110,6 +115,21 @@ function CalloutLine({ callout }: { callout: PulseCallout }) {
   );
 }
 
+/** A weather glyph matched to the NEA condition text. */
+function WeatherIcon({ condition }: { condition: string }) {
+  const c = condition.toLowerCase();
+  const Icon = /thunder/.test(c)
+    ? CloudLightning
+    : /rain|shower|drizzle/.test(c)
+      ? CloudRain
+      : /partly|fair/.test(c)
+        ? CloudSun
+        : /cloud|overcast|hazy/.test(c)
+          ? Cloud
+          : Sun;
+  return <Icon size={13} className="shrink-0 text-brand" />;
+}
+
 /**
  * The dynamic Pulse panel (replaces the static legend): a "LIVE" header with
  * the data timestamp, a "worst right now" headline, live tallies ordered by the
@@ -120,13 +140,19 @@ export function PulsePanel({
   summary,
   open,
   onToggle,
+  onHeadlineFocus,
   timeLabel,
 }: {
   summary: PulseSummary;
   open: boolean;
   onToggle: () => void;
+  /** Frame the headline's impacted points on the map (tap-to-zoom). */
+  onHeadlineFocus?: (points: { lat: number; lng: number }[]) => void;
   timeLabel: string;
 }) {
+  const headline = summary.headline;
+  const canFocus =
+    !!onHeadlineFocus && !!headline?.focus && headline.focus.length > 0;
   return (
     <div className="absolute left-[10px] top-[152px] z-[1] w-[210px] max-w-[calc(100vw-20px)] rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 text-[11px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm">
       <button
@@ -161,18 +187,53 @@ export function PulsePanel({
 
       {open && (
         <div className="flex flex-col gap-1.5 px-2.5 pb-2">
-          {summary.headline && (
-            <div
-              className={cn(
-                "-mx-2.5 border-y px-2.5 py-1 font-medium",
-                summary.headline.tone === "muted"
-                  ? "border-transparent"
-                  : "border-[var(--border)]/60",
+          {summary.weather && (
+            <div className="-mx-2.5 flex items-center gap-1.5 border-b border-[var(--border)]/60 px-2.5 pb-1.5 text-ripple-muted">
+              <WeatherIcon condition={summary.weather.condition} />
+              <span className="text-[var(--fg)]">
+                {summary.weather.temperature != null && (
+                  <span className="data-voice font-semibold">
+                    {summary.weather.temperature}°{" "}
+                  </span>
+                )}
+                {summary.weather.condition}
+              </span>
+              {summary.weather.outlook && (
+                <span className="truncate">· {summary.weather.outlook}</span>
               )}
-            >
-              <CalloutLine callout={summary.headline} />
             </div>
           )}
+
+          {headline &&
+            (canFocus ? (
+              <button
+                type="button"
+                onClick={() => onHeadlineFocus!(headline.focus!)}
+                title="Zoom to the impacted area"
+                className={cn(
+                  "-mx-2.5 flex items-center gap-1 border-y px-2.5 py-1 text-left font-medium hover:bg-ripple-muted/10",
+                  headline.tone === "muted"
+                    ? "border-transparent"
+                    : "border-[var(--border)]/60",
+                )}
+              >
+                <span className="min-w-0 flex-1">
+                  <CalloutLine callout={headline} />
+                </span>
+                <Crosshair size={12} className="shrink-0 text-ripple-muted" />
+              </button>
+            ) : (
+              <div
+                className={cn(
+                  "-mx-2.5 border-y px-2.5 py-1 font-medium",
+                  headline.tone === "muted"
+                    ? "border-transparent"
+                    : "border-[var(--border)]/60",
+                )}
+              >
+                <CalloutLine callout={headline} />
+              </div>
+            ))}
 
           {summary.rows.map((row) => (
             <TallyRow key={row.kind} row={row} />

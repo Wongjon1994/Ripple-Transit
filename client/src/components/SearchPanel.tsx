@@ -466,7 +466,7 @@ export function SearchPanel({
         <div className="mt-1 flex flex-col gap-4">
           {saved.data && saved.data.length > 0 && (
             <section>
-              <SectionHeader title="Saved Locations" href="/preferences" />
+              <SectionHeader title="Saved Locations" href="/settings" />
               <div className="flex flex-col">
                 {saved.data.map((loc) => (
                   <button

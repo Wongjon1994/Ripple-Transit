@@ -72,10 +72,10 @@ export function PersonalInsights() {
           <p className="text-sm leading-relaxed text-ripple-muted">
             Personalised patterns are off. Turn on{" "}
             <Link
-              href="/preferences"
+              href="/settings"
               className="font-medium text-brand hover:underline"
             >
-              trip-history learning in Preferences
+              trip-history learning in Settings
             </Link>{" "}
             to see your repeated routes, mode split and CO₂ streak — we only ever
             analyse your own journeys.

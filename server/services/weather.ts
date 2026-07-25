@@ -276,6 +276,48 @@ export function cycleRainCallout(
   };
 }
 
+export interface PulseWeather {
+  temperature?: number;
+  condition: string;
+  outlook?: string;
+}
+
+/**
+ * City-wide weather for the Pulse header: the current condition + temperature
+ * (central Singapore), plus a forward look from the 24h forecast's next period
+ * when it differs from now — honest day-part phrasing, never a fabricated time.
+ */
+export async function pulseWeather(): Promise<PulseWeather | null> {
+  // Downtown reading stands in for "the city" on the overview.
+  const now = await weatherAt(1.2903, 103.8519).catch(() => null);
+  if (!now) return null;
+
+  let outlook: string | undefined;
+  const fc24 = await cachedFetch<Forecast24Response>(
+    "24-hour-weather-forecast",
+  ).catch(() => null);
+  const periods = fc24?.items?.[0]?.periods ?? [];
+  const nowMs = Date.now();
+  for (const p of periods) {
+    const start = new Date(p.time.start).getTime();
+    if (Number.isNaN(start) || start <= nowMs) continue; // future periods only
+    const cond = p.regions?.central ?? "";
+    if (!cond) continue;
+    // Only surface a forward look when it meaningfully differs from now.
+    if (cond.toLowerCase() !== now.forecast.toLowerCase()) {
+      outlook = `${cond} ${describePeriod(new Date(start).getHours())}`;
+    }
+    break;
+  }
+
+  return {
+    temperature:
+      now.temperature != null ? Math.round(now.temperature) : undefined,
+    condition: now.forecast,
+    outlook,
+  };
+}
+
 /** Nearest-area 2-hour forecast + realtime temp/humidity/wind for a point. */
 export async function weatherAt(
   lat: number,

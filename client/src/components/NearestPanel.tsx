@@ -308,10 +308,10 @@ export function NearestPanel({
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="eyebrow text-ripple-muted">Nearest ___</span>
         <Link
-          href="/preferences"
+          href="/settings"
           className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand hover:underline"
         >
-          <SlidersHorizontal size={12} /> Preferences
+          <SlidersHorizontal size={12} /> Settings
         </Link>
       </div>
       {category && (canDestination || canRoute) && (

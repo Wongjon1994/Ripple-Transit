@@ -95,7 +95,7 @@ export function Login() {
               <span>
                 Use my trip history to personalise my routes and Insights. We
                 only ever analyse your own journeys, and you can change this
-                anytime in Preferences.
+                anytime in Settings.
               </span>
             </label>
           )}
