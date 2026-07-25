@@ -10,14 +10,15 @@ import {
 import type { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
-  TrainFront,
   Route,
   Navigation,
   ChevronDown,
   ChevronRight,
+  Activity,
 } from "lucide-react";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
+import { cn } from "../lib/utils.js";
 import { useTheme } from "../lib/theme.js";
 import { trpc } from "../lib/trpc.js";
 import {
@@ -496,6 +497,39 @@ export function MapView({
                 "circle-stroke-opacity": isDark ? 0.55 : 0.45,
               }}
             />
+            {/* Station names — only once zoomed in, so the dots become
+                readable places instead of anonymous points. A halo keeps them
+                legible over the congestion lines. */}
+            <Layer
+              id="mrt-network-labels"
+              type="symbol"
+              minzoom={13}
+              layout={{
+                "text-field": ["get", "name"],
+                "text-size": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  13,
+                  9,
+                  16,
+                  12,
+                ],
+                "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+                "text-anchor": "top",
+                "text-offset": [0, 0.6],
+                "text-max-width": 8,
+                "text-optional": true,
+                "text-allow-overlap": false,
+                "text-padding": 4,
+              }}
+              paint={{
+                "text-color": isDark ? "#cdd6df" : "#3a444e",
+                "text-halo-color": isDark ? "#0b0f14" : "#ffffff",
+                "text-halo-width": 1.4,
+                "text-opacity": isDark ? 0.9 : 0.95,
+              }}
+            />
           </Source>
 
           {/* Pulse: live road congestion (LTA speed bands). A wide blurred copy
@@ -668,13 +702,26 @@ export function MapView({
             aria-pressed={showNetwork}
             title={
               showNetwork
-                ? "Pulse: MRT crowd, traffic, rain"
+                ? "Pulse: live crowd, traffic, rain"
                 : "Show Pulse (live crowd, traffic, rain)"
             }
-            className="absolute left-[10px] top-[112px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
-            style={{ color: showNetwork ? "var(--brand)" : "var(--fg)" }}
+            className={cn(
+              "absolute left-[10px] top-[112px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border shadow-[0_2px_8px_rgba(0,0,0,0.12)] transition-colors",
+              showNetwork
+                ? "border-transparent bg-[#ef4444] text-white"
+                : "border-[var(--border)] bg-[var(--surface)] text-[#ef4444]",
+            )}
           >
-            <TrainFront size={16} />
+            {/* A "live" heartbeat: the ping ring signals the layer is active and
+                streaming, drawing the eye the way the reference Pulse badge does. */}
+            {showNetwork && (
+              <span
+                aria-hidden
+                className="absolute inset-0 animate-ping rounded-lg bg-[#ef4444] opacity-40"
+                style={{ animationDuration: "1.8s" }}
+              />
+            )}
+            <Activity size={16} strokeWidth={2.5} className="relative" />
           </button>
         </>
       )}
