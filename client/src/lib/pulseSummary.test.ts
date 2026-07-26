@@ -69,11 +69,13 @@ describe("pulseSummary — reds + rain only", () => {
     const traffic = s.rows.find((r) => r.kind === "traffic")!;
     expect(traffic.text).toBe("Central");
     const crowd = s.rows.find((r) => r.kind === "crowd")!;
-    expect(crowd.items).toEqual([{ tone: "red", count: 1, label: "packed" }]);
+    expect(crowd.items).toEqual([
+      { tone: "red", count: 1, label: "Packed MRT station" },
+    ]);
     const alerts = s.rows.find((r) => r.kind === "alerts")!;
     // Only the ONE severe incident counts; the roadwork is dropped.
     expect(alerts.items).toEqual([
-      { tone: "red", count: 1, label: "incident" },
+      { tone: "red", count: 1, label: "Traffic incident" },
       { tone: "rain", count: 1, label: "rain area" },
     ]);
   });

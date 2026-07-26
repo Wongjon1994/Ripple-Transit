@@ -127,6 +127,7 @@ export function ActiveRoutePanel({
   onStartJourney,
   collapseKey,
   liveBoardStopCode,
+  preferredKind,
 }: {
   mode: ActiveMode;
   data: ActiveRoutesResult | undefined;
@@ -138,6 +139,8 @@ export function ActiveRoutePanel({
   collapseKey?: string;
   /** Walking to a bus stop: show its live arrival board inline (Tier 3). */
   liveBoardStopCode?: string | null;
+  /** The route flavour the user asked for — so we can say when none exists. */
+  preferredKind?: ActiveVariantKind;
 }) {
   // §9: cards render Tier-1 only until tapped; selection (map) is separate.
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
@@ -161,6 +164,16 @@ export function ActiveRoutePanel({
   const ModeIcon = mode === "walk" ? Footprints : Bike;
   const sel = Math.min(selected, variants.length - 1);
 
+  // The user asked for a flavour we couldn't produce a distinct route for —
+  // say so, rather than silently handing back the fastest.
+  const preferMissing =
+    preferredKind != null &&
+    preferredKind !== "fastest" &&
+    !variants.some(
+      (v) => v.kind === preferredKind || v.also?.includes(preferredKind),
+    );
+  const preferLabel = preferredKind ? KIND_META[preferredKind].label : "";
+
   return (
     <div className="flex flex-col gap-3 p-3">
       {data && (
@@ -172,6 +185,14 @@ export function ActiveRoutePanel({
           }
           area={data.weather?.area}
         />
+      )}
+
+      {preferMissing && (
+        <div className="rounded-md bg-ripple-muted/10 px-3 py-2 text-xs text-ripple-muted">
+          No distinct <span className="font-medium">{preferLabel}</span> route
+          stands out for this trip — showing the fastest. Your preference still
+          applies whenever a {preferLabel.toLowerCase()} path is worthwhile.
+        </div>
       )}
 
       <h3 className="eyebrow -mb-1 text-ripple-muted">

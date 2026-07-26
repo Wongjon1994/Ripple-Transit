@@ -416,19 +416,31 @@ export function MapView({
     [pulse.data?.traffic],
   );
 
+  // Live rain (now) drawn solid; forecast rain (expected) drawn fainter, via a
+  // `forecast` flag on each blob so the same layer renders both honestly.
   const rainGeoJSON = useMemo(
     () => ({
       type: "FeatureCollection" as const,
-      features: (pulse.data?.rain ?? []).map((r) => ({
-        type: "Feature" as const,
-        properties: { heavy: r.intensity === "heavy" ? 1 : 0 },
-        geometry: {
-          type: "Point" as const,
-          coordinates: [r.lng, r.lat] as [number, number],
-        },
-      })),
+      features: [
+        ...(pulse.data?.rain ?? []).map((r) => ({
+          type: "Feature" as const,
+          properties: { heavy: r.intensity === "heavy" ? 1 : 0, forecast: 0 },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [r.lng, r.lat] as [number, number],
+          },
+        })),
+        ...(pulse.data?.rainForecast ?? []).map((r) => ({
+          type: "Feature" as const,
+          properties: { heavy: r.intensity === "heavy" ? 1 : 0, forecast: 1 },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [r.lng, r.lat] as [number, number],
+          },
+        })),
+      ],
     }),
-    [pulse.data?.rain],
+    [pulse.data?.rain, pulse.data?.rainForecast],
   );
 
   function toggle3d() {
@@ -809,8 +821,9 @@ export function MapView({
             />
           </Source>
 
-          {/* Pulse: approximate rain areas — soft blurred blobs (NEA gives
-              point-area forecasts, not polygons). */}
+          {/* Pulse: rain areas — soft blurred blobs (NEA gives point-area
+              forecasts, not polygons). Live rain (now) is solid; forecast rain
+              (expected) is larger + fainter so it reads as "coming, not here". */}
           <Source id="pulse-rain" type="geojson" data={rainGeoJSON}>
             <Layer
               id="pulse-rain-blobs"
@@ -821,15 +834,20 @@ export function MapView({
                   ["linear"],
                   ["zoom"],
                   10,
-                  30,
+                  ["case", ["get", "forecast"], 50, 30],
                   13,
-                  70,
+                  ["case", ["get", "forecast"], 110, 70],
                   16,
-                  140,
+                  ["case", ["get", "forecast"], 200, 140],
                 ],
-                "circle-color": "#8fa3ad",
+                "circle-color": ["case", ["get", "forecast"], "#9fb2bd", "#8fa3ad"],
                 "circle-blur": 1,
-                "circle-opacity": ["case", ["get", "heavy"], 0.28, 0.16],
+                "circle-opacity": [
+                  "case",
+                  ["get", "forecast"],
+                  ["case", ["get", "heavy"], 0.14, 0.09],
+                  ["case", ["get", "heavy"], 0.28, 0.16],
+                ],
               }}
             />
           </Source>

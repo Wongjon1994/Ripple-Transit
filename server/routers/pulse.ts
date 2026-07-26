@@ -8,7 +8,12 @@ import {
   incidentsOnPath,
   type CongestionSegment,
 } from "../services/traffic.js";
-import { rainAreas, pulseWeather, type PulseWeather } from "../services/weather.js";
+import {
+  rainAreas,
+  rainForecastAreas,
+  pulseWeather,
+  type PulseWeather,
+} from "../services/weather.js";
 import {
   getTrainAlerts,
   type TrainDisruption,
@@ -23,8 +28,10 @@ export interface PulseOverlay {
   traffic: { lat: number; lng: number; severe: boolean; label: string }[];
   /** Live congested road segments (red/amber lines) from LTA speed bands. */
   congestion: CongestionSegment[];
-  /** Approximate wet areas (soft blobs) from the 2h nowcast. */
+  /** Approximate wet areas (soft blobs) from the 2h nowcast — raining now. */
   rain: { lat: number; lng: number; intensity: "light" | "heavy" }[];
+  /** Forward-looking: areas the 24h forecast expects wet (fainter blobs). */
+  rainForecast: { lat: number; lng: number; intensity: "light" | "heavy" }[];
   /** Live MRT/LRT disruptions (fade the line + ring affected stations). */
   mrtDisruptions: TrainDisruption[];
   /** Planned service adjustments (informational footer). */
@@ -40,12 +47,13 @@ export interface PulseOverlay {
  */
 export const pulseRouter = router({
   overlay: publicProcedure.query(async (): Promise<PulseOverlay> => {
-    const [crowdMap, incidents, congestion, rain, trains, weather] =
+    const [crowdMap, incidents, congestion, rain, rainFc, trains, weather] =
       await Promise.all([
         stationCrowd().catch(() => new Map<string, "l" | "m" | "h">()),
         getTrafficIncidents().catch(() => []),
         getTrafficCongestion().catch(() => []),
         rainAreas().catch(() => []),
+        rainForecastAreas().catch(() => []),
         getTrainAlerts().catch(() => ({
           disrupted: false,
           disruptions: [],
@@ -53,6 +61,8 @@ export const pulseRouter = router({
         })),
         pulseWeather().catch(() => null),
       ]);
+    // Don't double-draw: a region already raining now is dropped from forecast.
+    const wetNow = new Set(rain.map((r) => `${r.lat},${r.lng}`));
     return {
       // Drop low-crowd stations — Pulse surfaces problems, not the calm.
       crowd: [...crowdMap]
@@ -70,6 +80,9 @@ export const pulseRouter = router({
         lng: r.lng,
         intensity: r.intensity,
       })),
+      rainForecast: rainFc
+        .filter((r) => !wetNow.has(`${r.lat},${r.lng}`))
+        .map((r) => ({ lat: r.lat, lng: r.lng, intensity: r.intensity })),
       mrtDisruptions: trains.disruptions,
       mrtPlanned: trains.planned,
       weather,

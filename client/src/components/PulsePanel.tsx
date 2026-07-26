@@ -54,7 +54,7 @@ function TallyRow({ row }: { row: PulseRow }) {
     return (
       <div className="flex items-center gap-1.5 text-ripple-muted">
         <Swatch kind="traffic" tone="red" />
-        Heavy ·{" "}
+        Heavy traffic ·{" "}
         <span className="font-medium text-[var(--fg)]">{row.text}</span>
       </div>
     );
@@ -154,7 +154,7 @@ export function PulsePanel({
   const canFocus =
     !!onHeadlineFocus && !!headline?.focus && headline.focus.length > 0;
   return (
-    <div className="absolute left-[10px] top-[152px] z-[1] w-[210px] max-w-[calc(100vw-20px)] rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 text-[11px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+    <div className="absolute left-[10px] top-[152px] z-[1] w-[244px] max-w-[calc(100vw-20px)] rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 text-[11px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm">
       <button
         type="button"
         onClick={onToggle}
@@ -188,19 +188,17 @@ export function PulsePanel({
       {open && (
         <div className="flex flex-col gap-1.5 px-2.5 pb-2">
           {summary.weather && (
-            <div className="-mx-2.5 flex items-center gap-1.5 border-b border-[var(--border)]/60 px-2.5 pb-1.5 text-ripple-muted">
-              <WeatherIcon condition={summary.weather.condition} />
-              <span className="text-[var(--fg)]">
+            <div className="-mx-2.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 border-b border-[var(--border)]/60 px-2.5 pb-1.5 leading-snug text-ripple-muted">
+              <span className="flex items-center gap-1.5 text-[var(--fg)]">
+                <WeatherIcon condition={summary.weather.condition} />
                 {summary.weather.temperature != null && (
                   <span className="data-voice font-semibold">
-                    {summary.weather.temperature}°{" "}
+                    {summary.weather.temperature}°
                   </span>
                 )}
                 {summary.weather.condition}
               </span>
-              {summary.weather.outlook && (
-                <span className="truncate">· {summary.weather.outlook}</span>
-              )}
+              {summary.weather.outlook && <span>· {summary.weather.outlook}</span>}
             </div>
           )}
 

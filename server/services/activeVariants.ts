@@ -37,7 +37,12 @@ interface RawRoute {
 // Keep a via-detour only when it clearly earns its extra distance.
 const PCN_SKIP_PCT = 75; // direct route already lives on the network
 const SHELTER_SKIP_PCT = 60;
-const MIN_GAIN_PTS = 10; // detour must improve the metric by at least this
+// Minimum coverage gain to keep a detour. Scenic (PCN) is a lower bar than
+// sheltered: when a rider explicitly asks for scenic we should surface even a
+// modestly greener path (the ≤2.2× distance cap still blocks absurd detours),
+// rather than silently handing back the fastest.
+const MIN_GAIN_PCN = 6;
+const MIN_GAIN_SHELTER = 10;
 const MAX_DETOUR_FACTOR = 2.2; // and not more than ~2.2× the direct distance
 const PCN_VIA_RADIUS_M = 1500;
 const SHELTER_VIA_RADIUS_M = 1200;
@@ -90,7 +95,7 @@ async function viaVariant(
   direct: RawRoute,
   directPct: number,
   grid: SegmentGrid | null,
-  opts: { skipPct: number; radiusM: number },
+  opts: { skipPct: number; radiusM: number; minGain: number },
 ): Promise<{ route: RawRoute; pct: number } | null> {
   if (!grid || directPct >= opts.skipPct) return null;
   const mid = pathMidpoint(decodePolyline5(direct.polyline));
@@ -104,7 +109,7 @@ async function viaVariant(
   const stitched = stitchRoutes(r1, r2);
   if (stitched.distanceM > direct.distanceM * MAX_DETOUR_FACTOR) return null;
   const pct = pctOf(stitched, grid);
-  if (pct < directPct + MIN_GAIN_PTS) return null;
+  if (pct < directPct + opts.minGain) return null;
   return { route: stitched, pct };
 }
 
@@ -127,6 +132,7 @@ async function planSegment(
     viaVariant(mode, start, end, direct, pctOf(direct, pcnGrid), pcnGrid, {
       skipPct: PCN_SKIP_PCT,
       radiusM: PCN_VIA_RADIUS_M,
+      minGain: MIN_GAIN_PCN,
     }),
     mode === "walk"
       ? viaVariant(
@@ -136,7 +142,11 @@ async function planSegment(
           direct,
           pctOf(direct, shelterGrid),
           shelterGrid,
-          { skipPct: SHELTER_SKIP_PCT, radiusM: SHELTER_VIA_RADIUS_M },
+          {
+            skipPct: SHELTER_SKIP_PCT,
+            radiusM: SHELTER_VIA_RADIUS_M,
+            minGain: MIN_GAIN_SHELTER,
+          },
         )
       : Promise.resolve(null),
   ]);

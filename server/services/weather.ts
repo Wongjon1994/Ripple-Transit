@@ -156,6 +156,50 @@ export async function rainAreas(): Promise<RainArea[]> {
   return out;
 }
 
+/** Approximate centroids for the NEA 24h-forecast regions. */
+const REGION_CENTROIDS: Record<string, { lat: number; lng: number }> = {
+  central: { lat: 1.35, lng: 103.82 },
+  north: { lat: 1.42, lng: 103.8 },
+  south: { lat: 1.27, lng: 103.83 },
+  east: { lat: 1.35, lng: 103.94 },
+  west: { lat: 1.35, lng: 103.7 },
+};
+
+/**
+ * FORECAST rain — regions the 24h outlook expects to be wet in the current (or
+ * next) period, as approximate area blobs. Distinct from `rainAreas()` (which
+ * is the live 2h nowcast): this is forward-looking, so the map shows "rain
+ * expected" even when it isn't raining yet. Rendered fainter than live rain.
+ */
+export async function rainForecastAreas(): Promise<RainArea[]> {
+  const fc = await cachedFetch<Forecast24Response>("24-hour-weather-forecast");
+  const periods = fc?.items?.[0]?.periods ?? [];
+  if (!periods.length) return [];
+  const nowMs = Date.now();
+  // The period covering now, else the next upcoming one.
+  const active =
+    periods.find((p) => {
+      const s = new Date(p.time.start).getTime();
+      const e = new Date(p.time.end).getTime();
+      return s <= nowMs && nowMs < e;
+    }) ??
+    periods.find((p) => new Date(p.time.start).getTime() > nowMs);
+  if (!active) return [];
+  const out: RainArea[] = [];
+  for (const [region, cond] of Object.entries(active.regions ?? {})) {
+    if (!WET.test(cond)) continue;
+    const c = REGION_CENTROIDS[region];
+    if (!c) continue;
+    out.push({
+      lat: c.lat,
+      lng: c.lng,
+      area: region,
+      intensity: /thund|heavy/i.test(cond) ? "heavy" : "light",
+    });
+  }
+  return out;
+}
+
 export interface RainWindow {
   rainingNow: boolean;
   /** End of the 2h nowcast window — the only exact time NEA supports. */

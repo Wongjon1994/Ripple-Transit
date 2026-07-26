@@ -289,13 +289,17 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
   // detail stays on the map). Crowd = packed only; alerts = severe + rain.
   const heavyAreas = heavyRegions(input.congestion);
   const crowdItems: PulseTallyItem[] = [
-    { tone: "red" as const, count: packed.length, label: "packed" },
+    {
+      tone: "red" as const,
+      count: packed.length,
+      label: packed.length === 1 ? "Packed MRT station" : "Packed MRT stations",
+    },
   ].filter((i) => i.count > 0);
   const alertItems: PulseTallyItem[] = [
     {
       tone: "red" as const,
       count: severeIncidents.length,
-      label: severeIncidents.length === 1 ? "incident" : "incidents",
+      label: severeIncidents.length === 1 ? "Traffic incident" : "Traffic incidents",
     },
     { tone: "rain" as const, count: rain, label: rain === 1 ? "rain area" : "rain areas" },
   ].filter((i) => i.count > 0);

@@ -725,6 +725,15 @@ export function Home() {
                 onStartJourney={handleStartActiveJourney}
                 collapseKey={collapseKey}
                 liveBoardStopCode={walkTabStopCode}
+                preferredKind={
+                  shownTab === "walk" || shownTab === "cycle"
+                    ? prefs.routePriority?.[shownTab] === "scenic"
+                      ? "pcn"
+                      : prefs.routePriority?.[shownTab] === "sheltered"
+                        ? "sheltered"
+                        : "fastest"
+                    : undefined
+                }
               />
             )}
           </div>
