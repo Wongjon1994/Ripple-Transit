@@ -82,7 +82,12 @@
       "Bash(npx tsx *)",
       "Bash(npm test *)",
       "Bash(git commit *)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(curl -s \"http://localhost:60164/api/trpc/pulse.overlay?input=%7B%22json%22%3Anull%7D\")",
+      "Bash(python3 -c \"import sys,json;d=json.load\\(sys.stdin\\)['result']['data']['json'];print\\('rain areas:',len\\(d['rain']\\),'| weather:',d['weather']\\)\")",
+      "Bash(curl -s \"https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); fs=d['data']['items'][0]['forecasts']; from collections import Counter; print\\(Counter\\(f['forecast'] for f in fs\\)\\)\")",
+      "Bash(grep -n \"haversineMeters\\\\|from \\\\\"../lib/utils\\\\|import { cn }\" client/src/components/MapView.tsx)"
     ]
   }
 }

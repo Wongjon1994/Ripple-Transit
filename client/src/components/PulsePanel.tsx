@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -16,8 +17,12 @@ import type {
   PulseRow,
   PulseTallyItem,
   PulseCallout,
+  PulsePoint,
 } from "../lib/pulseSummary.js";
 import { cn } from "../lib/utils.js";
+
+/** A tally item / traffic row that can frame its instances on the map. */
+type CycleFn = (key: string, targets: PulsePoint[][]) => void;
 
 const TONE_HEX: Record<PulseTallyItem["tone"], string> = {
   red: "#ef4444",
@@ -48,27 +53,67 @@ function Swatch({ kind, tone }: { kind: PulseRow["kind"]; tone: PulseTallyItem["
   );
 }
 
-function TallyRow({ row }: { row: PulseRow }) {
-  // Traffic is area-based: a red line swatch + "Heavy · <areas>", not a tally.
-  if (row.kind === "traffic")
+/** Wrap tally content in a button when it can frame instances on the map, so
+ *  each click cycles to the next one (nearest-first). Adds a faint crosshair. */
+function Cyclable({
+  onClick,
+  children,
+}: {
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  if (!onClick)
+    return <span className="flex items-center gap-1">{children}</span>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Tap to find these on the map"
+      className="flex items-center gap-1 rounded hover:bg-ripple-muted/10"
+    >
+      {children}
+      <Crosshair size={10} className="text-ripple-muted/70" />
+    </button>
+  );
+}
+
+function TallyRow({ row, onCycle }: { row: PulseRow; onCycle?: CycleFn }) {
+  // Traffic is area-based: a red line swatch + "Heavy traffic · <areas>".
+  if (row.kind === "traffic") {
+    const focus = row.focus;
+    const canCycle = !!onCycle && !!focus && focus.length > 0;
     return (
       <div className="flex items-center gap-1.5 text-ripple-muted">
         <Swatch kind="traffic" tone="red" />
-        Heavy traffic ·{" "}
-        <span className="font-medium text-[var(--fg)]">{row.text}</span>
+        <Cyclable onClick={canCycle ? () => onCycle!("traffic", focus!) : undefined}>
+          <span>
+            Heavy traffic ·{" "}
+            <span className="font-medium text-[var(--fg)]">{row.text}</span>
+          </span>
+        </Cyclable>
       </div>
     );
+  }
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-      {(row.items ?? []).map((it, i) => (
-        <span key={i} className="flex items-center gap-1 text-ripple-muted">
-          <Swatch kind={row.kind} tone={it.tone} />
-          <span className="data-voice font-semibold text-[var(--fg)]">
-            {it.count}
+      {(row.items ?? []).map((it, i) => {
+        const canCycle = !!onCycle && !!it.focus && it.focus.length > 0;
+        return (
+          <span key={i} className="flex items-center gap-1 text-ripple-muted">
+            <Swatch kind={row.kind} tone={it.tone} />
+            <Cyclable
+              onClick={
+                canCycle ? () => onCycle!(`${row.kind}:${it.label}`, it.focus!) : undefined
+              }
+            >
+              <span className="data-voice font-semibold text-[var(--fg)]">
+                {it.count}
+              </span>
+              {it.label}
+            </Cyclable>
           </span>
-          {it.label}
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -141,6 +186,7 @@ export function PulsePanel({
   open,
   onToggle,
   onHeadlineFocus,
+  onCycle,
   timeLabel,
 }: {
   summary: PulseSummary;
@@ -148,9 +194,25 @@ export function PulsePanel({
   onToggle: () => void;
   /** Frame the headline's impacted points on the map (tap-to-zoom). */
   onHeadlineFocus?: (points: { lat: number; lng: number }[]) => void;
+  /** Cycle a tally item's instances on the map (nearest-first). */
+  onCycle?: CycleFn;
   timeLabel: string;
 }) {
-  const headline = summary.headline;
+  // Rotate through the ranked headlines like a news ticker — a fresh one every
+  // 5s. The index resets whenever the set of headlines changes.
+  const headlines = summary.headlines;
+  const key = headlines.map((h) => h.text).join("|");
+  const [idx, setIdx] = useState(0);
+  useEffect(() => setIdx(0), [key]);
+  useEffect(() => {
+    if (headlines.length <= 1) return;
+    const id = window.setInterval(
+      () => setIdx((i) => (i + 1) % headlines.length),
+      5000,
+    );
+    return () => window.clearInterval(id);
+  }, [headlines.length]);
+  const headline = headlines[idx] ?? summary.headline;
   const canFocus =
     !!onHeadlineFocus && !!headline?.focus && headline.focus.length > 0;
   return (
@@ -233,8 +295,22 @@ export function PulsePanel({
               </div>
             ))}
 
+          {headlines.length > 1 && (
+            <div className="-mt-0.5 flex items-center gap-1">
+              {headlines.map((_, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "h-1 w-1 rounded-full transition-colors",
+                    i === idx ? "bg-[#ef4444]" : "bg-ripple-muted/30",
+                  )}
+                />
+              ))}
+            </div>
+          )}
+
           {summary.rows.map((row) => (
-            <TallyRow key={row.kind} row={row} />
+            <TallyRow key={row.kind} row={row} onCycle={onCycle} />
           ))}
 
           {summary.personal.length > 0 && (

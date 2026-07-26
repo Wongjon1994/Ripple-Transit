@@ -66,15 +66,19 @@ describe("pulseSummary — reds + rain only", () => {
         rain: [{ ...FAR }],
       }),
     );
+    const fields = (kind: string) =>
+      (s.rows.find((x) => x.kind === kind)?.items ?? []).map((i) => ({
+        tone: i.tone,
+        count: i.count,
+        label: i.label,
+      }));
     const traffic = s.rows.find((r) => r.kind === "traffic")!;
     expect(traffic.text).toBe("Central");
-    const crowd = s.rows.find((r) => r.kind === "crowd")!;
-    expect(crowd.items).toEqual([
+    expect(fields("crowd")).toEqual([
       { tone: "red", count: 1, label: "Packed MRT station" },
     ]);
-    const alerts = s.rows.find((r) => r.kind === "alerts")!;
     // Only the ONE severe incident counts; the roadwork is dropped.
-    expect(alerts.items).toEqual([
+    expect(fields("alerts")).toEqual([
       { tone: "red", count: 1, label: "Traffic incident" },
       { tone: "rain", count: 1, label: "rain area" },
     ]);
@@ -168,13 +172,46 @@ describe("pulseSummary — headline (worst citywide) + focus", () => {
     expect(
       pulseSummary(input({ crowd: [{ name: "Orchard", level: "h", ...FAR }] }))
         .headline?.text,
-    ).toBe("Orchard packed — busiest now");
+    ).toBe("Orchard packed");
     expect(
       pulseSummary(input({ congestion: reds(2) })).headline,
     ).toMatchObject({ tone: "red", text: "Heavy traffic · Central" });
     expect(
       pulseSummary(input({ rain: [{ ...FAR }, { ...FAR }] })).headline,
     ).toMatchObject({ tone: "rain", text: "Showers in 2 areas" });
+  });
+});
+
+describe("pulseSummary — rotating headlines + item focus", () => {
+  it("ranks multiple headlines worst-first, each with focus", () => {
+    const s = pulseSummary(
+      input({
+        mrtDisruptions: [
+          { lines: ["NE"], stations: ["NE1"], message: "", stationPoints: [{ lat: 1.3, lng: 103.8 }] },
+        ],
+        incidents: [severe("Accident on CTE"), severe("Accident on PIE")],
+        rain: [{ ...FAR }],
+      }),
+    );
+    expect(s.headlines[0].tone).toBe("mrt");
+    expect(s.headlines.map((h) => h.tone)).toContain("red");
+    expect(s.headlines.at(-1)?.tone).toBe("rain");
+    // Every headline can frame something.
+    expect(s.headlines.every((h) => (h.focus?.length ?? 0) > 0)).toBe(true);
+    expect(s.headline).toEqual(s.headlines[0]);
+  });
+
+  it("gives each incident/packed instance its own focus target to cycle", () => {
+    const s = pulseSummary(
+      input({
+        incidents: [severe("A", FAR), severe("B", EAST)],
+        crowd: [{ name: "X", level: "h", ...FAR }],
+      }),
+    );
+    const alerts = s.rows.find((r) => r.kind === "alerts")!;
+    const incidentItem = alerts.items!.find((i) => i.label === "Traffic incidents")!;
+    expect(incidentItem.focus).toHaveLength(2); // one target per incident
+    expect(incidentItem.focus![0]).toEqual([{ lat: FAR.lat, lng: FAR.lng }]);
   });
 });
 

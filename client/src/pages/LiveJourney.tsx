@@ -516,6 +516,7 @@ export function LiveJourney() {
           itinerary={journey.itinerary}
           livePosition={geo.position}
           fitPoints={fitPoints}
+          liveJourney
           viewToggle={{
             mode: viewMode,
             onChange: () =>

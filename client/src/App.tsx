@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useState, useEffect, type ReactNode } from "react";
 import { useTheme } from "./lib/theme.js";
 import { useAuth } from "./lib/auth.js";
+import { useJourney } from "./lib/journey.js";
 import { trpc } from "./lib/trpc.js";
 import { Home } from "./pages/Home.js";
 import { Login } from "./pages/Login.js";
@@ -38,6 +39,9 @@ function Header() {
     { href: "/about", label: "About" },
     { href: "/settings", label: "Settings" },
   ];
+  // The live journey lives under the Map tab, so keep Map highlighted there.
+  const isActive = (href: string) =>
+    loc === href || (href === "/" && loc === "/journey");
 
   return (
     <header className="relative flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4">
@@ -56,7 +60,7 @@ function Header() {
             href={n.href}
             className={cn(
               "hidden rounded-md px-2.5 py-1.5 text-sm font-medium sm:block",
-              loc === n.href
+              isActive(n.href)
                 ? "bg-ripple-muted/15 text-[var(--fg)]"
                 : "text-ripple-muted hover:text-[var(--fg)]",
             )}
@@ -124,7 +128,7 @@ function Header() {
                 href={n.href}
                 className={cn(
                   "block px-4 py-2.5 text-sm font-medium",
-                  loc === n.href
+                  isActive(n.href)
                     ? "bg-ripple-muted/15 text-[var(--fg)]"
                     : "text-[var(--fg)] hover:bg-ripple-muted/10",
                 )}
@@ -159,6 +163,15 @@ function Header() {
   );
 }
 
+/** The Map tab. While a journey is running it resumes the live companion, so
+ *  leaving to another tab and coming back to Map keeps you on the journey (the
+ *  journey state lives at the app root, so it never stopped). */
+function MapTab() {
+  const { journey } = useJourney();
+  if (journey && journey.status === "active") return <Redirect to="/journey" />;
+  return <Home />;
+}
+
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
   if (isLoading) {
@@ -178,7 +191,7 @@ export function App() {
       <Header />
       <div className="min-h-0 flex-1">
         <Switch>
-          <Route path="/" component={Home} />
+          <Route path="/" component={MapTab} />
           <Route path="/journey" component={LiveJourney} />
           <Route path="/login" component={Login} />
           <Route path="/about" component={About} />

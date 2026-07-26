@@ -12,7 +12,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { Route, Navigation, Activity } from "lucide-react";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
-import { cn } from "../lib/utils.js";
+import { cn, haversineMeters } from "../lib/utils.js";
 import { useTheme } from "../lib/theme.js";
 import { trpc } from "../lib/trpc.js";
 import { useAuth } from "../lib/auth.js";
@@ -186,6 +186,7 @@ export function MapView({
   followZoom = 18,
   fitPoints,
   viewToggle,
+  liveJourney = false,
 }: {
   origin: LatLng | null;
   destination: LatLng | null;
@@ -209,6 +210,9 @@ export function MapView({
   fitPoints?: LatLng[] | null;
   /** Live-journey view toggle rendered in the control stack. */
   viewToggle?: { mode: "leg" | "route"; onChange: () => void };
+  /** Focused live-navigation view: hide Pulse entirely and draw the route in a
+   *  monochrome base so amber/red risk segments stand out. */
+  liveJourney?: boolean;
 }) {
   const { theme } = useTheme();
   const mapRef = useRef<MapRef | null>(null);
@@ -223,7 +227,9 @@ export function MapView({
   const [legendOpen, setLegendOpen] = useState(true);
 
   const pulse = trpc.pulse.overlay.useQuery(undefined, {
-    enabled: showNetwork && !follow,
+    // Off in the focused live-journey view — risks surface on the route path
+    // and in the journey panel instead.
+    enabled: showNetwork && !follow && !liveJourney,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -310,6 +316,36 @@ export function MapView({
       ],
       { padding: 60, maxZoom: 15, duration: 700 },
     );
+  }
+
+  // Tapping a tally item cycles through its instances (a packed station, an
+  // incident, a region of heavy traffic). Targets are sorted nearest-first from
+  // the map centre once per fresh dataset, then a per-key cursor advances each
+  // tap so successive clicks step through them.
+  const cycleState = useRef(
+    new Map<string, { at: number; order: LatLng[][]; cursor: number }>(),
+  );
+  function cycleFocus(key: string, targets: LatLng[][]) {
+    const map = mapRef.current?.getMap();
+    if (!map || targets.length === 0) return;
+    const stamp = pulse.dataUpdatedAt;
+    let st = cycleState.current.get(key);
+    if (!st || st.at !== stamp) {
+      const c = map.getCenter();
+      const centroid = (t: LatLng[]) => ({
+        lat: t.reduce((s, p) => s + p.lat, 0) / t.length,
+        lng: t.reduce((s, p) => s + p.lng, 0) / t.length,
+      });
+      const order = [...targets].sort(
+        (a, b) =>
+          haversineMeters(c, centroid(a)) - haversineMeters(c, centroid(b)),
+      );
+      st = { at: stamp, order, cursor: 0 };
+      cycleState.current.set(key, st);
+    }
+    const target = st.order[st.cursor % st.order.length];
+    st.cursor += 1;
+    focusPoints(target);
   }
 
   // Set of line prefixes with a live disruption — fade those lines and ring
@@ -463,6 +499,9 @@ export function MapView({
       itinerary?.legs
         .map((leg) => ({
           type: leg.type,
+          // A known live risk on this leg (traffic incident / MRT crowd) — used
+          // to tint the segment amber in the focused live-journey view.
+          risk: leg.trafficAlert ? "amber" : leg.crowd === "h" ? "amber" : null,
           coords: leg.polyline
             ? decodePolyline(leg.polyline)
             : ([
@@ -474,16 +513,25 @@ export function MapView({
     [itinerary],
   );
 
+  // Live navigation draws the whole route in one near-black (light) / near-white
+  // (dark) base so amber/red risk segments read as meaningful; planning keeps
+  // the per-mode colours.
+  const routeBase = theme === "dark" ? "#e5e7eb" : "#1f2937";
   const routeGeoJSON = useMemo(
     () => ({
       type: "FeatureCollection" as const,
       features: legLines.map((l) => ({
         type: "Feature" as const,
-        properties: { legType: l.type, color: legColor(l.type) },
+        properties: {
+          legType: l.type,
+          color: liveJourney
+            ? (l.risk ?? routeBase)
+            : legColor(l.type),
+        },
         geometry: { type: "LineString" as const, coordinates: l.coords },
       })),
     }),
-    [legLines],
+    [legLines, liveJourney, routeBase],
   );
 
   const allPoints: [number, number][] = useMemo(
@@ -597,7 +645,7 @@ export function MapView({
           without overpowering the map. Hidden during walk navigation, and
           unmounted (not just visibility-toggled) when switched off so the
           toggle reliably clears it. */}
-      {!follow && showNetwork && (
+      {!follow && showNetwork && !liveJourney && (
         <>
           <Source id="mrt-network" type="geojson" data={networkLinesGeoJSON}>
             {/* Operational lines: solid, official colour. (line-dasharray can't
@@ -938,34 +986,37 @@ export function MapView({
           >
             {is3d ? "2D" : "3D"}
           </button>
-          <button
-            type="button"
-            onClick={() => setShowNetwork((v) => !v)}
-            aria-label={showNetwork ? "Hide Pulse layer" : "Show Pulse layer"}
-            aria-pressed={showNetwork}
-            title={
-              showNetwork
-                ? "Pulse: live crowd, traffic, rain"
-                : "Show Pulse (live crowd, traffic, rain)"
-            }
-            className={cn(
-              "absolute left-[10px] top-[112px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border shadow-[0_2px_8px_rgba(0,0,0,0.12)] transition-colors",
-              showNetwork
-                ? "border-transparent bg-[#ef4444] text-white"
-                : "border-[var(--border)] bg-[var(--surface)] text-[#ef4444]",
-            )}
-          >
-            {/* A "live" heartbeat: the ping ring signals the layer is active and
-                streaming, drawing the eye the way the reference Pulse badge does. */}
-            {showNetwork && (
-              <span
-                aria-hidden
-                className="absolute inset-0 animate-ping rounded-lg bg-[#ef4444] opacity-40"
-                style={{ animationDuration: "1.8s" }}
-              />
-            )}
-            <Activity size={16} strokeWidth={2.5} className="relative" />
-          </button>
+          {/* Pulse toggle — hidden in the focused live-journey view. */}
+          {!liveJourney && (
+            <button
+              type="button"
+              onClick={() => setShowNetwork((v) => !v)}
+              aria-label={showNetwork ? "Hide Pulse layer" : "Show Pulse layer"}
+              aria-pressed={showNetwork}
+              title={
+                showNetwork
+                  ? "Pulse: live crowd, traffic, rain"
+                  : "Show Pulse (live crowd, traffic, rain)"
+              }
+              className={cn(
+                "absolute left-[10px] top-[112px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border shadow-[0_2px_8px_rgba(0,0,0,0.12)] transition-colors",
+                showNetwork
+                  ? "border-transparent bg-[#ef4444] text-white"
+                  : "border-[var(--border)] bg-[var(--surface)] text-[#ef4444]",
+              )}
+            >
+              {/* A "live" heartbeat: the ping ring signals the layer is active
+                  and streaming, like the reference Pulse badge. */}
+              {showNetwork && (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 animate-ping rounded-lg bg-[#ef4444] opacity-40"
+                  style={{ animationDuration: "1.8s" }}
+                />
+              )}
+              <Activity size={16} strokeWidth={2.5} className="relative" />
+            </button>
+          )}
         </>
       )}
 
@@ -978,6 +1029,7 @@ export function MapView({
           open={legendOpen}
           onToggle={() => setLegendOpen((v) => !v)}
           onHeadlineFocus={focusPoints}
+          onCycle={cycleFocus}
           timeLabel={
             pulse.dataUpdatedAt
               ? new Date(pulse.dataUpdatedAt).toLocaleTimeString([], {
