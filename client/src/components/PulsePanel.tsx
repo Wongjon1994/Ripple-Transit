@@ -53,8 +53,9 @@ function Swatch({ kind, tone }: { kind: PulseRow["kind"]; tone: PulseTallyItem["
   );
 }
 
-/** Wrap tally content in a button when it can frame instances on the map, so
- *  each click cycles to the next one (nearest-first). Adds a faint crosshair. */
+/** Wrap tally content in a pill BUTTON when it can frame instances on the map,
+ *  so it's obviously tappable; each click cycles to the next one (nearest-first)
+ *  with a crosshair affordance. Non-clickable content renders as plain text. */
 function Cyclable({
   onClick,
   children,
@@ -63,22 +64,23 @@ function Cyclable({
   children: React.ReactNode;
 }) {
   if (!onClick)
-    return <span className="flex items-center gap-1">{children}</span>;
+    return <span className="flex items-center gap-1 py-0.5">{children}</span>;
   return (
     <button
       type="button"
       onClick={onClick}
       title="Tap to find these on the map"
-      className="flex items-center gap-1 rounded hover:bg-ripple-muted/10"
+      className="flex items-center gap-1 rounded-full border border-[var(--border)] bg-ripple-muted/5 px-2 py-0.5 hover:border-brand/50 hover:bg-brand/5 active:scale-[0.97]"
     >
       {children}
-      <Crosshair size={10} className="text-ripple-muted/70" />
+      <Crosshair size={10} className="text-brand" />
     </button>
   );
 }
 
 function TallyRow({ row, onCycle }: { row: PulseRow; onCycle?: CycleFn }) {
-  // Traffic is area-based: a red line swatch + "Heavy traffic · <areas>".
+  // Traffic is area-based, but the panel shows just "Heavy traffic" — tapping
+  // it cycles through the affected regions on the map.
   if (row.kind === "traffic") {
     const focus = row.focus;
     const canCycle = !!onCycle && !!focus && focus.length > 0;
@@ -86,20 +88,17 @@ function TallyRow({ row, onCycle }: { row: PulseRow; onCycle?: CycleFn }) {
       <div className="flex items-center gap-1.5 text-ripple-muted">
         <Swatch kind="traffic" tone="red" />
         <Cyclable onClick={canCycle ? () => onCycle!("traffic", focus!) : undefined}>
-          <span>
-            Heavy traffic ·{" "}
-            <span className="font-medium text-[var(--fg)]">{row.text}</span>
-          </span>
+          <span className="font-medium text-[var(--fg)]">Heavy traffic</span>
         </Cyclable>
       </div>
     );
   }
   return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {(row.items ?? []).map((it, i) => {
         const canCycle = !!onCycle && !!it.focus && it.focus.length > 0;
         return (
-          <span key={i} className="flex items-center gap-1 text-ripple-muted">
+          <span key={i} className="flex items-center gap-1.5 text-ripple-muted">
             <Swatch kind={row.kind} tone={it.tone} />
             <Cyclable
               onClick={
@@ -187,6 +186,7 @@ export function PulsePanel({
   onToggle,
   onHeadlineFocus,
   onCycle,
+  maxHeight,
   timeLabel,
 }: {
   summary: PulseSummary;
@@ -196,6 +196,8 @@ export function PulsePanel({
   onHeadlineFocus?: (points: { lat: number; lng: number }[]) => void;
   /** Cycle a tally item's instances on the map (nearest-first). */
   onCycle?: CycleFn;
+  /** CSS max-height cap so the panel never hides behind the planning sheet. */
+  maxHeight?: string;
   timeLabel: string;
 }) {
   // Rotate through the ranked headlines like a news ticker — a fresh one every
@@ -248,7 +250,10 @@ export function PulsePanel({
       </button>
 
       {open && (
-        <div className="flex flex-col gap-1.5 px-2.5 pb-2">
+        <div
+          className="flex flex-col gap-1.5 overflow-y-auto overscroll-contain px-2.5 pb-2"
+          style={maxHeight ? { maxHeight } : undefined}
+        >
           {summary.weather && (
             <div className="-mx-2.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 border-b border-[var(--border)]/60 px-2.5 pb-1.5 leading-snug text-ripple-muted">
               <span className="flex items-center gap-1.5 text-[var(--fg)]">

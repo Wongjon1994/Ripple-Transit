@@ -114,6 +114,39 @@ interface PcdResponse {
   value?: Array<{ Station: string; CrowdLevel: CrowdLevel }>;
 }
 
+// Stations not yet in passenger service: LTA's PCDRealTime already lists them
+// but returns a constant placeholder crowd (e.g. Sungei Bedok / Xilin report
+// "h" at 10pm), which would wrongly show them as packed. We seed them here, but
+// the filter is SELF-CORRECTING: the moment LTA reports a genuinely varying
+// level for one (only happens once it opens and real sensors are live), we
+// trust it permanently — so no code change is needed when these lines open.
+const FUTURE_STATION_SEED = new Set<string>([
+  "TE10", // Mount Pleasant (TEL, deferred)
+  "TE21", // Marina South (TEL, deferred)
+  "TE22A", // future infill
+  "TE29", // Bayshore (TEL5)
+  "TE30", // Bedok South (TEL5)
+  "TE31", // Sungei Bedok (TEL5)
+  "DT36", // Xilin (DTL3e)
+  "DT37", // Sungei Bedok (DTL3e)
+]);
+// Distinct crowd levels seen per seeded station. A real (operational) station's
+// crowd varies through the day; a placeholder is stuck on one value. Once we've
+// observed ≥2 distinct levels, the station has opened → trust it from then on.
+const seedLevelsSeen = new Map<string, Set<CrowdLevel>>();
+
+/** True while a seeded future station still looks like placeholder data. */
+function isPlaceholderCrowd(station: string, level: CrowdLevel): boolean {
+  if (!FUTURE_STATION_SEED.has(station)) return false;
+  let seen = seedLevelsSeen.get(station);
+  if (!seen) {
+    seen = new Set();
+    seedLevelsSeen.set(station, seen);
+  }
+  seen.add(level);
+  return seen.size < 2; // one value ever seen → not operational yet → skip
+}
+
 let crowdCache: { at: number; map: Map<string, CrowdLevel> } | null = null;
 const CROWD_TTL_MS = 10 * 60 * 1000; // PCDRealTime refreshes every 10 min
 
@@ -136,7 +169,10 @@ export async function stationCrowd(): Promise<Map<string, CrowdLevel>> {
         if (!res.ok) return;
         const data = (await res.json()) as PcdResponse;
         for (const s of data.value ?? []) {
-          if (s.Station && s.CrowdLevel) map.set(s.Station, s.CrowdLevel);
+          if (!s.Station || !s.CrowdLevel) continue;
+          // Skip not-yet-open stations whose crowd is still placeholder data.
+          if (isPlaceholderCrowd(s.Station, s.CrowdLevel)) continue;
+          map.set(s.Station, s.CrowdLevel);
         }
       } catch {
         /* one line failing shouldn't blank the rest */

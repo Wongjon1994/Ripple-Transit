@@ -493,6 +493,15 @@ export function Home() {
       ? `${dragH}px`
       : `${Math.round(SNAPS[snapIdx] * 100)}vh`;
 
+  // Height the bottom sheet obscures — the map's Pulse panel caps itself above
+  // it so it's never clipped. Only the mobile sheet overlays the map; the
+  // desktop sidebar sits beside it, and a collapsed panel hides the sheet.
+  const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
+  const mapBottomInset =
+    isMobile && !panelCollapsed
+      ? Math.round(dragH ?? SNAPS[snapIdx] * viewportH)
+      : 0;
+
   function onHandleDown(e: React.PointerEvent) {
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
@@ -748,6 +757,7 @@ export function Home() {
           waypoints={stops.slice(0, -1).flatMap((s) => (s.point ? [s.point] : []))}
           pois={nearestPois}
           corridor={showCorridor}
+          bottomInset={mapBottomInset}
           itinerary={
             shownTab === "transit"
               ? (itineraries[selected] ?? null)

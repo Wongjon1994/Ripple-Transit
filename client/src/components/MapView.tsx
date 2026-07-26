@@ -187,6 +187,7 @@ export function MapView({
   fitPoints,
   viewToggle,
   liveJourney = false,
+  bottomInset = 0,
 }: {
   origin: LatLng | null;
   destination: LatLng | null;
@@ -213,6 +214,9 @@ export function MapView({
   /** Focused live-navigation view: hide Pulse entirely and draw the route in a
    *  monochrome base so amber/red risk segments stand out. */
   liveJourney?: boolean;
+  /** Height (px) obscured by the mobile bottom sheet, so the Pulse panel caps
+   *  itself above it instead of being clipped. */
+  bottomInset?: number;
 }) {
   const { theme } = useTheme();
   const mapRef = useRef<MapRef | null>(null);
@@ -1030,6 +1034,11 @@ export function MapView({
           onToggle={() => setLegendOpen((v) => !v)}
           onHeadlineFocus={focusPoints}
           onCycle={cycleFocus}
+          maxHeight={
+            bottomInset > 0
+              ? `calc(100dvh - ${218 + bottomInset}px)`
+              : undefined
+          }
           timeLabel={
             pulse.dataUpdatedAt
               ? new Date(pulse.dataUpdatedAt).toLocaleTimeString([], {
