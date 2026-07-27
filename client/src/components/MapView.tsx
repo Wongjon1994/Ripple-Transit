@@ -250,7 +250,9 @@ export function MapView({
   // The dynamic summary — a "worst right now" headline, live tallies ordered by
   // preference, and proximity callouts. Recomputed only when live data moves.
   const summary = useMemo(() => {
-    if (!pulse.data) return null;
+    // The query is disabled in live navigation, but react-query still serves any
+    // previously-cached overlay — so drop it explicitly, or the panel lingers.
+    if (!pulse.data || liveJourney) return null;
     const congestion = pulse.data.congestion.map((c) => ({
       level: c.level,
       road: c.road,
@@ -289,7 +291,7 @@ export function MapView({
       weights: weightsFor(prefs),
       places,
     });
-  }, [pulse.data, savedPlaces.data, prefs]);
+  }, [pulse.data, savedPlaces.data, prefs, liveJourney]);
 
   // Tap the Pulse headline → frame the impacted points on the map.
   function focusPoints(points: { lat: number; lng: number }[]) {
@@ -1027,7 +1029,7 @@ export function MapView({
       {/* Dynamic Pulse panel — live tallies + a "worst right now" headline +
           personalised proximity callouts. Replaces the old static legend so the
           key doubles as a real-time read of the city. Collapses to a chip. */}
-      {!follow && showNetwork && summary && (
+      {!follow && showNetwork && !liveJourney && summary && (
         <PulsePanel
           summary={summary}
           open={legendOpen}
