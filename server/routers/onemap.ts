@@ -4,6 +4,7 @@ import { router, publicProcedure, adminProcedure } from "../trpc.js";
 import {
   oneMapSearch,
   oneMapRoute,
+  walkRouteSteps,
   getOneMapTokenInfo,
   forceRefreshOneMap,
   mrtStationExits,
@@ -688,6 +689,19 @@ export const onemapRouter = router({
     const info = await getOneMapTokenInfo();
     return info ?? { expiresAt: 0, issuedAt: 0 };
   }),
+
+  /** Turn-by-turn steps for one walk/cycle leg (live-journey guidance). */
+  walkSteps: publicProcedure
+    .input(
+      z.object({
+        start: z.object({ lat: z.number(), lng: z.number() }),
+        end: z.object({ lat: z.number(), lng: z.number() }),
+        mode: z.enum(["walk", "cycle"]).default("walk"),
+      }),
+    )
+    .query(({ input }) =>
+      walkRouteSteps(input.start, input.end, input.mode).catch(() => []),
+    ),
 
   search: publicProcedure
     .input(z.object({ q: z.string().min(1).max(255), page: z.number().optional() }))

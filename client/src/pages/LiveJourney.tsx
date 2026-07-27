@@ -9,6 +9,14 @@ import {
   X,
   ChevronLeft,
   ArrowRight,
+  ArrowLeft,
+  ArrowUp,
+  ArrowUpLeft,
+  ArrowUpRight,
+  CornerUpLeft,
+  CornerUpRight,
+  Undo2,
+  MapPin,
   Check,
   Share2,
   DoorOpen,
@@ -19,6 +27,7 @@ import {
   Leaf,
 } from "lucide-react";
 import { useState } from "react";
+import type { WalkStep } from "@shared/types.js";
 import { toast } from "sonner";
 import { useJourney, type ActiveJourney } from "../lib/journey.js";
 import { useGeolocation } from "../lib/useGeolocation.js";
@@ -546,6 +555,12 @@ export function LiveJourney() {
           <FullStepper legs={legs} current={journey.currentLeg} />
         ) : (
           <>
+            {/* Turn-by-turn for the walk/cycle leg in progress — applies to
+                access walks on a transit journey just as much as a full walk. */}
+            {leg && (leg.type === "walk" || leg.type === "cycle") && (
+              <WalkTurnByTurn leg={leg} position={geo.position} color={legColor} />
+            )}
+
             <CurrentNextStepper
               leg={leg}
               nextLeg={nextLeg}
@@ -744,6 +759,97 @@ function liveRisk({
 
 /** Current leg: full-size filled node (with a "you are here" halo), title,
  *  from/to detail, exit badge (MRT), and distance · duration. */
+const TURN_ICON: Record<WalkStep["turn"], typeof ArrowUp> = {
+  straight: ArrowUp,
+  left: CornerUpLeft,
+  right: CornerUpRight,
+  "slight-left": ArrowUpLeft,
+  "slight-right": ArrowUpRight,
+  "sharp-left": ArrowLeft,
+  "sharp-right": ArrowRight,
+  uturn: Undo2,
+  arrive: MapPin,
+};
+
+/**
+ * Turn-by-turn guidance for a walk/cycle leg — works for ANY such leg, whether
+ * it's a full walking route or the access walk of a transit journey. Steps come
+ * from OneMap; the current manoeuvre advances by GPS proximity to each step
+ * point, Google-Maps style ("120 m · Turn left onto Dawson Rd").
+ */
+function WalkTurnByTurn({
+  leg,
+  position,
+  color,
+}: {
+  leg: RouteLeg;
+  position: LatLng | null;
+  color: string;
+}) {
+  const q = trpc.onemap.walkSteps.useQuery(
+    {
+      start: leg.startPoint,
+      end: leg.endPoint,
+      mode: leg.type === "cycle" ? "cycle" : "walk",
+    },
+    { staleTime: Infinity, retry: 1 },
+  );
+  const steps = q.data ?? [];
+  // Index of the segment being travelled: past steps[seg], heading to the turn
+  // at steps[seg+1]. Resets when the leg (and thus the fetched steps) changes.
+  const [seg, setSeg] = useState(0);
+  useEffect(() => setSeg(0), [leg.startPoint.lat, leg.startPoint.lng]);
+  useEffect(() => {
+    if (!position || steps.length < 2) return;
+    setSeg((i) => {
+      let n = i;
+      // Advance once we're within ~22m of the upcoming turn point.
+      while (n + 1 < steps.length - 1 && haversineMeters(position, steps[n + 1].point) < 22)
+        n++;
+      return n;
+    });
+  }, [position, steps]);
+
+  if (steps.length < 2) return null; // no usable guidance (or still loading)
+
+  const turnIdx = Math.min(seg + 1, steps.length - 1);
+  const turn = steps[turnIdx];
+  const then = steps[turnIdx + 1];
+  const dist = position
+    ? Math.round(haversineMeters(position, turn.point))
+    : steps[seg].distanceM;
+  const Icon = TURN_ICON[turn.turn];
+
+  return (
+    <div className="mb-3 flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
+      <span
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
+        style={{ background: color }}
+      >
+        <Icon size={22} strokeWidth={2.5} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1.5">
+          <span className="data-voice text-lg font-bold leading-none">
+            {fmtDistance(dist)}
+          </span>
+          {q.isLoading && (
+            <Loader2 size={12} className="animate-spin text-ripple-muted" />
+          )}
+        </div>
+        <div className="mt-0.5 truncate text-sm font-medium">
+          {turn.instruction}
+        </div>
+        {then && (
+          <div className="mt-0.5 truncate text-xs text-ripple-muted">
+            then {then.instruction}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CurrentNextStepper({
   leg,
   nextLeg,

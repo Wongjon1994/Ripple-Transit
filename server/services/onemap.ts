@@ -6,6 +6,7 @@ import type {
   RouteLeg,
   LegType,
   LatLng,
+  WalkStep,
 } from "../../shared/types.js";
 
 const BASE = "https://www.onemap.gov.sg";
@@ -431,6 +432,81 @@ export async function oneMapActiveRoute(
     distanceM,
     durationS: Math.round(distanceM / ((kmh * 1000) / 3600)),
   };
+}
+
+/** Normalised manoeuvre for the icon, from the human-readable instruction text
+ *  ("Turn Left", "Make A Slight Right", "Head North") — OneMap's `direction`
+ *  field is unreliable for the first/last steps. */
+function normaliseTurn(text: string): WalkStep["turn"] {
+  const d = text.toLowerCase();
+  if (d.includes("arriv")) return "arrive";
+  if (d.includes("u-turn") || d.includes("uturn")) return "uturn";
+  if (d.includes("sharp") && d.includes("left")) return "sharp-left";
+  if (d.includes("sharp") && d.includes("right")) return "sharp-right";
+  if (d.includes("slight") && d.includes("left")) return "slight-left";
+  if (d.includes("slight") && d.includes("right")) return "slight-right";
+  if (d.includes("left")) return "left";
+  if (d.includes("right")) return "right";
+  return "straight"; // "Head …", "Continue …"
+}
+
+/**
+ * Turn-by-turn steps for a walk/cycle leg, from OneMap `route_instructions`.
+ * Used by the live journey for granular guidance on ANY walk leg — a full
+ * walking route or the access walk of a transit journey. Each instruction is an
+ * array: [direction, road, distanceM, "lat,lng", timeS, distStr, …, text].
+ */
+export async function walkRouteSteps(
+  start: LatLng,
+  end: LatLng,
+  mode: "walk" | "cycle" = "walk",
+): Promise<WalkStep[]> {
+  const token = await getOneMapToken();
+  if (!token) return [];
+  const url = new URL(`${BASE}/api/public/routingsvc/route`);
+  url.searchParams.set("start", `${start.lat},${start.lng}`);
+  url.searchParams.set("end", `${end.lat},${end.lng}`);
+  url.searchParams.set("routeType", mode);
+
+  let res = await fetch(url, {
+    headers: { Authorization: token },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (res.status === 401) {
+    const fresh = await getOneMapToken(true);
+    if (fresh && fresh !== token) {
+      res = await fetch(url, {
+        headers: { Authorization: fresh },
+        signal: AbortSignal.timeout(12_000),
+      });
+    }
+  }
+  if (!res.ok) return [];
+  const data = (await res.json()) as { route_instructions?: unknown[][] };
+  const raw = data.route_instructions ?? [];
+  const steps: WalkStep[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i];
+    const direction = String(r[0] ?? "");
+    const road = String(r[1] ?? "").trim();
+    const distanceM = Number(r[2] ?? 0);
+    const [latStr, lngStr] = String(r[3] ?? "").split(",");
+    const lat = Number(latStr);
+    const lng = Number(lngStr);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    const text = String(r[9] ?? direction).trim();
+    const isLast = i === raw.length - 1;
+    // OneMap repeats the road name inside its arrival text — don't double it.
+    const withRoad = road && !isLast ? `${text} onto ${road}` : text;
+    steps.push({
+      instruction: withRoad,
+      road: road || undefined,
+      distanceM,
+      point: { lat, lng },
+      turn: isLast ? "arrive" : normaliseTurn(text),
+    });
+  }
+  return steps;
 }
 
 /** Driving distance (m) + time (s) between two points, via OneMap drive route. */

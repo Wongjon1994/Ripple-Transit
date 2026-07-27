@@ -96,6 +96,27 @@ export interface RouteLeg {
   viaStopIndex?: number;
 }
 
+/** One turn-by-turn instruction for a walk/cycle leg (from OneMap
+ *  route_instructions). `point` is where the manoeuvre happens; `distanceM` is
+ *  how far you then travel to the next step. */
+export interface WalkStep {
+  instruction: string; // "Turn left", "Head north", "Make a slight right"
+  road?: string; // street name, when OneMap provides one
+  distanceM: number; // distance from this step to the next
+  point: LatLng;
+  /** Normalised manoeuvre for the direction icon. */
+  turn:
+    | "straight"
+    | "left"
+    | "right"
+    | "slight-left"
+    | "slight-right"
+    | "sharp-left"
+    | "sharp-right"
+    | "uturn"
+    | "arrive";
+}
+
 export type RiskLevel = "low" | "moderate" | "high";
 
 export interface RouteRisk {
