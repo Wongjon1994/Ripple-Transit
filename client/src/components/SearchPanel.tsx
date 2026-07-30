@@ -12,6 +12,7 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronRight,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
@@ -536,6 +537,78 @@ export function SearchPanel({
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * §49(ii) declutter: once a search is active, the full form collapses to this
+ * summary so the route results sit at the top of the sheet. From / stops / To
+ * stack vertically (each full-width) so long place names wrap rather than
+ * truncate; the depart context stays visible; "Edit" reopens the full form.
+ */
+export function SearchSummaryBar({
+  fromText,
+  stops,
+  date,
+  time,
+  timeIsAuto,
+  departMode,
+  leaveByLabel,
+  onEdit,
+}: {
+  fromText: string;
+  stops: { text: string }[];
+  date: string;
+  time: string;
+  timeIsAuto: boolean;
+  departMode: "leave" | "arrive";
+  leaveByLabel?: string | null;
+  onEdit: () => void;
+}) {
+  const points = [
+    { text: fromText || "From", color: "#3b82f6" },
+    ...stops.slice(0, -1).map((s) => ({ text: s.text, color: "var(--gold)" })),
+    {
+      text: stops[stops.length - 1]?.text || "To",
+      color: "#ef4444",
+    },
+  ];
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+      <div className="flex items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {points.map((p, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span
+                className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{ background: p.color }}
+              />
+              <span className="min-w-0 text-sm font-medium leading-snug text-[var(--fg)]">
+                {p.text}
+              </span>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex shrink-0 items-center gap-1 text-xs font-semibold text-brand hover:underline"
+        >
+          <Pencil size={13} /> Edit
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-1.5 border-t border-[var(--border)] pt-2 text-xs text-ripple-muted">
+        <CalendarClock size={13} className="shrink-0 text-brand" />
+        {departMode === "arrive"
+          ? `Arrive by ${departLabel(date, time)}`
+          : timeIsAuto
+            ? "Leave now"
+            : `Depart ${departLabel(date, time)}`}
+        {departMode === "arrive" && leaveByLabel && (
+          <span className="text-brand">· leave by {leaveByLabel}</span>
+        )}
+      </div>
     </div>
   );
 }

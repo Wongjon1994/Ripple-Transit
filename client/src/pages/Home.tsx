@@ -11,7 +11,12 @@ import {
   Compass,
 } from "lucide-react";
 import { trpc } from "../lib/trpc.js";
-import { SearchPanel, MAX_STOPS, type Place } from "../components/SearchPanel.js";
+import {
+  SearchPanel,
+  SearchSummaryBar,
+  MAX_STOPS,
+  type Place,
+} from "../components/SearchPanel.js";
 import { NearestPanel } from "../components/NearestPanel.js";
 import { RouteResultsPanel } from "../components/RouteResultsPanel.js";
 import { ActiveRoutePanel } from "../components/ActiveRoutePanel.js";
@@ -89,6 +94,9 @@ export function Home() {
     arriveBy?: boolean;
   } | null>(saved?.routeParams ?? null);
   const [resolving, setResolving] = useState(false);
+  // §49(ii): once a search is active the full form collapses to a summary bar
+  // so results sit at the top of the sheet. "Edit" flips this back to the form.
+  const [editingSearch, setEditingSearch] = useState(false);
 
   // Log-this-trip CTA on the selected route card.
   const { user } = useAuth();
@@ -472,6 +480,7 @@ export function Home() {
         arriveBy: departMode === "arrive",
         ...depart,
       });
+      setEditingSearch(false);
     } finally {
       setResolving(false);
     }
@@ -592,6 +601,18 @@ export function Home() {
           </button>
         </div>
         <div className="px-4 pb-4 pt-2 md:pt-4">
+          {routeParams && !editingSearch ? (
+            <SearchSummaryBar
+              fromText={fromText}
+              stops={stops}
+              date={date}
+              time={time}
+              timeIsAuto={timeIsAuto}
+              departMode={departMode}
+              leaveByLabel={leaveByLabel}
+              onEdit={() => setEditingSearch(true)}
+            />
+          ) : (
           <SearchPanel
             fromText={fromText}
             stops={stops}
@@ -672,6 +693,7 @@ export function Home() {
             }}
             showShortcuts={!routeParams}
           />
+          )}
         </div>
 
         {routeParams && (
