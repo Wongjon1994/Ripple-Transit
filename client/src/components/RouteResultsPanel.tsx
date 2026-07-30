@@ -551,6 +551,7 @@ export function RouteResultsPanel({
   taxi,
   stopLabels,
   collapseKey,
+  onExpandChange,
 }: {
   itineraries: Itinerary[];
   selected: number;
@@ -567,11 +568,18 @@ export function RouteResultsPanel({
   stopLabels?: string[];
   /** Collapse all cards when this changes (i.e. on a new search). */
   collapseKey?: string;
+  /** Notifies the parent when a card is expanded, so the sticky search header
+   *  can unfreeze to give the expanded content room. */
+  onExpandChange?: (expanded: boolean) => void;
 }) {
   // §9: every card renders Tier-1 only on load; leg detail is tap-to-expand.
   // Selection (map highlight) and expansion are deliberately decoupled.
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   useEffect(() => setExpandedIdx(null), [collapseKey]);
+  useEffect(
+    () => onExpandChange?.(expandedIdx !== null),
+    [expandedIdx, onExpandChange],
+  );
 
   // §4.4 preference match — relative to this search only, and only when the
   // user has actually stated a preference (otherwise every entry is null).

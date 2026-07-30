@@ -97,12 +97,18 @@ export function Home() {
   // §49(ii): once a search is active the full form collapses to a summary bar
   // so results sit at the top of the sheet. "Edit" flips this back to the form.
   const [editingSearch, setEditingSearch] = useState(false);
+  // The From → To summary pins to the top while scrolling options, but unfreezes
+  // when a route card is expanded so the expanded detail has room to breathe.
+  const [cardExpanded, setCardExpanded] = useState(false);
 
   // Log-this-trip CTA on the selected route card.
   const { user } = useAuth();
   const logRoute = trpc.sustainability.logTrip.useMutation();
   const [tripLogged, setTripLogged] = useState(false);
   useEffect(() => setTripLogged(false), [routeParams]);
+  // Switching mode tabs or starting a new search collapses every card, so the
+  // header should re-freeze (the unmounting panel can't report this itself).
+  useEffect(() => setCardExpanded(false), [modeTab, routeParams]);
 
   function handleLogRoute(it: Itinerary) {
     if (!user) {
@@ -600,7 +606,18 @@ export function Home() {
             <ChevronRight size={18} className="hidden md:block" />
           </button>
         </div>
-        <div className="px-4 pb-3 pt-2 md:pt-3">
+        <div
+          className={cn(
+            "px-4 pb-3 pt-2 md:pt-3",
+            // Freeze the From → To summary at the top of the scroll area so the
+            // user can scroll the options beneath it. Only the compact summary
+            // pins — the full edit form scrolls normally.
+            routeParams &&
+              !editingSearch &&
+              !cardExpanded &&
+              "sticky top-9 z-[9] border-b border-[var(--border)] bg-[var(--bg)]",
+          )}
+        >
           {routeParams && !editingSearch ? (
             <SearchSummaryBar
               fromText={fromText}
@@ -756,6 +773,7 @@ export function Home() {
                   taxi={isMulti ? null : taxi.data}
                   stopLabels={stops.map((s) => s.text)}
                   collapseKey={collapseKey}
+                  onExpandChange={setCardExpanded}
                 />
               )}
               </>
@@ -768,6 +786,7 @@ export function Home() {
                 onSelect={setActiveSel}
                 onStartJourney={handleStartActiveJourney}
                 collapseKey={collapseKey}
+                onExpandChange={setCardExpanded}
                 liveBoardStopCode={walkTabStopCode}
                 preferredKind={
                   shownTab === "walk" || shownTab === "cycle"

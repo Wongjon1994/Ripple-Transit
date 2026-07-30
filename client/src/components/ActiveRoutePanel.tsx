@@ -23,7 +23,6 @@ import type {
 } from "@shared/types.js";
 import { fmtDuration, fmtDistance, cn } from "../lib/utils.js";
 import { Button } from "./ui.js";
-import { RouteThumbnail } from "./RouteThumbnail.js";
 import { LiveArrivals } from "./LiveArrivals.js";
 
 const LONG_WALK_M = 8000;
@@ -130,6 +129,7 @@ export function ActiveRoutePanel({
   collapseKey,
   liveBoardStopCode,
   preferredKind,
+  onExpandChange,
 }: {
   mode: ActiveMode;
   data: ActiveRoutesResult | undefined;
@@ -143,10 +143,17 @@ export function ActiveRoutePanel({
   liveBoardStopCode?: string | null;
   /** The route flavour the user asked for — so we can say when none exists. */
   preferredKind?: ActiveVariantKind;
+  /** Notifies the parent when a card is expanded, so the sticky search header
+   *  can unfreeze to give the expanded content room. */
+  onExpandChange?: (expanded: boolean) => void;
 }) {
   // §9: cards render Tier-1 only until tapped; selection (map) is separate.
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   useEffect(() => setExpandedIdx(null), [collapseKey, mode]);
+  useEffect(
+    () => onExpandChange?.(expandedIdx !== null),
+    [expandedIdx, onExpandChange],
+  );
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 p-4 text-sm text-ripple-muted">
@@ -226,21 +233,16 @@ export function ActiveRoutePanel({
                 isSel ? "bg-brand/5" : "hover:bg-ripple-muted/5",
               )}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-serif text-[24px] font-bold leading-none tracking-tight">
-                    {fmtDuration(v.durationS)}
-                  </span>
-                  {/* Distance is the trip's physical reality for walk/cycle, so
-                      it pairs with the time hero. Calories + CO₂ demote into the
-                      expanded detail (named by the footer row below). */}
-                  <span className="data-voice text-sm font-semibold text-ripple-muted">
-                    {fmtDistance(v.distanceM)}
-                  </span>
-                </div>
-                {/* Route-shape sparkline (with a mode badge) instead of a bare
-                    mode icon — a glance-able preview of the path's character. */}
-                <RouteThumbnail variant={v} mode={mode} />
+              <div className="flex items-baseline gap-2">
+                <span className="font-serif text-[24px] font-bold leading-none tracking-tight">
+                  {fmtDuration(v.durationS)}
+                </span>
+                {/* Distance is the trip's physical reality for walk/cycle, so
+                    it pairs with the time hero. Calories + CO₂ demote into the
+                    expanded detail (named by the footer row below). */}
+                <span className="data-voice text-sm font-semibold text-ripple-muted">
+                  {fmtDistance(v.distanceM)}
+                </span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <KindTag kind={v.kind} />
