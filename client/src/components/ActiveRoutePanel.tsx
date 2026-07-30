@@ -40,6 +40,11 @@ const KIND_META: Record<
   pcn: { label: "PCN scenic", Icon: TreePine, cls: "bg-ok/10 text-ok" },
 };
 
+/** "Kallang Park Connector" → "Kallang PC" so the chip fits the first fold. */
+function shortPcn(name: string): string {
+  return name.replace(/\bpark connector\b/i, "PC").trim();
+}
+
 function KindTag({ kind }: { kind: ActiveVariantKind }) {
   const { label, Icon, cls } = KIND_META[kind];
   return (
@@ -247,6 +252,22 @@ export function ActiveRoutePanel({
               <div className="flex flex-wrap items-center gap-1.5">
                 <KindTag kind={v.kind} />
                 {v.also?.map((k) => <KindTag key={k} kind={k} />)}
+                {/* The specific park connector(s) this route runs along — in the
+                    first fold like bus numbers / MRT lines on the transit card.
+                    Green matches how PCN stretches are drawn on the map. */}
+                {v.pcnNames?.slice(0, 2).map((n) => (
+                  <span
+                    key={n}
+                    className="inline-flex items-center gap-1 rounded-md bg-ok/10 px-2 py-0.5 font-mono text-[10px] font-medium text-ok"
+                  >
+                    <TreePine size={11} /> {shortPcn(n)}
+                  </span>
+                ))}
+                {v.pcnNames && v.pcnNames.length > 2 && (
+                  <span className="font-mono text-[10px] text-ripple-muted">
+                    +{v.pcnNames.length - 2}
+                  </span>
+                )}
               </div>
               {v.callout && (
                 // §12a Tier-1 exposure callout — one line, only when actionable.

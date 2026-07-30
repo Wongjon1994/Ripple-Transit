@@ -156,15 +156,19 @@ export function samplePath(coords: Pt[], stepM = SAMPLE_METERS): Pt[] {
 export class SegmentGrid {
   private cells = new Map<string, number[]>();
   private segments: Segment[] = [];
+  // Optional name per segment (e.g. the NParks PARK connector name) — parallel
+  // to `segments`. Undefined for unnamed networks (LTA cycling paths).
+  private names: (string | undefined)[] = [];
 
   private key(lat: number, lng: number): string {
     return `${Math.floor(lat / CELL_DEG)}:${Math.floor(lng / CELL_DEG)}`;
   }
 
-  addLine(coords: Pt[]): void {
+  addLine(coords: Pt[], name?: string): void {
     for (let i = 1; i < coords.length; i++) {
       const seg: Segment = [coords[i - 1], coords[i]];
       const id = this.segments.push(seg) - 1;
+      this.names[id] = name;
       // Register in every cell of the segment's bounding box (segments in
       // these datasets are short, so this stays tight).
       const minLat = Math.min(seg[0].lat, seg[1].lat);
@@ -244,6 +248,44 @@ export class SegmentGrid {
       }
     }
     return false;
+  }
+
+  /**
+   * Distinct names of the network stretches this route runs along, in the order
+   * first met. For each sampled point it takes the nearest NAMED segment within
+   * `nearM`; unnamed segments (e.g. cycling paths) are ignored. Used to tell the
+   * rider exactly which park connector(s) they'll be taken through.
+   */
+  namesAlong(coords: Pt[], nearM = NEAR_METERS): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const p of samplePath(coords)) {
+      const la = Math.floor(p.lat / CELL_DEG);
+      const lo = Math.floor(p.lng / CELL_DEG);
+      let best: string | undefined;
+      let bestD = nearM;
+      for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+          const ids = this.cells.get(`${la + i}:${lo + j}`);
+          if (!ids) continue;
+          for (const id of ids) {
+            const nm = this.names[id];
+            if (!nm) continue;
+            const [a, b] = this.segments[id];
+            const d = pointToSegmentMeters(p, a, b);
+            if (d <= bestD) {
+              bestD = d;
+              best = nm;
+            }
+          }
+        }
+      }
+      if (best && !seen.has(best)) {
+        seen.add(best);
+        out.push(best);
+      }
+    }
+    return out;
   }
 }
 
@@ -342,6 +384,7 @@ export function activeKcal(mode: "walk" | "cycle", distanceM: number): number {
 function addGeometry(
   grid: SegmentGrid,
   geom: GeoJsonGeometry | undefined,
+  name?: string,
 ): void {
   if (!geom) return;
   const toPts = (line: unknown): Pt[] =>
@@ -352,22 +395,31 @@ function addGeometry(
       : [];
   switch (geom.type) {
     case "LineString":
-      grid.addLine(toPts(geom.coordinates));
+      grid.addLine(toPts(geom.coordinates), name);
       break;
     case "MultiLineString":
     case "Polygon": // treat rings as lines (some datasets ship loops as polygons)
       for (const line of (geom.coordinates as unknown[]) ?? [])
-        grid.addLine(toPts(line));
+        grid.addLine(toPts(line), name);
       break;
     case "MultiPolygon":
       for (const poly of (geom.coordinates as unknown[][]) ?? [])
-        for (const ring of poly) grid.addLine(toPts(ring));
+        for (const ring of poly) grid.addLine(toPts(ring), name);
       break;
     case "GeometryCollection":
       for (const g of (geom.geometries as { type: string }[]) ?? [])
-        addGeometry(grid, g);
+        addGeometry(grid, g, name);
       break;
   }
+}
+
+/** The specific connector name from an NParks PCN feature (e.g. "Kallang Park
+ *  Connector"), stripped of any parenthetical detail. Ignores blanks. */
+function pcnFeatureName(props: unknown): string | undefined {
+  const park = (props as { PARK?: unknown } | null | undefined)?.PARK;
+  if (typeof park !== "string") return undefined;
+  const name = park.replace(/\s*\(.*$/, "").trim();
+  return name || undefined;
 }
 
 let gridCache: { at: number; grid: SegmentGrid } | null = null;
@@ -376,14 +428,20 @@ const GRID_TTL_MS = 24 * 60 * 60 * 1000;
 
 async function buildNetwork(): Promise<SegmentGrid> {
   const grid = new SegmentGrid();
-  const results = await Promise.allSettled([
+  const [pcnRes, cyclingRes] = await Promise.allSettled([
     fetchDataset(DATASETS.pcn),
     fetchDataset(DATASETS.cyclingPaths),
   ]);
   let loaded = 0;
-  for (const r of results) {
-    if (r.status !== "fulfilled") continue;
-    for (const f of r.value.features ?? []) addGeometry(grid, f.geometry);
+  // NParks PCN — retain the specific connector name (PARK) per segment.
+  if (pcnRes.status === "fulfilled") {
+    for (const f of pcnRes.value.features ?? [])
+      addGeometry(grid, f.geometry, pcnFeatureName(f.properties));
+    loaded++;
+  }
+  // LTA cycling paths — geometry only (no connector names in this dataset).
+  if (cyclingRes.status === "fulfilled") {
+    for (const f of cyclingRes.value.features ?? []) addGeometry(grid, f.geometry);
     loaded++;
   }
   if (loaded === 0 || grid.size === 0) {

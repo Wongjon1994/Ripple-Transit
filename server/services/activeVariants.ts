@@ -188,6 +188,9 @@ function compose(
           polyline: encodePolyline5(run.pts),
         }))
       : undefined;
+  // The specific park connector(s) this route runs along, in order — shown as
+  // chips in the card's first fold. Only NParks stretches carry names.
+  const pcnNames = pcnGrid ? pcnGrid.namesAlong(coords) : [];
   return {
     kind,
     durationS,
@@ -198,6 +201,7 @@ function compose(
     comfort: comfortLabel(pcnPct, mode),
     segments,
     surface,
+    pcnNames: pcnNames.length ? pcnNames : undefined,
   };
 }
 

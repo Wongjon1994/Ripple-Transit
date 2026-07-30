@@ -87,6 +87,25 @@ describe("SegmentGrid + routeCoverage", () => {
   });
 });
 
+describe("SegmentGrid.namesAlong", () => {
+  const grid = new SegmentGrid();
+  grid.addLine([P(1.3, 103.8), P(1.3, 103.81)], "Kallang PC");
+  grid.addLine([P(1.3, 103.81), P(1.3, 103.82)], "Whampoa PC");
+  grid.addLine([P(1.3, 103.82), P(1.3, 103.83)]); // unnamed cycling path
+
+  it("returns distinct connector names in order along the route", () => {
+    expect(grid.namesAlong([P(1.3, 103.8), P(1.3, 103.82)])).toEqual([
+      "Kallang PC",
+      "Whampoa PC",
+    ]);
+  });
+
+  it("ignores far-away and unnamed segments", () => {
+    expect(grid.namesAlong([P(1.4, 103.8), P(1.4, 103.81)])).toEqual([]);
+    expect(grid.namesAlong([P(1.3, 103.823), P(1.3, 103.829)])).toEqual([]);
+  });
+});
+
 describe("classifyRoute", () => {
   const pcn = new SegmentGrid();
   pcn.addLine([P(1.3, 103.8), P(1.3, 103.81)]);

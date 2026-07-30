@@ -199,6 +199,9 @@ export interface ActiveVariant {
   /** The route split into consecutive PCN / sheltered / plain runs, so the map
    *  can colour each stretch by surface. Shelter wins over PCN on overlap. */
   surface?: RouteSurfaceSpan[];
+  /** Named NParks park connector(s) the route runs along, in order — shown as
+   *  chips in the card's first fold (LTA cycling paths are unnamed). */
+  pcnNames?: string[];
   /** Exposure-based weather callout (umbrella / sunscreen), when actionable. */
   callout?: WeatherAdvisory;
 }
