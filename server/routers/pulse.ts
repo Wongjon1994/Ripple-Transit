@@ -19,6 +19,8 @@ import {
   type TrainDisruption,
   type TrainPlanned,
 } from "../services/trainAlerts.js";
+import { getFloodAlerts } from "../services/floods.js";
+import type { FloodAlert } from "../../shared/types.js";
 
 export interface PulseOverlay {
   /** Live platform crowd, keyed by station code (joined to the map network).
@@ -36,6 +38,8 @@ export interface PulseOverlay {
   mrtDisruptions: TrainDisruption[];
   /** Planned service adjustments (informational footer). */
   mrtPlanned: TrainPlanned[];
+  /** PUB flash-flood alerts — the most urgent Pulse signal, distinct marker. */
+  floods: FloodAlert[];
   /** City-wide current + forecast weather for the Pulse header. */
   weather: PulseWeather | null;
 }
@@ -47,7 +51,7 @@ export interface PulseOverlay {
  */
 export const pulseRouter = router({
   overlay: publicProcedure.query(async (): Promise<PulseOverlay> => {
-    const [crowdMap, incidents, congestion, rain, rainFc, trains, weather] =
+    const [crowdMap, incidents, congestion, rain, rainFc, trains, floods, weather] =
       await Promise.all([
         stationCrowd().catch(() => new Map<string, "l" | "m" | "h">()),
         getTrafficIncidents().catch(() => []),
@@ -59,6 +63,7 @@ export const pulseRouter = router({
           disruptions: [],
           planned: [],
         })),
+        getFloodAlerts().catch(() => []),
         pulseWeather().catch(() => null),
       ]);
     // Don't double-draw: a region already raining now is dropped from forecast.
@@ -85,6 +90,7 @@ export const pulseRouter = router({
         .map((r) => ({ lat: r.lat, lng: r.lng, intensity: r.intensity })),
       mrtDisruptions: trains.disruptions,
       mrtPlanned: trains.planned,
+      floods,
       weather,
     };
   }),

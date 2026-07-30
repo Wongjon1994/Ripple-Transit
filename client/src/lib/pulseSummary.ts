@@ -58,11 +58,19 @@ export interface PulseWeather {
   outlook?: string;
 }
 
+export interface PulseFlood {
+  location: string;
+  lat: number;
+  lng: number;
+}
+
 export interface PulseSummaryInput {
   congestion: PulseCongestion[];
   crowd: PulseCrowd[];
   incidents: PulseIncident[];
   rain: PulseRain[];
+  /** PUB flash-flood alerts — the highest-priority Pulse signal. */
+  floods: PulseFlood[];
   /** Live MRT/LRT disruptions — the highest-priority Pulse signal. */
   mrtDisruptions: PulseMrtDisruption[];
   /** Planned rail adjustments — informational footer. */
@@ -80,7 +88,7 @@ export interface PulsePoint {
   lng: number;
 }
 
-export type PulseTone = "red" | "amber" | "rain";
+export type PulseTone = "red" | "amber" | "rain" | "flood";
 export interface PulseTallyItem {
   tone: PulseTone;
   count: number;
@@ -178,6 +186,10 @@ function calloutForPlace(
   place: PulsePlace,
   input: PulseSummaryInput,
 ): PulseCallout | null {
+  const flood = nearest(place, input.floods);
+  if (flood && flood.d <= 1500)
+    return { tone: "flood", text: `Flash flood near ${place.label}` };
+
   const severeInc = nearest(
     place,
     input.incidents.filter((i) => i.severe),
@@ -209,11 +221,12 @@ function calloutForPlace(
 }
 
 const TONE_RANK: Record<PulseCallout["tone"], number> = {
-  mrt: 0,
-  red: 1,
-  amber: 2,
-  rain: 3,
-  muted: 4,
+  flood: 0, // flash floods are the most urgent — rank above everything
+  mrt: 1,
+  red: 2,
+  amber: 3,
+  rain: 4,
+  muted: 5,
 };
 
 /** Distinct road names among congestion of one level — so "12 heavy" means 12
@@ -277,12 +290,13 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
   const packed = input.crowd.filter((c) => c.level === "h");
   const severeIncidents = input.incidents.filter((i) => i.severe);
   const rain = input.rain.length;
+  const floods = input.floods;
   const disruptions = input.mrtDisruptions;
   const planned = input.mrtPlanned.map((p) => p.label);
   const weather = input.weather ?? null;
 
   const allClear =
-    heavy + packed.length + severeIncidents.length + rain === 0 &&
+    heavy + packed.length + severeIncidents.length + rain + floods.length === 0 &&
     disruptions.length === 0;
 
   if (allClear) {
@@ -311,6 +325,12 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
     },
   ].filter((i) => i.count > 0);
   const alertItems: PulseTallyItem[] = [
+    {
+      tone: "flood" as const,
+      count: floods.length,
+      label: floods.length === 1 ? "Flash flood" : "Flash floods",
+      focus: floods.map((f) => [{ lat: f.lat, lng: f.lng }]),
+    },
     {
       tone: "red" as const,
       count: severeIncidents.length,
@@ -349,10 +369,15 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
     .map(({ kind, items, text, focus }) => ({ kind, items, text, focus }));
 
   // Ranked headlines the panel rotates through (worst first), each with the map
-  // points it refers to. MRT disruption tops everything — a downed line strands
-  // more people than any road jam — then severe incidents, packed stations,
-  // heavy traffic, rain.
+  // points it refers to. Flash floods top everything (life-safety), then MRT
+  // disruption, severe incidents, packed stations, heavy traffic, rain.
   const headlines: PulseCallout[] = [];
+  for (const f of floods.slice(0, 3))
+    headlines.push({
+      tone: "flood",
+      text: `Flash flood risk · ${f.location}`,
+      focus: [{ lat: f.lat, lng: f.lng }],
+    });
   for (const d of disruptions)
     headlines.push({
       tone: "mrt",

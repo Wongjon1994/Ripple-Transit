@@ -116,12 +116,30 @@ export function regionFor(lat: number, lng: number): string {
   return "central";
 }
 
-/** Day-part phrasing for a period start hour — NEA's own granularity. */
-export function describePeriod(startHour: number): string {
-  if (startHour < 6) return "the early hours";
-  if (startHour < 12) return "this morning";
-  if (startHour < 18) return "this afternoon";
-  return "this evening";
+/** Strip NEA's "(Day)" / "(Night)" suffix from a condition ("Partly Cloudy
+ *  (Night)" → "Partly Cloudy"). */
+export function cleanCondition(c: string): string {
+  return c.replace(/\s*\((?:Day|Night)\)\s*$/i, "").trim();
+}
+
+/**
+ * Human day-part phrasing for a forecast period (given as epoch ms), relative
+ * to now. The server runs in UTC, so the Singapore hour/day are computed
+ * explicitly (UTC+8, no DST) — otherwise a 6pm SGT period reads as "this
+ * morning" from its 10:00 UTC hour.
+ */
+export function describePeriod(startMs: number, nowMs = Date.now()): string {
+  const SGT = 8 * 60 * 60 * 1000;
+  const s = new Date(startMs + SGT);
+  const n = new Date(nowMs + SGT);
+  const h = s.getUTCHours();
+  const sameDay =
+    s.getUTCFullYear() === n.getUTCFullYear() &&
+    s.getUTCMonth() === n.getUTCMonth() &&
+    s.getUTCDate() === n.getUTCDate();
+  if (h < 6) return sameDay ? "the early hours" : "the early hours tomorrow";
+  const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
+  return `${sameDay ? "this" : "tomorrow"} ${part}`;
 }
 
 export interface RainArea {
@@ -250,7 +268,7 @@ export async function rainWindow(
     const end = new Date(p.time.end).getTime();
     if (end <= horizon) continue; // already covered by the nowcast
     if (WET.test(p.regions[region] ?? "")) {
-      outlook = describePeriod(new Date(Math.max(start, horizon)).getHours());
+      outlook = describePeriod(Math.max(start, horizon));
       break;
     }
     break; // the next period is dry — nowcast end stands
@@ -345,19 +363,19 @@ export async function pulseWeather(): Promise<PulseWeather | null> {
   for (const p of periods) {
     const start = new Date(p.time.start).getTime();
     if (Number.isNaN(start) || start <= nowMs) continue; // future periods only
-    const cond = p.regions?.central ?? "";
+    const cond = cleanCondition(p.regions?.central ?? "");
     if (!cond) continue;
     // Only surface a forward look when it meaningfully differs from now.
-    if (cond.toLowerCase() !== now.forecast.toLowerCase()) {
-      outlook = `${cond} ${describePeriod(new Date(start).getHours())}`;
+    if (cond.toLowerCase() !== cleanCondition(now.forecast).toLowerCase()) {
+      outlook = `${cond} ${describePeriod(start, nowMs)}`;
     }
-    break;
+    break; // only the immediate next period, never jump days ahead
   }
 
   return {
     temperature:
       now.temperature != null ? Math.round(now.temperature) : undefined,
-    condition: now.forecast,
+    condition: cleanCondition(now.forecast),
     outlook,
   };
 }

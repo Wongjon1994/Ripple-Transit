@@ -117,6 +117,14 @@ export interface WalkStep {
     | "arrive";
 }
 
+/** A PUB flash-flood alert (source: @PUBFloodAlerts), geocoded for the map. */
+export interface FloodAlert {
+  location: string; // road name as PUB phrased it
+  lat: number;
+  lng: number;
+  postedAtISO: string;
+}
+
 export type RiskLevel = "low" | "moderate" | "high";
 
 export interface RouteRisk {

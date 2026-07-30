@@ -28,12 +28,16 @@ const TONE_HEX: Record<PulseTallyItem["tone"], string> = {
   red: "#ef4444",
   amber: "#f59e0b",
   rain: "#8fa3ad",
+  flood: "#4f46e5",
 };
 
 /** The little colour swatch matches how the thing is drawn on the map: traffic
  *  = a line, crowd = a filled dot, an incident = a hollow ring, rain = a soft
  *  grey dot. So the tally reads as a live key, not just numbers. */
 function Swatch({ kind, tone }: { kind: PulseRow["kind"]; tone: PulseTallyItem["tone"] }) {
+  // A flash flood gets its storm glyph anywhere it appears, matching the map.
+  if (tone === "flood")
+    return <CloudLightning size={13} strokeWidth={2.4} className="shrink-0 text-[#4f46e5]" />;
   if (kind === "traffic")
     return (
       <span
@@ -118,6 +122,7 @@ function TallyRow({ row, onCycle }: { row: PulseRow; onCycle?: CycleFn }) {
 }
 
 const CALLOUT_HEX: Record<PulseCallout["tone"], string> = {
+  flood: "#4f46e5",
   mrt: "#ef4444",
   red: "#ef4444",
   amber: "#f59e0b",
@@ -126,14 +131,16 @@ const CALLOUT_HEX: Record<PulseCallout["tone"], string> = {
 };
 
 function CalloutLine({ callout }: { callout: PulseCallout }) {
-  // MRT disruption gets a train icon (red) so it reads distinctly from a road
-  // incident; rain gets a cloud; everything else the warning triangle.
+  // Flood gets the storm glyph; MRT disruption a train (distinct from a road
+  // incident); rain a cloud; everything else the warning triangle.
   const Icon =
-    callout.tone === "mrt"
-      ? TrainFront
-      : callout.tone === "rain"
-        ? CloudRain
-        : TriangleAlert;
+    callout.tone === "flood"
+      ? CloudLightning
+      : callout.tone === "mrt"
+        ? TrainFront
+        : callout.tone === "rain"
+          ? CloudRain
+          : TriangleAlert;
   return (
     <div className="flex items-start gap-1.5">
       {callout.tone !== "muted" && (
@@ -218,7 +225,7 @@ export function PulsePanel({
   const canFocus =
     !!onHeadlineFocus && !!headline?.focus && headline.focus.length > 0;
   return (
-    <div className="absolute left-[10px] top-[152px] z-[1] w-[244px] max-w-[calc(100vw-20px)] rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 text-[11px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+    <div className="absolute right-[10px] top-[10px] z-[1] w-[244px] max-w-[calc(100vw-20px)] rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 text-[11px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm md:left-[10px] md:right-auto md:top-[152px]">
       <button
         type="button"
         onClick={onToggle}

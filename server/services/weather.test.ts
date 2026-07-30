@@ -5,6 +5,7 @@ import {
   cycleRainCallout,
   regionFor,
   describePeriod,
+  cleanCondition,
 } from "./weather.js";
 
 describe("weatherAdvisory", () => {
@@ -112,9 +113,25 @@ describe("regionFor / describePeriod", () => {
     expect(regionFor(1.33, 103.82)).toBe("central");
   });
 
-  it("phrases day-parts", () => {
-    expect(describePeriod(9)).toBe("this morning");
-    expect(describePeriod(14)).toBe("this afternoon");
-    expect(describePeriod(20)).toBe("this evening");
+  it("phrases day-parts in SGT even on a UTC server, relative to now", () => {
+    const at = (iso: string) => Date.parse(iso);
+    const now = at("2026-07-30T09:00:00+08:00");
+    // Same SGT day → "this <part>"; the SGT hour is used, not the server's UTC.
+    expect(describePeriod(at("2026-07-30T09:30:00+08:00"), now)).toBe("this morning");
+    expect(describePeriod(at("2026-07-30T14:00:00+08:00"), now)).toBe("this afternoon");
+    expect(describePeriod(at("2026-07-30T20:00:00+08:00"), now)).toBe("this evening");
+    // A 6pm SGT period must not read as "this morning" from its 10:00 UTC hour.
+    expect(
+      describePeriod(at("2026-07-30T18:00:00+08:00"), at("2026-07-30T17:23:00+08:00")),
+    ).toBe("this evening");
+    // Next-day period → "tomorrow …".
+    expect(
+      describePeriod(at("2026-07-31T06:00:00+08:00"), at("2026-07-30T20:00:00+08:00")),
+    ).toBe("tomorrow morning");
+  });
+
+  it("strips NEA's (Day)/(Night) suffix from conditions", () => {
+    expect(cleanCondition("Partly Cloudy (Night)")).toBe("Partly Cloudy");
+    expect(cleanCondition("Thundery Showers")).toBe("Thundery Showers");
   });
 });

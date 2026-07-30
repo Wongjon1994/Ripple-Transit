@@ -9,7 +9,7 @@ import {
 } from "react-map-gl/maplibre";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Route, Navigation, Activity } from "lucide-react";
+import { Route, Navigation, Activity, CloudLightning } from "lucide-react";
 import type { Itinerary, LatLng } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { cn, haversineMeters } from "../lib/utils.js";
@@ -285,6 +285,7 @@ export function MapView({
       crowd,
       incidents: pulse.data.traffic,
       rain: pulse.data.rain,
+      floods: pulse.data.floods,
       mrtDisruptions,
       mrtPlanned: pulse.data.mrtPlanned,
       weather: pulse.data.weather,
@@ -975,6 +976,25 @@ export function MapView({
               }}
             />
           </Source>
+
+          {/* Pulse: PUB flash-flood alerts — a distinct storm badge (cloud +
+              lightning), far more prominent than the soft rain blobs, since a
+              flash flood is a road-closing, life-safety event. */}
+          {(pulse.data?.floods ?? []).map((f, i) => (
+            <Marker
+              key={`flood-${i}`}
+              longitude={f.lng}
+              latitude={f.lat}
+              anchor="center"
+            >
+              <span className="relative flex h-7 w-7 items-center justify-center">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4f46e5] opacity-40" />
+                <span className="relative flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#4f46e5] text-white shadow-[0_1px_4px_rgba(0,0,0,0.4)]">
+                  <CloudLightning size={15} strokeWidth={2.4} />
+                </span>
+              </span>
+            </Marker>
+          ))}
         </>
       )}
 
@@ -1037,8 +1057,10 @@ export function MapView({
           onHeadlineFocus={focusPoints}
           onCycle={cycleFocus}
           maxHeight={
+            // Mobile only (bottomInset > 0): the panel sits top-right at
+            // top-10, under the 56px header — cap it above the planning sheet.
             bottomInset > 0
-              ? `calc(100dvh - ${218 + bottomInset}px)`
+              ? `calc(100dvh - ${84 + bottomInset}px)`
               : undefined
           }
           timeLabel={

@@ -17,6 +17,7 @@ function input(p: Partial<PulseSummaryInput> = {}): PulseSummaryInput {
     crowd: [],
     incidents: [],
     rain: [],
+    floods: [],
     mrtDisruptions: [],
     mrtPlanned: [],
     weights: null,
@@ -179,6 +180,41 @@ describe("pulseSummary — headline (worst citywide) + focus", () => {
     expect(
       pulseSummary(input({ rain: [{ ...FAR }, { ...FAR }] })).headline,
     ).toMatchObject({ tone: "rain", text: "Showers in 2 areas" });
+  });
+});
+
+describe("pulseSummary — flash floods (top priority)", () => {
+  const flood = { location: "Sims Ave", lat: 1.32, lng: 103.89 };
+  it("tops the headlines above an MRT disruption and severe incident", () => {
+    const s = pulseSummary(
+      input({
+        floods: [flood],
+        incidents: [severe("Accident on CTE")],
+        mrtDisruptions: [
+          { lines: ["NE"], stations: ["NE1"], message: "", stationPoints: [{ lat: 1.3, lng: 103.8 }] },
+        ],
+      }),
+    );
+    expect(s.headline).toMatchObject({
+      tone: "flood",
+      text: "Flash flood risk · Sims Ave",
+      focus: [{ lat: 1.32, lng: 103.89 }],
+    });
+  });
+
+  it("adds a flood tally item and breaks all-clear", () => {
+    const s = pulseSummary(input({ floods: [flood] }));
+    expect(s.allClear).toBe(false);
+    const alerts = s.rows.find((r) => r.kind === "alerts")!;
+    expect(alerts.items![0]).toMatchObject({ tone: "flood", count: 1, label: "Flash flood" });
+  });
+
+  it("flags a flood near a saved place above everything else", () => {
+    const HOME2 = { label: "Home", lat: 1.3201, lng: 103.8901 }; // ~15m from flood
+    const s = pulseSummary(
+      input({ places: [HOME2], floods: [flood], incidents: [severe("Accident", { lat: 1.3202, lng: 103.8902 })] }),
+    );
+    expect(s.personal[0]).toEqual({ tone: "flood", text: "Flash flood near Home" });
   });
 });
 
