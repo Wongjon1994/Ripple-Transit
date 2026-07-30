@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Search,
+  Compass,
 } from "lucide-react";
 import { trpc } from "../lib/trpc.js";
 import { SearchPanel, MAX_STOPS, type Place } from "../components/SearchPanel.js";
@@ -167,6 +168,9 @@ export function Home() {
   const [panelCollapsed, setPanelCollapsed] = useState(
     !(saved?.fromText || saved?.stops?.some((s) => s.text) || saved?.routeParams),
   );
+  // "Nearby places" is discovery, not the main task — collapsed behind a CTA so
+  // the route results are what the eye lands on first.
+  const [nearestOpen, setNearestOpen] = useState(false);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   useEffect(() => {
@@ -670,19 +674,6 @@ export function Home() {
           />
         </div>
 
-        <NearestPanel
-          destination={stops[stops.length - 1]?.point ?? null}
-          destinationLabel={stops[stops.length - 1]?.text}
-          routeFrom={routeParams?.points[0] ?? null}
-          routeTo={routeParams?.points[1] ?? null}
-          onPickNearYou={handlePickNearYou}
-          onPickNearDestination={handlePickNearDestination}
-          onPickAlongTheWay={handlePickAlongTheWay}
-          onPickBusStop={handlePickBusStop}
-          onPoisChange={setNearestPois}
-          onCorridorChange={setShowCorridor}
-        />
-
         {routeParams && (
           <div className="border-t border-[var(--border)]">
             {/* Mode tabs — walking & cycling never co-mingle with transit
@@ -769,6 +760,51 @@ export function Home() {
             )}
           </div>
         )}
+
+        {/* Nearby discovery — subsumed into an optional CTA (below the routes)
+            so the plan stays focused on the answer, not every feature. */}
+        <div className="border-t border-[var(--border)]">
+          <button
+            type="button"
+            onClick={() =>
+              setNearestOpen((o) => {
+                const next = !o;
+                if (!next) {
+                  setNearestPois([]);
+                  setShowCorridor(false);
+                }
+                return next;
+              })
+            }
+            aria-expanded={nearestOpen}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-ripple-muted/5"
+          >
+            <span className="flex items-center gap-2">
+              <Compass size={16} className="text-brand" /> Find nearby places
+            </span>
+            <ChevronDown
+              size={16}
+              className={cn(
+                "text-ripple-muted transition-transform",
+                nearestOpen && "rotate-180",
+              )}
+            />
+          </button>
+          {nearestOpen && (
+            <NearestPanel
+              destination={stops[stops.length - 1]?.point ?? null}
+              destinationLabel={stops[stops.length - 1]?.text}
+              routeFrom={routeParams?.points[0] ?? null}
+              routeTo={routeParams?.points[1] ?? null}
+              onPickNearYou={handlePickNearYou}
+              onPickNearDestination={handlePickNearDestination}
+              onPickAlongTheWay={handlePickAlongTheWay}
+              onPickBusStop={handlePickBusStop}
+              onPoisChange={setNearestPois}
+              onCorridorChange={setShowCorridor}
+            />
+          )}
+        </div>
       </aside>
 
       {/* Map: full-screen background on mobile, right pane on desktop */}
