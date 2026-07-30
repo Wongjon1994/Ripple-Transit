@@ -22,6 +22,7 @@ import type {
 } from "@shared/types.js";
 import { fmtDuration, fmtDistance, cn } from "../lib/utils.js";
 import { Button } from "./ui.js";
+import { RouteThumbnail } from "./RouteThumbnail.js";
 import { LiveArrivals } from "./LiveArrivals.js";
 
 const LONG_WALK_M = 8000;
@@ -161,7 +162,6 @@ export function ActiveRoutePanel({
       </p>
     );
   }
-  const ModeIcon = mode === "walk" ? Footprints : Bike;
   const sel = Math.min(selected, variants.length - 1);
 
   // The user asked for a flavour we couldn't produce a distinct route for —
@@ -229,12 +229,9 @@ export function ActiveRoutePanel({
                 <div className="font-serif text-[24px] font-bold leading-none tracking-tight">
                   {fmtDuration(v.durationS)}
                 </div>
-                <span
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
-                  style={{ background: mode === "walk" ? "#22c55e" : "#0ea5e9" }}
-                >
-                  <ModeIcon size={15} />
-                </span>
+                {/* Route-shape sparkline (with a mode badge) instead of a bare
+                    mode icon — a glance-able preview of the path's character. */}
+                <RouteThumbnail variant={v} mode={mode} />
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <KindTag kind={v.kind} />
