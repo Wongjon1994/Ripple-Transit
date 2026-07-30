@@ -566,10 +566,12 @@ export async function planTransit(
 
   // Drop options whose first walk is much longer than the shortest one — so a
   // 20/33-min access walk never shows when a closer boarding exists (relative to
-  // the actual pedestrian network, not straight-line distance).
+  // the actual pedestrian network, not straight-line distance). Widened from
+  // +500m so moderately-farther boardings survive as "See more" alternatives;
+  // the sort keeps the best options up top, these tail off behind the fold.
   if (itineraries.length > 1) {
     const minWalk = Math.min(...itineraries.map(firstWalkM));
-    itineraries = itineraries.filter((it) => firstWalkM(it) <= minWalk + 500);
+    itineraries = itineraries.filter((it) => firstWalkM(it) <= minWalk + 900);
   }
 
   const now = Date.now();
@@ -662,7 +664,9 @@ export async function planTransit(
     const key = primary[transitPriority];
     itineraries.sort((a, b) => key(a) - key(b) || a.duration - b.duration);
   }
-  itineraries = itineraries.slice(0, 5);
+  // Return up to 8 (was 5) so the client can offer "See more" for
+  // comprehensiveness — the top few lead, the rest sit behind the fold.
+  itineraries = itineraries.slice(0, 8);
 
   return { itineraries, weather: wx, carbon };
 }

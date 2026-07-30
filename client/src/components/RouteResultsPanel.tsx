@@ -580,6 +580,10 @@ export function RouteResultsPanel({
     () => onExpandChange?.(expandedIdx !== null),
     [expandedIdx, onExpandChange],
   );
+  // Show the strongest few by default; "See more" reveals the rest for
+  // comprehensiveness. Reset on a new search.
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => setShowAll(false), [collapseKey]);
 
   // §4.4 preference match — relative to this search only, and only when the
   // user has actually stated a preference (otherwise every entry is null).
@@ -590,6 +594,10 @@ export function RouteResultsPanel({
   );
 
   if (itineraries.length === 0) return null;
+  const PRIMARY_COUNT = 3;
+  const visible = showAll
+    ? itineraries
+    : itineraries.slice(0, PRIMARY_COUNT);
   const fastest = Math.min(...itineraries.map((it) => it.duration));
 
   // Decision aids: which option is quickest vs most reliable.
@@ -608,7 +616,7 @@ export function RouteResultsPanel({
     <div className="p-3">
       <div className="flex flex-col gap-2">
         <ContextualStatus weather={weather ?? null} />
-        {itineraries.map((it, i) => {
+        {visible.map((it, i) => {
             const dev = Math.round((it.duration - fastest) / 60);
             const modes = journeyModes(it);
             const isSel = i === selected;
@@ -823,6 +831,27 @@ export function RouteResultsPanel({
               </div>
             );
           })}
+        {itineraries.length > PRIMARY_COUNT && (
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            aria-expanded={showAll}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] py-2 text-xs font-semibold text-brand hover:bg-brand/5"
+          >
+            {showAll ? (
+              <>
+                Show fewer
+                <ChevronDown size={14} className="rotate-180" />
+              </>
+            ) : (
+              <>
+                See {itineraries.length - PRIMARY_COUNT} more option
+                {itineraries.length - PRIMARY_COUNT > 1 ? "s" : ""}
+                <ChevronDown size={14} />
+              </>
+            )}
+          </button>
+        )}
         {taxi && <TaxiCard taxi={taxi} />}
       </div>
     </div>
