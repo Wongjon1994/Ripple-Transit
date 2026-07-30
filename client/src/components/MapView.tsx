@@ -230,6 +230,22 @@ export function MapView({
   // Legend folds to a single "Pulse" chip so it never blocks the map.
   const [legendOpen, setLegendOpen] = useState(true);
 
+  // Declutter (mobile): opening the planning sheet (bottomInset > 0) auto-folds
+  // Pulse to its strip so the two panels don't fight for the small screen; the
+  // layer stays live on the map and one tap re-expands it. Closing the sheet
+  // restores the full panel. A manual toggle in between still wins until the
+  // next open/close. Desktop (bottomInset === 0 — the sidebar sits beside the
+  // map, no overlap) is unaffected. Keyed on the boolean so dragging the sheet
+  // (which changes bottomInset numerically, not open/closed) never re-folds.
+  const planningOpen = bottomInset > 0;
+  const prevPlanningOpen = useRef(planningOpen);
+  useEffect(() => {
+    if (planningOpen !== prevPlanningOpen.current) {
+      setLegendOpen(!planningOpen);
+      prevPlanningOpen.current = planningOpen;
+    }
+  }, [planningOpen]);
+
   const pulse = trpc.pulse.overlay.useQuery(undefined, {
     // Off in the focused live-journey view — risks surface on the route path
     // and in the journey panel instead.

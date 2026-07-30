@@ -52,15 +52,23 @@ function legColor(leg: RouteLeg): string {
   return lineColor(leg.lineCode);
 }
 
+/** Trim "MRT Station"/"LRT Station"/"Station" noise so a rail leg reads
+ *  "Jurong East → Bugis", not "Jurong East MRT Station → Bugis MRT Station". */
+function shortStation(n?: string | null): string | undefined {
+  if (!n) return undefined;
+  return n.replace(/\s*(MRT|LRT)?\s*station\b/i, "").trim() || n;
+}
+
 function legTitle(leg: RouteLeg): string {
   if (leg.type === "walk" || leg.type === "cycle") {
     const verb = leg.type === "walk" ? "Walk" : "Cycle";
-    const to =
-      cleanName(leg.toName) ?? leg.endBusStop ?? leg.endStation ?? null;
+    const to = shortStation(
+      cleanName(leg.toName) ?? leg.endBusStop ?? leg.endStation,
+    );
     return to ? `${verb} to ${to}` : verb;
   }
   if (leg.type === "mrt")
-    return `${leg.startStation ?? "Board"} → ${leg.endStation ?? "Alight"}`;
+    return `${shortStation(leg.startStation) ?? "Board"} → ${shortStation(leg.endStation) ?? "Alight"}`;
   return `Bus ${leg.busNo ?? ""} → ${leg.endBusStop ?? "stop"}`;
 }
 
@@ -89,6 +97,11 @@ function LegStep({
           : TrainFront;
   const f = leg.busLegFeasibility;
 
+  // A sub-minute access walk ("0 min · 14m") reads as broken — show just the
+  // distance for trivial walk/cycle hops.
+  const trivialWalk =
+    (leg.type === "walk" || leg.type === "cycle") && leg.duration < 60;
+
   // Scheduled platform wait for an MRT leg: gap between reaching the station
   // (previous leg's scheduled end) and the train's scheduled departure. OTP's
   // timetable is the source of truth; live arrivals aren't published for rail.
@@ -96,6 +109,24 @@ function LegStep({
     leg.type === "mrt" && leg.startTimeMs != null && prevEndMs != null
       ? Math.max(0, Math.round((leg.startTimeMs - prevEndMs) / 60000))
       : null;
+
+  // One consolidated MRT line — stops + departure + platform wait — instead of
+  // a separate stops row and a "· scheduled" departs row (rail is always
+  // timetabled, so the word "scheduled" added nothing).
+  const mrtMeta =
+    leg.type === "mrt"
+      ? [
+          leg.numStops
+            ? `${leg.numStops} stop${leg.numStops > 1 ? "s" : ""}`
+            : null,
+          leg.startTimeMs != null
+            ? `departs ${fmtTime(new Date(leg.startTimeMs).toISOString())}`
+            : null,
+          mrtWaitMin != null && mrtWaitMin > 0 ? `+${mrtWaitMin} min wait` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
 
   return (
     <div className="relative flex gap-3 pb-4 last:pb-0">
@@ -127,11 +158,14 @@ function LegStep({
             )}
           </span>
           <span className="data-voice shrink-0 whitespace-nowrap text-xs text-ripple-muted">
-            {fmtDuration(leg.duration)} · {fmtDistance(leg.distance)}
+            {trivialWalk
+              ? fmtDistance(leg.distance)
+              : `${fmtDuration(leg.duration)} · ${fmtDistance(leg.distance)}`}
           </span>
         </div>
-        {/* Stops counter between transit stops (MRT + bus) */}
-        {(leg.type === "mrt" || leg.type === "bus") && leg.numStops ? (
+        {/* Bus stops counter — MRT folds its stop count into the consolidated
+            departs line below. */}
+        {leg.type === "bus" && leg.numStops ? (
           <div className="data-voice mt-0.5 text-[11px] font-medium text-ripple-muted">
             {leg.numStops} stop{leg.numStops > 1 ? "s" : ""}
           </div>
@@ -155,50 +189,50 @@ function LegStep({
           </div>
         )}
 
-        {leg.type === "mrt" && leg.startTimeMs != null && (
+        {mrtMeta && (
           <div className="data-voice mt-0.5 text-xs text-ripple-muted">
-            Departs {fmtTime(new Date(leg.startTimeMs).toISOString())}
-            {mrtWaitMin != null && mrtWaitMin > 0
-              ? ` · ~${mrtWaitMin} min wait`
-              : ""}{" "}
-            · scheduled
+            {mrtMeta}
           </div>
         )}
 
-        {leg.type === "mrt" && leg.exitName && (
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            {/* Wayfinding, not a warning (§5): neutral cyan, never the red
-                MRT-mode colour it used to borrow. */}
-            <span className="inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
-              <DoorOpen size={12} /> {leg.exitName}
-              {leg.exitDistanceM != null &&
-                ` · ${fmtDistance(leg.exitDistanceM)}`}
-            </span>
-            {leg.exitAlternatives && leg.exitAlternatives.length > 0 && (
-              <span className="text-xs text-ripple-muted">
-                or {leg.exitAlternatives.map((e) => e.name).join(", ")}
-              </span>
-            )}
-          </div>
-        )}
+        {/* Exit wayfinding + platform crowd share one chip row so the rail leg
+            stays compact. Exit is neutral cyan (wayfinding, not a warning). */}
+        {leg.type === "mrt" &&
+          (leg.exitName || leg.crowd === "h" || leg.crowd === "m") && (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {leg.exitName && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+                  <DoorOpen size={12} /> {leg.exitName}
+                  {leg.exitDistanceM != null &&
+                    ` · ${fmtDistance(leg.exitDistanceM)}`}
+                </span>
+              )}
+              {(leg.crowd === "h" || leg.crowd === "m") && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
+                    leg.crowd === "h"
+                      ? "bg-warning/10 text-warning"
+                      : "bg-ripple-muted/10 text-ripple-muted",
+                  )}
+                >
+                  <Users size={12} />
+                  {leg.crowd === "h" ? "Crowded platform" : "Moderate crowd"}
+                </span>
+              )}
+              {leg.exitName &&
+                leg.exitAlternatives &&
+                leg.exitAlternatives.length > 0 && (
+                  <span className="text-xs text-ripple-muted">
+                    or {leg.exitAlternatives.map((e) => e.name).join(", ")}
+                  </span>
+                )}
+            </div>
+          )}
 
         {leg.type === "bus" && leg.trafficAlert && (
           <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
             <TriangleAlert size={12} /> {leg.trafficAlert} — allow extra time
-          </div>
-        )}
-
-        {leg.type === "mrt" && (leg.crowd === "h" || leg.crowd === "m") && (
-          <div
-            className={cn(
-              "mt-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
-              leg.crowd === "h"
-                ? "bg-warning/10 text-warning"
-                : "bg-ripple-muted/10 text-ripple-muted",
-            )}
-          >
-            <Users size={12} />
-            {leg.crowd === "h" ? "Crowded platform" : "Moderate crowd"}
           </div>
         )}
 
@@ -637,16 +671,10 @@ export function RouteResultsPanel({
                     >
                       {fmtDuration(it.duration)}
                     </span>
-                    <div className="flex items-center gap-1.5">
-                      {it.risk && <RiskPill level={it.risk.level} />}
-                      <ChevronDown
-                        size={15}
-                        className={cn(
-                          "shrink-0 text-ripple-muted transition-transform",
-                          isExp && "rotate-180",
-                        )}
-                      />
-                    </div>
+                    {/* Risk is flagged on the collapsed card whenever it's
+                        present; the detailed reasons live in the expanded view
+                        (the chevron moved to the labeled footer row below). */}
+                    {it.risk && <RiskPill level={it.risk.level} />}
                   </div>
 
                   {/* Ranking tag + mode sequence — one small mono line. */}
@@ -689,6 +717,24 @@ export function RouteResultsPanel({
                     {matches[i] && (
                       <PrefMatchBadge match={matches[i]!} className="ml-auto" />
                     )}
+                  </div>
+
+                  {/* Style-1 expand cue — matches the walk/cycle card: names the
+                      detail that opens on tap; the chevron flips when expanded. */}
+                  <div
+                    className={cn(
+                      "-mx-3 -mb-3 mt-0.5 flex items-center justify-between border-t border-[var(--border)] px-3 py-2 font-mono text-[11px] text-ripple-muted",
+                      isExp && "bg-ripple-muted/5",
+                    )}
+                  >
+                    <span>Route steps, risks &amp; CO₂ savings</span>
+                    <ChevronDown
+                      size={14}
+                      className={cn(
+                        "transition-transform",
+                        isExp && "rotate-180",
+                      )}
+                    />
                   </div>
                 </button>
 

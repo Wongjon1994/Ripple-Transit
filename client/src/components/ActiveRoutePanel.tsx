@@ -13,6 +13,7 @@ import {
   Leaf,
   Flame,
   TriangleAlert,
+  ChevronDown,
 } from "lucide-react";
 import type {
   ActiveMode,
@@ -226,8 +227,16 @@ export function ActiveRoutePanel({
               )}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="font-serif text-[24px] font-bold leading-none tracking-tight">
-                  {fmtDuration(v.durationS)}
+                <div className="flex items-baseline gap-2">
+                  <span className="font-serif text-[24px] font-bold leading-none tracking-tight">
+                    {fmtDuration(v.durationS)}
+                  </span>
+                  {/* Distance is the trip's physical reality for walk/cycle, so
+                      it pairs with the time hero. Calories + CO₂ demote into the
+                      expanded detail (named by the footer row below). */}
+                  <span className="data-voice text-sm font-semibold text-ripple-muted">
+                    {fmtDistance(v.distanceM)}
+                  </span>
                 </div>
                 {/* Route-shape sparkline (with a mode badge) instead of a bare
                     mode icon — a glance-able preview of the path's character. */}
@@ -236,18 +245,6 @@ export function ActiveRoutePanel({
               <div className="flex flex-wrap items-center gap-1.5">
                 <KindTag kind={v.kind} />
                 {v.also?.map((k) => <KindTag key={k} kind={k} />)}
-              </div>
-              <div className="data-voice text-xs text-ripple-muted">
-                {fmtDistance(v.distanceM)} ·{" "}
-                <Flame size={11} className="inline -translate-y-px" /> ~{v.kcal}{" "}
-                kcal
-                {data && (
-                  <>
-                    {" · "}
-                    <Leaf size={11} className="inline -translate-y-px text-ok" />{" "}
-                    saves {(data.co2SavedGrams / 1000).toFixed(2)} kg CO₂
-                  </>
-                )}
               </div>
               {v.callout && (
                 // §12a Tier-1 exposure callout — one line, only when actionable.
@@ -267,10 +264,42 @@ export function ActiveRoutePanel({
                   {v.callout.message}
                 </div>
               )}
+
+              {/* Style-1 expand cue: names the secondary info that opens on tap.
+                  The whole header is the toggle; the chevron flips when open. */}
+              <div
+                className={cn(
+                  "-mx-3 -mb-3 mt-0.5 flex items-center justify-between border-t border-[var(--border)] px-3 py-2 font-mono text-[11px] text-ripple-muted",
+                  isExp && "bg-ripple-muted/5",
+                )}
+              >
+                <span>Calories, carbon &amp; terrain</span>
+                <ChevronDown
+                  size={14}
+                  className={cn("transition-transform", isExp && "rotate-180")}
+                />
+              </div>
             </button>
 
             {isExp && (
-              <div className="flex flex-col gap-2.5 border-t border-[var(--border)] p-3">
+              <div className="flex flex-col gap-2.5 p-3 pt-2.5">
+                {/* Demoted benefit stats — the payoff for choosing to move,
+                    now secondary to time + distance on the collapsed card. */}
+                <div className="data-voice flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ripple-muted">
+                  <span>
+                    <Flame size={11} className="inline -translate-y-px" /> ~
+                    {v.kcal} kcal
+                  </span>
+                  {data && (
+                    <span>
+                      <Leaf
+                        size={11}
+                        className="inline -translate-y-px text-ok"
+                      />{" "}
+                      saves {(data.co2SavedGrams / 1000).toFixed(2)} kg CO₂
+                    </span>
+                  )}
+                </div>
                 <MetricBar
                   label="Park connectors & cycling paths"
                   pct={v.pcnPct}
