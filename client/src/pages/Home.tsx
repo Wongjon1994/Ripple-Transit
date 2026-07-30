@@ -180,6 +180,28 @@ export function Home() {
   const journeyCtx = useJourney();
   const [, navigate] = useLocation();
 
+  const saveRoute = trpc.favouriteRoutes.add.useMutation({
+    onSuccess: () => {
+      utils.favouriteRoutes.list.invalidate();
+      toast.success("Route saved — find it in Settings.");
+    },
+    onError: (e) => toast.error(`Couldn’t save — ${e.message}`),
+  });
+
+  function handleSaveRoute() {
+    if (!user) {
+      toast.error("Sign in to save routes.");
+      return;
+    }
+    const origin = fromText.trim() || "Origin";
+    const destination = stops[stops.length - 1]?.text?.trim() || "Destination";
+    saveRoute.mutate({
+      label: `${origin} → ${destination}`.slice(0, 128),
+      origin,
+      destination,
+    });
+  }
+
   function handleStartJourney() {
     const it = itineraries[selected];
     if (!it || !routeParams) return;
@@ -712,7 +734,7 @@ export function Home() {
                   itineraries={itineraries}
                   selected={selected}
                   onSelect={setSelected}
-                  onSave={() => toast.success("Route saving comes in Phase 11.")}
+                  onSave={handleSaveRoute}
                   onStartJourney={handleStartJourney}
                   onLogTrip={handleLogRoute}
                   tripLogged={tripLogged}

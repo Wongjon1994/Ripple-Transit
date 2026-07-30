@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import {
   Footprints,
@@ -558,7 +558,7 @@ export function LiveJourney() {
             {/* Turn-by-turn for the walk/cycle leg in progress — applies to
                 access walks on a transit journey just as much as a full walk. */}
             {leg && (leg.type === "walk" || leg.type === "cycle") && (
-              <WalkTurnByTurn leg={leg} position={geo.position} color={legColor} />
+              <WalkGuidance leg={leg} position={geo.position} color={legColor} />
             )}
 
             <CurrentNextStepper
@@ -771,13 +771,76 @@ const TURN_ICON: Record<WalkStep["turn"], typeof ArrowUp> = {
   arrive: MapPin,
 };
 
+/** Decode an encoded polyline (precision 5) into [lat, lng] pairs. */
+function decodePolyline(str: string): [number, number][] {
+  let i = 0,
+    lat = 0,
+    lng = 0;
+  const pts: [number, number][] = [];
+  while (i < str.length) {
+    let b,
+      shift = 0,
+      result = 0;
+    do {
+      b = str.charCodeAt(i++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+    shift = 0;
+    result = 0;
+    do {
+      b = str.charCodeAt(i++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    pts.push([lat / 1e5, lng / 1e5]);
+  }
+  return pts;
+}
+
+/** Shortest distance (m) from a point to a polyline (min over its segments). */
+function distanceToPath(p: LatLng, path: [number, number][]): number {
+  if (path.length === 0) return Infinity;
+  const R = 6371000;
+  const rad = Math.PI / 180;
+  const latRef = p.lat * rad;
+  // Local metres relative to p (equirectangular — fine at street scale).
+  const xy = (lat: number, lng: number): [number, number] => [
+    (lng - p.lng) * rad * Math.cos(latRef) * R,
+    (lat - p.lat) * rad * R,
+  ];
+  if (path.length === 1) {
+    const [x, y] = xy(path[0][0], path[0][1]);
+    return Math.hypot(x, y);
+  }
+  let min = Infinity;
+  for (let i = 1; i < path.length; i++) {
+    const [ax, ay] = xy(path[i - 1][0], path[i - 1][1]);
+    const [bx, by] = xy(path[i][0], path[i][1]);
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? -(ax * dx + ay * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(ax + t * dx, ay + t * dy);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+const OFF_ROUTE_M = 70; // drift beyond this → "off route"
+const ON_ROUTE_M = 45; // ...come back within this to clear it (hysteresis)
+
 /**
- * Turn-by-turn guidance for a walk/cycle leg — works for ANY such leg, whether
- * it's a full walking route or the access walk of a transit journey. Steps come
- * from OneMap; the current manoeuvre advances by GPS proximity to each step
- * point, Google-Maps style ("120 m · Turn left onto Dawson Rd").
+ * Live walk/cycle guidance. Rather than a jumpy distance-to-next-turn (which
+ * flickers even when you're on the right path), this keeps the focus on ONE
+ * question: are you on your route? It flags when you drift too far from the
+ * leg's path and otherwise shows the next manoeuvre direction. Works for any
+ * walk/cycle leg — a full walk or a transit access walk.
  */
-function WalkTurnByTurn({
+function WalkGuidance({
   leg,
   position,
   color,
@@ -795,55 +858,86 @@ function WalkTurnByTurn({
     { staleTime: Infinity, retry: 1 },
   );
   const steps = q.data ?? [];
-  // Index of the segment being travelled: past steps[seg], heading to the turn
-  // at steps[seg+1]. Resets when the leg (and thus the fetched steps) changes.
+
+  const path = useMemo<[number, number][]>(
+    () =>
+      leg.polyline
+        ? decodePolyline(leg.polyline)
+        : [
+            [leg.startPoint.lat, leg.startPoint.lng],
+            [leg.endPoint.lat, leg.endPoint.lng],
+          ],
+    [leg.polyline, leg.startPoint, leg.endPoint],
+  );
+
+  // The next manoeuvre to hint (no distance), advanced by proximity to turns.
   const [seg, setSeg] = useState(0);
   useEffect(() => setSeg(0), [leg.startPoint.lat, leg.startPoint.lng]);
   useEffect(() => {
     if (!position || steps.length < 2) return;
     setSeg((i) => {
       let n = i;
-      // Advance once we're within ~22m of the upcoming turn point.
       while (n + 1 < steps.length - 1 && haversineMeters(position, steps[n + 1].point) < 22)
         n++;
       return n;
     });
   }, [position, steps]);
 
-  if (steps.length < 2) return null; // no usable guidance (or still loading)
+  // On-route vs drifted, with hysteresis so it doesn't chatter at the boundary.
+  const drift = position ? distanceToPath(position, path) : null;
+  const [off, setOff] = useState(false);
+  useEffect(() => {
+    if (drift == null) return;
+    setOff((prev) => (prev ? drift > ON_ROUTE_M : drift > OFF_ROUTE_M));
+  }, [drift]);
 
-  const turnIdx = Math.min(seg + 1, steps.length - 1);
-  const turn = steps[turnIdx];
-  const then = steps[turnIdx + 1];
-  const dist = position
-    ? Math.round(haversineMeters(position, turn.point))
-    : steps[seg].distanceM;
-  const Icon = TURN_ICON[turn.turn];
+  const nextTurn = steps[Math.min(seg + 1, steps.length - 1)];
+  const TurnIcon = nextTurn ? TURN_ICON[nextTurn.turn] : Navigation;
 
   return (
-    <div className="mb-3 flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
+    <div
+      className={cn(
+        "mb-3 flex items-center gap-3 rounded-lg border p-3",
+        off
+          ? "border-warning/50 bg-warning/10"
+          : "border-[var(--border)] bg-[var(--bg)]",
+      )}
+    >
       <span
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
-        style={{ background: color }}
+        style={{ background: off ? "#f59e0b" : color }}
       >
-        <Icon size={22} strokeWidth={2.5} />
+        {off ? (
+          <TriangleAlert size={22} strokeWidth={2.5} />
+        ) : (
+          <TurnIcon size={22} strokeWidth={2.5} />
+        )}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <span className="data-voice text-lg font-bold leading-none">
-            {fmtDistance(dist)}
-          </span>
-          {q.isLoading && (
-            <Loader2 size={12} className="animate-spin text-ripple-muted" />
-          )}
-        </div>
-        <div className="mt-0.5 truncate text-sm font-medium">
-          {turn.instruction}
-        </div>
-        {then && (
-          <div className="mt-0.5 truncate text-xs text-ripple-muted">
-            then {then.instruction}
-          </div>
+        {off ? (
+          <>
+            <div className="text-sm font-semibold text-warning">
+              Off your route
+            </div>
+            <div className="text-xs text-ripple-muted">
+              {drift != null ? `~${fmtDistance(Math.round(drift))} away — ` : ""}
+              head back to the path
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5 text-sm font-semibold">
+              On route
+              {q.isLoading && (
+                <Loader2 size={12} className="animate-spin text-ripple-muted" />
+              )}
+            </div>
+            {nextTurn && (
+              <div className="mt-0.5 truncate text-xs text-ripple-muted">
+                Next: {nextTurn.instruction}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
