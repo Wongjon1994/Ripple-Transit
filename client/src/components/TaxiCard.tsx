@@ -16,9 +16,9 @@ export function TaxiCard({ taxi }: { taxi: TaxiEstimate }) {
   const a = AVAIL[taxi.availability];
   return (
     <div className="px-1 py-1">
-      <div className="flex items-center gap-2 text-xs text-ripple-muted">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ripple-muted">
         <Car size={14} className="shrink-0 text-warning" />
-        <span className="data-voice min-w-0 truncate">
+        <span className="data-voice min-w-0">
           Taxi ~${taxi.fare.toFixed(2)} · {taxi.durationMin} min · ~
           {taxi.waitMin} min wait · est.
         </span>

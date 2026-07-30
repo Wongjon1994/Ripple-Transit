@@ -11,8 +11,8 @@ import {
   RotateCcw,
   ShieldCheck,
   CloudRain,
-  Cloud,
   Sun,
+  ThermometerSun,
   Zap,
   TriangleAlert,
   Leaf,
@@ -457,88 +457,55 @@ function RiskPill({ level }: { level: RiskLevel }) {
 }
 
 /**
- * One ambient status line (§3) merging weather and live MRT service — both are
- * unselected context, so they share a single muted row. The weather half turns
- * coloured/prominent only when there's an advisory (rain / heat); the MRT half
- * shows a dot + "All lines normal" / "N lines affected".
+ * Contextual weather + service status above the results. The raw temperature
+ * now lives in Pulse, so this mirrors the Walk/Cycle advisory strip: a positive
+ * "Good conditions" note, or the rain/heat advisory when there's one. An MRT
+ * line disruption surfaces only when something is actually affected (all-normal
+ * is Pulse's job) — never the old always-on "All lines normal" row.
  */
-function AmbientStatus({ weather }: { weather: WeatherContext | null }) {
+function ContextualStatus({ weather }: { weather: WeatherContext | null }) {
   const { data: lines } = trpc.mrt.lineStatuses.useQuery(undefined, {
     staleTime: 60_000,
   });
   const affected = (lines ?? []).filter((l) => l.status !== "operational");
-  const hasLines = !!lines && lines.length > 0;
-  const mrtOk = affected.length === 0;
 
   const adv = weather?.advisory;
-  const Icon = weather?.wet
-    ? CloudRain
-    : weather && /cloud/i.test(weather.forecast)
-      ? Cloud
-      : Sun;
+  const level: "good" | "info" | "warning" = adv?.level ?? "good";
+  const message = adv
+    ? adv.message
+    : `Good conditions right now${weather?.area ? ` (near ${weather.area})` : ""}`;
+  const Icon =
+    level === "warning" ? CloudRain : level === "info" ? ThermometerSun : Sun;
 
-  if (!weather && !hasLines) return null;
+  if (!weather && affected.length === 0) return null;
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2 px-4 py-2 text-xs",
-        adv?.level === "warning"
-          ? "bg-warning/10"
-          : adv
-            ? "bg-brand/10"
-            : "",
-      )}
-    >
+    <>
       {weather && (
-        <>
-          <Icon
-            size={14}
-            className={cn(
-              "shrink-0",
-              adv?.level === "warning"
-                ? "text-warning"
-                : adv
-                  ? "text-brand"
-                  : "text-ripple-muted",
-            )}
-          />
-          <span
-            className={cn(
-              "font-medium",
-              adv?.level === "warning"
-                ? "text-warning"
-                : adv
-                  ? "text-brand"
-                  : "text-[var(--fg)]",
-            )}
-          >
-            {weather.temperature != null
-              ? `${Math.round(weather.temperature)}° · `
-              : ""}
-            {weather.forecast}
-          </span>
-          {adv && (
-            <span className={adv.level === "warning" ? "text-warning" : "text-brand"}>
-              — {adv.message}
-            </span>
+        <div
+          className={cn(
+            "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs",
+            level === "warning"
+              ? "bg-warning/10 text-warning"
+              : level === "info"
+                ? "bg-brand/10 text-brand"
+                : "bg-ok/10 text-ok",
           )}
-        </>
+        >
+          <Icon size={14} className="shrink-0" />
+          <span className="font-medium">{message}</span>
+        </div>
       )}
-      {hasLines && (
-        <span className="ml-auto flex shrink-0 items-center gap-1.5">
-          <span
-            className="inline-block h-2 w-2 rounded-full"
-            style={{ background: mrtOk ? "#10b981" : "#f59e0b" }}
-          />
-          <span className={mrtOk ? "text-ripple-muted" : "text-warning"}>
-            {mrtOk
-              ? "All lines normal"
-              : `${affected.length} line${affected.length > 1 ? "s" : ""} affected`}
+      {affected.length > 0 && (
+        <div className="flex items-center gap-2 rounded-md bg-warning/10 px-3 py-1.5 text-xs text-warning">
+          <TriangleAlert size={14} className="shrink-0" />
+          <span className="font-medium">
+            {affected.length} MRT line{affected.length > 1 ? "s" : ""} affected —
+            see Pulse
           </span>
-        </span>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -547,23 +514,25 @@ function fmtCo2(grams: number): string {
 }
 
 /**
- * One Tier-2 savings line (§9): the headline CO₂ figure already lives in the
- * Tier-1 meta — here we only add what's new (savings vs taxi / driving).
+ * The consolidated CO₂ line (expanded only): the route's own emissions plus
+ * what it saves vs taxi / driving. Usage was removed from the Tier-1 fold so
+ * the whole carbon picture reads in one place here.
  */
 function CarbonSavingsLine({
   routeGrams,
   carbon,
 }: {
   routeGrams: number;
-  carbon: CarbonBaseline;
+  carbon: CarbonBaseline | null;
 }) {
-  const vsTaxi = Math.max(0, carbon.taxiGrams - routeGrams) / 1000;
-  const vsCar = Math.max(0, carbon.carGrams - routeGrams) / 1000;
+  const savings = carbon
+    ? ` · saves ${(Math.max(0, carbon.taxiGrams - routeGrams) / 1000).toFixed(2)} kg vs taxi · ${(Math.max(0, carbon.carGrams - routeGrams) / 1000).toFixed(2)} kg vs driving`
+    : "";
   return (
     <div className="data-voice flex items-center gap-1.5 text-xs text-ripple-muted">
       <Leaf size={12} className="shrink-0 text-ok" />
       <span>
-        saves {vsTaxi.toFixed(2)} kg vs taxi · {vsCar.toFixed(2)} kg vs driving
+        {fmtCo2(routeGrams)} CO₂{savings}
       </span>
     </div>
   );
@@ -628,12 +597,10 @@ export function RouteResultsPanel({
     riskScore(itineraries[mostReliableIdx]) < riskScore(itineraries[fastestIdx]);
 
   return (
-    <div className="flex flex-col">
-      <AmbientStatus weather={weather ?? null} />
-
-      <div className="p-3">
-        <div className="flex flex-col gap-2">
-          {itineraries.map((it, i) => {
+    <div className="p-3">
+      <div className="flex flex-col gap-2">
+        <ContextualStatus weather={weather ?? null} />
+        {itineraries.map((it, i) => {
             const dev = Math.round((it.duration - fastest) / 60);
             const modes = journeyModes(it);
             const isSel = i === selected;
@@ -707,12 +674,14 @@ export function RouteResultsPanel({
                   {/* De-emphasised secondary metrics (§3) — the preference
                       match rides this row so it can't rival the ETA/risk hero. */}
                   <div className="mt-0.5 flex items-center gap-2 border-t border-[var(--border)] pt-1.5">
+                    {/* CO₂ usage moved off the first fold — it now rides the
+                        consolidated CO₂ line in the expanded view (usage +
+                        savings together), keeping this row to fare + transfers. */}
                     <span className="data-voice text-[11px] text-ripple-muted">
                       ${it.fare.toFixed(2)} ·{" "}
                       {it.transfers === 0
                         ? "direct"
                         : `${it.transfers} transfer${it.transfers > 1 ? "s" : ""}`}
-                      {it.co2Grams != null && ` · ${fmtCo2(it.co2Grams)} CO₂`}
                     </span>
                     {matches[i] && (
                       <PrefMatchBadge match={matches[i]!} className="ml-auto" />
@@ -759,11 +728,11 @@ export function RouteResultsPanel({
                       </div>
                     )}
 
-                    {carbon && it.co2Grams != null && (
+                    {it.co2Grams != null && (
                       <div className="border-b border-[var(--border)] px-3 py-2">
                         <CarbonSavingsLine
                           routeGrams={it.co2Grams}
-                          carbon={carbon}
+                          carbon={carbon ?? null}
                         />
                       </div>
                     )}
@@ -846,8 +815,7 @@ export function RouteResultsPanel({
               </div>
             );
           })}
-          {taxi && <TaxiCard taxi={taxi} />}
-        </div>
+        {taxi && <TaxiCard taxi={taxi} />}
       </div>
     </div>
   );

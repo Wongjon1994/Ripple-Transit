@@ -572,6 +572,12 @@ export function MapView({
     [origin, destination, waypoints, pois, legLines],
   );
 
+  // Keep the latest sheet height for the fit padding without making the camera
+  // refit every time the sheet is dragged — the effect reads this on a route
+  // change, so a fresh route frames itself above the sheet (not behind it).
+  const bottomInsetRef = useRef(bottomInset);
+  bottomInsetRef.current = bottomInset;
+
   // Camera: follow a moving point during navigation; otherwise fit to the route.
   // A lone pin (e.g. "use my location" before a route) recenters gently — no
   // hard zoom-in (the old Leaflet behaviour that snapped to zoom 15).
@@ -610,12 +616,24 @@ export function MapView({
         maxLng = Math.max(maxLng, lng);
         maxLat = Math.max(maxLat, lat);
       }
+      // Pad the bottom by the sheet height so the whole route frames into the
+      // VISIBLE map above the bottom sheet, not behind it. Capped so there's
+      // always a usable band of map left to fit into.
+      const containerH = map.getContainer().clientHeight;
+      const bottomPad = Math.min(
+        40 + bottomInsetRef.current,
+        Math.max(40, containerH - 160),
+      );
       map.fitBounds(
         [
           [minLng, minLat],
           [maxLng, maxLat],
         ],
-        { padding: 60, maxZoom: FIT_MAX_ZOOM, duration: 600 },
+        {
+          padding: { top: 70, bottom: bottomPad, left: 40, right: 40 },
+          maxZoom: FIT_MAX_ZOOM,
+          duration: 600,
+        },
       );
     } else if (fitSet.length === 1) {
       // A lone endpoint (populating From/To, or "use my location"): never zoom

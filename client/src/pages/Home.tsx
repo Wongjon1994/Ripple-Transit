@@ -600,7 +600,7 @@ export function Home() {
             <ChevronRight size={18} className="hidden md:block" />
           </button>
         </div>
-        <div className="px-4 pb-4 pt-2 md:pt-4">
+        <div className="px-4 pb-3 pt-2 md:pt-3">
           {routeParams && !editingSearch ? (
             <SearchSummaryBar
               fromText={fromText}
