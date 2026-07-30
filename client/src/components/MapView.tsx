@@ -9,7 +9,14 @@ import {
 } from "react-map-gl/maplibre";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Route, Navigation, Activity, CloudLightning } from "lucide-react";
+import {
+  Route,
+  Navigation,
+  Activity,
+  CloudLightning,
+  LocateFixed,
+  Loader2,
+} from "lucide-react";
 import type { Itinerary, LatLng, RouteSurfaceSpan } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { cn, haversineMeters } from "../lib/utils.js";
@@ -228,6 +235,9 @@ export function MapView({
   // Tap-friendly 3D toggle: MapLibre's compass only pitches via mouse-drag,
   // which touch devices can't do — so we offer an explicit 2D/3D button.
   const [is3d, setIs3d] = useState(false);
+  // "You are here" on the home map (Google-style): a blue dot + a locate button.
+  const [myLocation, setMyLocation] = useState<LatLng | null>(null);
+  const [locating, setLocating] = useState(false);
   // "Pulse" layer — the repurposed map toggle (Phase 16): the MRT/LRT network
   // plus live crowding, road traffic, and an approximate rain overlay. On by
   // default, off in the tilted walk navigation view where it would clutter.
@@ -601,6 +611,57 @@ export function MapView({
   // change, so a fresh route frames itself above the sheet (not behind it).
   const bottomInsetRef = useRef(bottomInset);
   bottomInsetRef.current = bottomInset;
+
+  // Whether a route/pins are framed — checked async inside the geolocation
+  // callback, so auto-locate only recenters on a blank map (never yanking the
+  // camera off a route the user is looking at).
+  const hasFramedRef = useRef(false);
+  hasFramedRef.current = allPoints.length > 0;
+
+  /** Get the device location: drop a "you are here" dot, and (only when the map
+   *  isn't already framing a route) gently centre on it. `auto` skips the
+   *  error toast — a silent no-op is right for the on-load attempt. */
+  function locateMe() {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setMyLocation(p);
+        setLocating(false);
+        const map = mapRef.current?.getMap();
+        if (map && !hasFramedRef.current) {
+          map.easeTo({
+            center: [p.lng, p.lat],
+            zoom: Math.max(map.getZoom(), 15),
+            duration: 700,
+          });
+        }
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10_000 },
+    );
+  }
+
+  // On load, centre on the user only if location is ALREADY granted — never
+  // throw a permission prompt at a first-time visitor (the locate button is the
+  // opt-in for that). The live-journey view runs its own GPS, so skip there.
+  useEffect(() => {
+    if (liveJourney) return;
+    const perms = navigator.permissions;
+    if (!perms || !navigator.geolocation) return;
+    let cancelled = false;
+    perms
+      .query({ name: "geolocation" as PermissionName })
+      .then((status) => {
+        if (!cancelled && status.state === "granted") locateMe();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveJourney]);
 
   // Camera: follow a moving point during navigation; otherwise fit to the route.
   // A lone pin (e.g. "use my location" before a route) recenters gently — no
@@ -1101,6 +1162,24 @@ export function MapView({
               <Activity size={16} strokeWidth={2.5} className="relative" />
             </button>
           )}
+          {/* Locate me — centre on the device location (prompts on first tap).
+              Home map only; the live journey follows GPS on its own. */}
+          {!liveJourney && (
+            <button
+              type="button"
+              onClick={locateMe}
+              aria-label="Centre on my location"
+              title="My location"
+              className="absolute left-[10px] top-[148px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
+              style={{ color: myLocation ? "var(--brand)" : "var(--fg)" }}
+            >
+              {locating ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <LocateFixed size={16} />
+              )}
+            </button>
+          )}
         </>
       )}
 
@@ -1294,6 +1373,25 @@ export function MapView({
       ))}
       {destination && (
         <PinMarker point={destination} color={TRANSIT_COLORS.mrt} label="B" />
+      )}
+      {myLocation && !liveJourney && (
+        <Marker
+          longitude={myLocation.lng}
+          latitude={myLocation.lat}
+          anchor="center"
+        >
+          <div
+            aria-label="Your location"
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: "50%",
+              background: "#2563eb",
+              border: "3px solid white",
+              boxShadow: "0 0 0 4px rgba(37,99,235,.3),0 1px 4px rgba(0,0,0,.4)",
+            }}
+          />
+        </Marker>
       )}
       {livePosition && (
         <Marker
