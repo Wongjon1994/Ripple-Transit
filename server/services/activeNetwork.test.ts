@@ -6,6 +6,7 @@ import {
   samplePath,
   SegmentGrid,
   routeCoverage,
+  classifyRoute,
   comfortLabel,
   activeKcal,
   decodePolyline5,
@@ -83,6 +84,34 @@ describe("SegmentGrid + routeCoverage", () => {
     );
     expect(c.pct).toBeGreaterThan(35);
     expect(c.pct).toBeLessThan(65);
+  });
+});
+
+describe("classifyRoute", () => {
+  const pcn = new SegmentGrid();
+  pcn.addLine([P(1.3, 103.8), P(1.3, 103.81)]);
+  const shelter = new SegmentGrid();
+  shelter.addLine([P(1.3, 103.805), P(1.3, 103.815)]);
+  const route = [P(1.3, 103.8), P(1.3, 103.82)];
+
+  it("splits into runs, shelter winning over pcn on overlap", () => {
+    const classes = classifyRoute(route, pcn, shelter).map((r) => r.surfaceClass);
+    expect(classes[0]).toBe("pcn");
+    expect(classes).toContain("shelter");
+    expect(classes[classes.length - 1]).toBe("plain");
+    // Once shelter starts (incl. the pcn/shelter overlap), pcn never returns.
+    const firstShelter = classes.indexOf("shelter");
+    expect(classes.slice(firstShelter).includes("pcn")).toBe(false);
+  });
+
+  it("is all plain when nothing is nearby", () => {
+    const runs = classifyRoute([P(1.4, 103.8), P(1.4, 103.82)], pcn, shelter);
+    expect(runs.length).toBe(1);
+    expect(runs[0].surfaceClass).toBe("plain");
+  });
+
+  it("returns nothing for a degenerate route", () => {
+    expect(classifyRoute([P(1.3, 103.8)], pcn, shelter)).toEqual([]);
   });
 });
 

@@ -862,6 +862,9 @@ export function Home() {
               ? (itineraries[selected] ?? null)
               : activeItinerary
           }
+          routeSurface={
+            shownTab === "transit" ? null : (selectedVariant?.surface ?? null)
+          }
         />
       </main>
 

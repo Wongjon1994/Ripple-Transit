@@ -14,6 +14,7 @@ import {
   decodePolyline5,
   encodePolyline5,
   routeCoverage,
+  classifyRoute,
   comfortLabel,
   activeKcal,
   planarMeters,
@@ -25,6 +26,7 @@ import type {
   ActiveVariant,
   ActiveVariantKind,
   ActiveSegment,
+  RouteSurfaceSpan,
   LatLng,
 } from "../../shared/types.js";
 
@@ -174,6 +176,18 @@ function compose(
     distanceM: r.distanceM,
     durationS: r.durationS,
   }));
+  // Colour the line by surface: shelter (walk only) wins over PCN on overlap.
+  const surface: RouteSurfaceSpan[] | undefined =
+    pcnGrid || (mode === "walk" && shelterGrid)
+      ? classifyRoute(
+          coords,
+          pcnGrid,
+          mode === "walk" ? shelterGrid : null,
+        ).map((run) => ({
+          surfaceClass: run.surfaceClass,
+          polyline: encodePolyline5(run.pts),
+        }))
+      : undefined;
   return {
     kind,
     durationS,
@@ -183,6 +197,7 @@ function compose(
     shelterPct,
     comfort: comfortLabel(pcnPct, mode),
     segments,
+    surface,
   };
 }
 

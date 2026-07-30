@@ -174,6 +174,14 @@ export interface ActiveSegment {
   durationS: number;
 }
 
+/** Surface quality of one stretch of an active route, for the coloured map
+ *  overlay: on a park connector, under shelter, or plain roadside. */
+export type RouteSurfaceClass = "pcn" | "shelter" | "plain";
+export interface RouteSurfaceSpan {
+  surfaceClass: RouteSurfaceClass;
+  polyline: string; // encoded, precision 5 — a continuous run of one class
+}
+
 export interface ActiveVariant {
   kind: ActiveVariantKind;
   /** When another flavour's best path is this same route (e.g. the fastest
@@ -188,6 +196,9 @@ export interface ActiveVariant {
   shelterPct?: number;
   comfort: { label: string; tone: "ok" | "neutral" | "warning" };
   segments: ActiveSegment[]; // one per consecutive stop pair
+  /** The route split into consecutive PCN / sheltered / plain runs, so the map
+   *  can colour each stretch by surface. Shelter wins over PCN on overlap. */
+  surface?: RouteSurfaceSpan[];
   /** Exposure-based weather callout (umbrella / sunscreen), when actionable. */
   callout?: WeatherAdvisory;
 }

@@ -10,7 +10,7 @@ import {
 import type { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Route, Navigation, Activity, CloudLightning } from "lucide-react";
-import type { Itinerary, LatLng } from "@shared/types.js";
+import type { Itinerary, LatLng, RouteSurfaceSpan } from "@shared/types.js";
 import { TRANSIT_COLORS } from "@shared/types.js";
 import { cn, haversineMeters } from "../lib/utils.js";
 import { useTheme } from "../lib/theme.js";
@@ -188,6 +188,7 @@ export function MapView({
   viewToggle,
   liveJourney = false,
   bottomInset = 0,
+  routeSurface,
 }: {
   origin: LatLng | null;
   destination: LatLng | null;
@@ -217,6 +218,10 @@ export function MapView({
   /** Height (px) obscured by the mobile bottom sheet, so the Pulse panel caps
    *  itself above it instead of being clipped. */
   bottomInset?: number;
+  /** Walk/cycle route split into PCN / sheltered / plain runs — drawn as a
+   *  colour-coded overlay so the map conveys surface quality (and the path
+   *  shape, now that the card thumbnail is gone). */
+  routeSurface?: RouteSurfaceSpan[] | null;
 }) {
   const { theme } = useTheme();
   const mapRef = useRef<MapRef | null>(null);
@@ -556,6 +561,25 @@ export function MapView({
     }),
     [legLines, liveJourney, routeBase],
   );
+
+  // Surface-coloured overlay for the active (walk/cycle) route: each PCN /
+  // sheltered / plain run drawn in its own colour. Hidden in the monochrome
+  // live-journey view.
+  const surfaceGeoJSON = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: (routeSurface ?? []).map((s) => ({
+        type: "Feature" as const,
+        properties: { surfaceClass: s.surfaceClass },
+        geometry: {
+          type: "LineString" as const,
+          coordinates: decodePolyline(s.polyline),
+        },
+      })),
+    }),
+    [routeSurface],
+  );
+  const showSurface = !liveJourney && (routeSurface?.length ?? 0) > 0;
 
   const allPoints: [number, number][] = useMemo(
     () => [
@@ -1176,6 +1200,78 @@ export function MapView({
           />
         </Source>
       )}
+
+      {/* Surface overlay (walk/cycle): recolours the route by PCN / sheltered /
+          plain, on top of the base line. Plain is a separate dashed layer —
+          line-dasharray can't be data-driven in MapLibre. */}
+      {showSurface && (
+        <Source id="route-surface" type="geojson" data={surfaceGeoJSON}>
+          <Layer
+            id="route-surface-plain"
+            type="line"
+            filter={["==", ["get", "surfaceClass"], "plain"]}
+            layout={{ "line-cap": "round", "line-join": "round" }}
+            paint={{
+              "line-color": "#9aa0a6",
+              "line-width": 5,
+              "line-opacity": 0.9,
+              "line-dasharray": [1, 1.6],
+            }}
+          />
+          <Layer
+            id="route-surface-quality"
+            type="line"
+            filter={["!=", ["get", "surfaceClass"], "plain"]}
+            layout={{ "line-cap": "round", "line-join": "round" }}
+            paint={{
+              "line-color": [
+                "match",
+                ["get", "surfaceClass"],
+                "shelter",
+                "#378add",
+                "pcn",
+                "#1d9e75",
+                "#9aa0a6",
+              ],
+              "line-width": 5,
+              "line-opacity": 0.95,
+            }}
+          />
+        </Source>
+      )}
+
+      {/* Surface legend — only the classes this route actually contains, so a
+          cycle route (no shelter) or an all-PCN route reads honestly. Sits just
+          above the bottom sheet on mobile. */}
+      {showSurface &&
+        !follow &&
+        (() => {
+          const present = new Set(
+            (routeSurface ?? []).map((s) => s.surfaceClass),
+          );
+          const items = [
+            { key: "pcn", c: "#1d9e75", label: "Park connector" },
+            { key: "shelter", c: "#378add", label: "Sheltered" },
+            { key: "plain", c: "#9aa0a6", label: "Roadside" },
+          ].filter((it) => present.has(it.key as RouteSurfaceSpan["surfaceClass"]));
+          if (items.length < 2) return null;
+          return (
+            <div
+              className="absolute left-[10px] z-[1] flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 px-2.5 py-1.5 text-[10px] font-medium text-ripple-muted shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm"
+              style={{ bottom: bottomInset + 12 }}
+            >
+              {items.map((it) => (
+                <span key={it.key} className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-[3px] w-4 rounded-full"
+                    style={{ background: it.c }}
+                  />
+                  {it.label}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
 
       {origin && (
         <PinMarker point={origin} color={TRANSIT_COLORS.bus} label="A" />

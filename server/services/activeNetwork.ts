@@ -271,6 +271,44 @@ export function routeCoverage(coords: Pt[], grid: SegmentGrid): Coverage {
   };
 }
 
+export type SurfaceClass = "pcn" | "shelter" | "plain";
+
+/**
+ * Split a route into consecutive runs classified by surface quality, for a
+ * coloured map overlay. Sampled densely along the path (so runs are smooth),
+ * then grouped; each run shares its boundary point with the next so the drawn
+ * line stays continuous. Shelter wins over PCN on overlap — rain cover is the
+ * more actionable comfort cue than greenery.
+ */
+export function classifyRoute(
+  coords: Pt[],
+  pcnGrid: SegmentGrid | null,
+  shelterGrid: SegmentGrid | null,
+): { surfaceClass: SurfaceClass; pts: Pt[] }[] {
+  const pts = samplePath(coords);
+  if (pts.length < 2) return [];
+  const classOf = (p: Pt): SurfaceClass =>
+    shelterGrid && shelterGrid.isNear(p)
+      ? "shelter"
+      : pcnGrid && pcnGrid.isNear(p)
+        ? "pcn"
+        : "plain";
+  const runs: { surfaceClass: SurfaceClass; pts: Pt[] }[] = [];
+  let cur = classOf(pts[0]);
+  let acc: Pt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const c = classOf(pts[i]);
+    acc.push(pts[i]);
+    if (c !== cur) {
+      runs.push({ surfaceClass: cur, pts: acc });
+      acc = [pts[i]]; // shared boundary keeps the drawn line continuous
+      cur = c;
+    }
+  }
+  if (acc.length >= 2) runs.push({ surfaceClass: cur, pts: acc });
+  return runs;
+}
+
 export function comfortLabel(
   pct: number,
   mode: "walk" | "cycle" = "cycle",
