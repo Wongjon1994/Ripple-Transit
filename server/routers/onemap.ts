@@ -675,6 +675,15 @@ export async function planTransit(
     const key = primary[transitPriority];
     itineraries.sort((a, b) => key(a) - key(b) || a.duration - b.duration);
   }
+  // Drop non-contenders: an option more than 2× the fastest is padding, not a
+  // real alternative (e.g. a 1h51m bus when the MRT is 36m). Google shows the
+  // sensible ways there, not everything — so neither do we. Only trims when a
+  // genuinely fast option exists; if every option is slow, none are dropped.
+  if (itineraries.length > 1) {
+    const fastest = Math.min(...itineraries.map((it) => it.duration));
+    itineraries = itineraries.filter((it) => it.duration <= fastest * 2);
+  }
+
   // Return up to 8 (was 5) so the client can offer "See more" for
   // comprehensiveness — the top few lead, the rest sit behind the fold.
   itineraries = itineraries.slice(0, 8);
