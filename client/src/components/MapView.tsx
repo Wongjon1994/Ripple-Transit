@@ -204,6 +204,7 @@ export function MapView({
   corridor = false,
   itinerary,
   livePosition,
+  heading,
   pitch = 0,
   bearing = 0,
   follow,
@@ -224,6 +225,10 @@ export function MapView({
   corridor?: boolean;
   itinerary: Itinerary | null;
   livePosition?: LatLng | null;
+  /** Travel heading (deg, compass) at the live position — renders the dot as a
+   *  direction arrow (like Google) instead of a plain circle. Null = no reliable
+   *  heading, show the circle. */
+  heading?: number | null;
   /** Tilt (deg) — non-zero drives the 3D walk view. */
   pitch?: number;
   /** Map bearing (deg) — heading to follow during navigation. */
@@ -1420,17 +1425,51 @@ export function MapView({
           latitude={livePosition.lat}
           anchor="center"
         >
-          <div
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: "50%",
-              background: "#2563eb",
-              border: "3px solid white",
-              boxShadow:
-                "0 0 0 4px rgba(37,99,235,.3),0 1px 4px rgba(0,0,0,.4)",
-            }}
-          />
+          {heading != null ? (
+            // Direction arrow — the dot stays put (svg centre) while the
+            // arrowhead points your travel heading. Rotated in SCREEN space
+            // (heading − map bearing) so it stays upright and legible: in the
+            // heading-up follow view that's 0° (points up), in a north-up view
+            // it points to the compass heading.
+            <svg
+              width="34"
+              height="34"
+              viewBox="0 0 34 34"
+              aria-label="Your location and heading"
+              style={{
+                transform: `rotate(${heading - bearing}deg)`,
+                filter: "drop-shadow(0 1px 3px rgba(0,0,0,.4))",
+              }}
+            >
+              <path
+                d="M17 3 L24 15 L17 12 L10 15 Z"
+                fill="#2563eb"
+                stroke="#fff"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+              <circle
+                cx="17"
+                cy="17"
+                r="6.5"
+                fill="#2563eb"
+                stroke="#fff"
+                strokeWidth="3"
+              />
+            </svg>
+          ) : (
+            <div
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: "50%",
+                background: "#2563eb",
+                border: "3px solid white",
+                boxShadow:
+                  "0 0 0 4px rgba(37,99,235,.3),0 1px 4px rgba(0,0,0,.4)",
+              }}
+            />
+          )}
         </Marker>
       )}
     </MapGL>

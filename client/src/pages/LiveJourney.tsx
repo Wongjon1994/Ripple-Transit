@@ -529,7 +529,10 @@ export function LiveJourney() {
           <span className="data-voice font-semibold text-brand">
             {arrivalClock}
           </span>
-          <span className="text-ripple-muted"> · {remainingMin} min left</span>
+          <span className="text-ripple-muted">
+            {" "}
+            · {fmtDuration(remainingMin * 60)} left
+          </span>
         </div>
         <button
           onClick={() => end()}
@@ -546,6 +549,7 @@ export function LiveJourney() {
           destination={journey.destination}
           itinerary={journey.itinerary}
           livePosition={displayPosition}
+          heading={onPath && snap ? snap.bearing : null}
           fitPoints={fitPoints}
           liveJourney
           viewToggle={{
@@ -691,7 +695,7 @@ export function LiveJourney() {
               </div>
             </div>
             <p className="text-xs text-ripple-muted">
-              Your original plan had about {remainingMin} min left.
+              Your original plan had about {fmtDuration(remainingMin * 60)} left.
             </p>
             <div className="flex gap-2">
               <Button
