@@ -6,7 +6,6 @@ import {
   Footprints,
   Bike,
   ChevronDown,
-  ChevronRight,
   Search,
   Compass,
 } from "lucide-react";
@@ -168,12 +167,11 @@ export function Home() {
     routeParams,
   ]);
 
-  // Mobile bottom sheet: three snap heights (fraction of viewport). Peek shows
-  // just the search form so the map gets most of the screen; expands to half
-  // once results arrive, and can be dragged to full via the grab handle.
-  const SNAPS = [0.42, 0.62, 0.9];
-  const [snapIdx, setSnapIdx] = useState(0);
-  const [dragH, setDragH] = useState<number | null>(null);
+  // Mobile bottom sheet: ONE fixed height (48vh) — a bigger map plus enough for
+  // the first fold (summary → tabs → advisory → first card); the rest scrolls
+  // inside with the From → To header pinned. Collapse-to-map is a chevron in the
+  // summary corner (no grab handle, no multi-snap drag).
+  const SHEET_FRAC = 0.48;
   const [isMobile, setIsMobile] = useState(false);
   // Collapse the whole planning panel to a full-screen map for zooming/panning
   // Singapore — a floating pill brings it back. A fresh landing starts
@@ -185,7 +183,6 @@ export function Home() {
   // "Nearby places" is discovery, not the main task — collapsed behind a CTA so
   // the route results are what the eye lands on first.
   const [nearestOpen, setNearestOpen] = useState(false);
-  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -504,11 +501,6 @@ export function Home() {
     setStops((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   }
 
-  // Rise to the half snap when results first arrive.
-  useEffect(() => {
-    if (routeParams) setSnapIdx((i) => Math.max(i, 1));
-  }, [routeParams]);
-
   // While auto-synced, tick Depart date/time with the device clock — and keep
   // an active search's params current too, so results refresh with live
   // timings each minute and re-rank themselves (server sorts fastest-first).
@@ -529,49 +521,13 @@ export function Home() {
     return () => window.clearInterval(id);
   }, [timeIsAuto]);
 
-  const sheetHeight =
-    dragH != null
-      ? `${dragH}px`
-      : `${Math.round(SNAPS[snapIdx] * 100)}vh`;
-
-  // Height the bottom sheet obscures — the map's Pulse panel caps itself above
-  // it so it's never clipped. Only the mobile sheet overlays the map; the
-  // desktop sidebar sits beside it, and a collapsed panel hides the sheet.
+  // One fixed sheet height. The Pulse panel caps itself above it (bottomInset)
+  // so it's never clipped; only the mobile sheet overlays the map (the desktop
+  // sidebar sits beside it, and a collapsed panel hides the sheet).
   const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
+  const sheetHeight = `${Math.round(SHEET_FRAC * 100)}vh`;
   const mapBottomInset =
-    isMobile && !panelCollapsed
-      ? Math.round(dragH ?? SNAPS[snapIdx] * viewportH)
-      : 0;
-
-  function onHandleDown(e: React.PointerEvent) {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = {
-      startY: e.clientY,
-      startH: SNAPS[snapIdx] * window.innerHeight,
-    };
-  }
-  function onHandleMove(e: React.PointerEvent) {
-    if (!dragRef.current) return;
-    const delta = dragRef.current.startY - e.clientY; // up = grow
-    const h = dragRef.current.startH + delta;
-    const min = SNAPS[0] * window.innerHeight * 0.7;
-    const max = SNAPS[SNAPS.length - 1] * window.innerHeight;
-    setDragH(Math.max(min, Math.min(max, h)));
-  }
-  function onHandleUp(e: React.PointerEvent) {
-    e.currentTarget.releasePointerCapture(e.pointerId);
-    if (dragH != null) {
-      const frac = dragH / window.innerHeight;
-      let nearest = 0;
-      for (let i = 1; i < SNAPS.length; i++) {
-        if (Math.abs(SNAPS[i] - frac) < Math.abs(SNAPS[nearest] - frac))
-          nearest = i;
-      }
-      setSnapIdx(nearest);
-    }
-    dragRef.current = null;
-    setDragH(null);
-  }
+    isMobile && !panelCollapsed ? Math.round(SHEET_FRAC * viewportH) : 0;
 
   return (
     <div className="relative h-full md:flex md:overflow-hidden">
@@ -584,28 +540,10 @@ export function Home() {
           panelCollapsed && "hidden",
         )}
       >
-        {/* Grab handle (mobile only) — drag to resize the sheet. The collapse
-            chevron (both platforms) tucks the whole panel away. */}
-        <div className="sticky top-0 z-10 flex shrink-0 items-center bg-[var(--bg)] pb-1 pt-2">
-          <div
-            onPointerDown={onHandleDown}
-            onPointerMove={onHandleMove}
-            onPointerUp={onHandleUp}
-            className="flex flex-1 cursor-grab touch-none justify-center active:cursor-grabbing md:cursor-default"
-          >
-            <span className="h-1 w-10 rounded-full bg-ripple-muted/40 md:hidden" />
-          </div>
-          <button
-            type="button"
-            onClick={() => setPanelCollapsed(true)}
-            aria-label="Collapse panel for full map"
-            title="Collapse for full map"
-            className="absolute right-3 flex h-7 w-7 items-center justify-center rounded-full text-ripple-muted hover:bg-ripple-muted/10 hover:text-[var(--fg)]"
-          >
-            <ChevronDown size={18} className="md:hidden" />
-            <ChevronRight size={18} className="hidden md:block" />
-          </button>
-        </div>
+        {/* No grab-handle header row anymore (no drag / no multi-snap) — the map
+            gets that ~40px back. Collapse-to-map is a chevron laid out inline in
+            the summary corner (next to Edit) or the form's From row, passed via
+            onCollapse below. */}
         <div
           className={cn(
             "px-4 pb-3 pt-2 md:pt-3",
@@ -615,7 +553,7 @@ export function Home() {
             routeParams &&
               !editingSearch &&
               !cardExpanded &&
-              "sticky top-9 z-[9] border-b border-[var(--border)] bg-[var(--bg)]",
+              "sticky top-0 z-[9] border-b border-[var(--border)] bg-[var(--bg)]",
           )}
         >
           {routeParams && !editingSearch ? (
@@ -628,6 +566,7 @@ export function Home() {
               departMode={departMode}
               leaveByLabel={leaveByLabel}
               onEdit={() => setEditingSearch(true)}
+              onCollapse={() => setPanelCollapsed(true)}
             />
           ) : (
           <SearchPanel
@@ -709,6 +648,7 @@ export function Home() {
               setStops([{ text: destination, point: null }]);
             }}
             showShortcuts={!routeParams}
+            onCollapse={() => setPanelCollapsed(true)}
           />
           )}
         </div>

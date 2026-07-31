@@ -200,6 +200,7 @@ export function SearchPanel({
   onPickSavedLocation,
   onPickFavourite,
   showShortcuts = true,
+  onCollapse,
 }: {
   fromText: string;
   /** Destinations in visit order (1–MAX_STOPS); the last one is "To". */
@@ -229,6 +230,9 @@ export function SearchPanel({
   onPickSavedLocation: (p: Place) => void;
   onPickFavourite: (origin: string, destination: string) => void;
   showShortcuts?: boolean;
+  /** Collapse the whole panel to the full-screen map — a chevron on the From
+   *  row (the sheet's grab-handle header row was removed). */
+  onCollapse?: () => void;
 }) {
   const { user } = useAuth();
   const saved = trpc.savedLocations.list.useQuery(undefined, {
@@ -289,19 +293,33 @@ export function SearchPanel({
           onSelect={onFromSelect}
           reserveTrailing={stops.length === 1}
           labelAction={
-            <button
-              type="button"
-              onClick={useCurrentLocation}
-              disabled={locating}
-              className="flex items-center gap-1 text-xs font-medium text-brand hover:underline disabled:opacity-60"
-            >
-              {locating ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <LocateFixed size={12} />
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={useCurrentLocation}
+                disabled={locating}
+                className="flex items-center gap-1 text-xs font-medium text-brand hover:underline disabled:opacity-60"
+              >
+                {locating ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <LocateFixed size={12} />
+                )}
+                Use my location
+              </button>
+              {onCollapse && (
+                <button
+                  type="button"
+                  onClick={onCollapse}
+                  aria-label="Collapse panel for full map"
+                  title="Collapse for full map"
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-ripple-muted hover:bg-ripple-muted/10 hover:text-[var(--fg)]"
+                >
+                  <ChevronDown size={16} className="md:hidden" />
+                  <ChevronRight size={16} className="hidden md:block" />
+                </button>
               )}
-              Use my location
-            </button>
+            </span>
           }
         />
         {stops.length === 1 && (
@@ -556,6 +574,7 @@ export function SearchSummaryBar({
   departMode,
   leaveByLabel,
   onEdit,
+  onCollapse,
 }: {
   fromText: string;
   stops: { text: string }[];
@@ -565,6 +584,9 @@ export function SearchSummaryBar({
   departMode: "leave" | "arrive";
   leaveByLabel?: string | null;
   onEdit: () => void;
+  /** Collapse the whole panel to the full-screen map (replaces the old header
+   *  grab-handle row). Rendered as a chevron next to Edit. */
+  onCollapse?: () => void;
 }) {
   const points = [
     { text: fromText || "From", color: "#3b82f6" },
@@ -590,13 +612,27 @@ export function SearchSummaryBar({
             </div>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="flex shrink-0 items-center gap-1 text-xs font-semibold text-brand hover:underline"
-        >
-          <Pencil size={13} /> Edit
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
+          >
+            <Pencil size={13} /> Edit
+          </button>
+          {onCollapse && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              aria-label="Collapse panel for full map"
+              title="Collapse for full map"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-ripple-muted hover:bg-ripple-muted/10 hover:text-[var(--fg)]"
+            >
+              <ChevronDown size={16} className="md:hidden" />
+              <ChevronRight size={16} className="hidden md:block" />
+            </button>
+          )}
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-1.5 border-t border-[var(--border)] pt-2 text-xs text-ripple-muted">
         <CalendarClock size={13} className="shrink-0 text-brand" />
