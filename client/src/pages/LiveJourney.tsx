@@ -476,9 +476,23 @@ export function LiveJourney() {
         end: journey!.destination,
         mode: "TRANSIT",
       });
+      // Itineraries come back fastest-first. Only offer one that's actually a
+      // sensible alternative — near last service OneMap returns "wait until the
+      // first morning bus" plans (8h+), which are never a "better route". Allow
+      // some slowdown over the optimistic original remaining (you may have just
+      // missed a connection), but reject anything dramatically slower.
       const best = res.plan.itineraries[0];
-      if (best) setReroute({ itinerary: best, start });
-      else toast.error("No alternative route found from here.");
+      const origSec = remainingMin * 60;
+      const capSec = Math.max(origSec * 2, origSec + 30 * 60);
+      if (best && best.duration <= capSec) {
+        setReroute({ itinerary: best, start });
+      } else if (best) {
+        toast.error(
+          "No sensible route from here right now — services may have ended for the night.",
+        );
+      } else {
+        toast.error("No alternative route found from here.");
+      }
     } catch {
       toast.error("Couldn't recalculate — try again.");
     } finally {
@@ -685,7 +699,7 @@ export function LiveJourney() {
       <Modal
         open={!!reroute}
         onClose={() => setReroute(null)}
-        title="Better route from here"
+        title="Alternative from here"
       >
         {reroute && (
           <div className="flex flex-col gap-3">

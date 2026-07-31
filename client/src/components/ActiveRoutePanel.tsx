@@ -369,12 +369,9 @@ export function ActiveRoutePanel({
       {mode === "walk" && liveBoardStopCode && (
         <LiveArrivals busStopCode={liveBoardStopCode} />
       )}
-
-      <p className="px-1 text-[11px] leading-relaxed text-ripple-muted">
-        Routes by OneMap · park-connector coverage from NParks & LTA open data ·
-        shelter coverage from OpenStreetMap covered walkways · calories are an
-        estimate.
-      </p>
+      {/* Data-source attribution lives in About (OneMap routing · NParks/LTA
+          park connectors · OSM sheltered walkways) rather than under every
+          walk/cycle card — it was clutter on the answer. */}
     </div>
   );
 }
