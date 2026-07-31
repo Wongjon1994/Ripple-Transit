@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, type ReactNode } from "react";
 import { useLocation, Link } from "wouter";
 import {
   Footprints,
@@ -572,16 +572,13 @@ export function LiveJourney() {
             progress (turn-by-turn for a walk/cycle — including a transit access
             walk — plus current/next stepper and the single most decision-
             relevant live fact), then the whole journey folded into an expander. */}
-        {leg && (leg.type === "walk" || leg.type === "cycle") && (
-          <WalkGuidance leg={leg} position={geo.position} color={legColor} />
+        {leg && (
+          <LegHero leg={leg} remainingM={remainingM} legColor={legColor} />
         )}
 
-        <CurrentNextStepper
-          leg={leg}
-          nextLeg={nextLeg}
-          legColor={legColor}
-          remainingM={remainingM}
-        />
+        {leg && (leg.type === "walk" || leg.type === "cycle") && (
+          <WalkGuidance leg={leg} position={geo.position} />
+        )}
 
         {risk ? (
           <RiskBanner
@@ -918,6 +915,158 @@ const SNAP_MAX_M = 32; // snap the dot to the line only when basically on it
 const OFF_ROUTE_M = 70; // drift beyond this → "off route"
 const ON_ROUTE_M = 45; // ...come back within this to clear it (hysteresis)
 
+// ── The unified live-insight vocabulary ───────────────────────
+// One tinted row shared by every live signal — guidance, live status, risk, and
+// (next) shelter / bike-stand / PCN alerts. Each future contextual alert is just
+// "render one more <InsightCard>", so they all read as one language. Tones reuse
+// the app's theme-aware wayfinding/status tokens (info=brand cyan, blue=bus,
+// good/amber/red = the StatusBadge vocabulary) so they hold contrast in both
+// themes without hard-coded hex.
+type InsightTone = "good" | "info" | "amber" | "blue" | "red";
+const INSIGHT_TONE: Record<
+  InsightTone,
+  { wrap: string; icon: string; eyebrow: string }
+> = {
+  good: { wrap: "border-ok/30 bg-ok/10", icon: "bg-ok", eyebrow: "text-ok" },
+  info: {
+    wrap: "border-brand/30 bg-brand/10",
+    icon: "bg-brand",
+    eyebrow: "text-brand",
+  },
+  amber: {
+    wrap: "border-warning/40 bg-warning/10",
+    icon: "bg-warning",
+    eyebrow: "text-warning",
+  },
+  blue: { wrap: "border-bus/30 bg-bus/10", icon: "bg-bus", eyebrow: "text-bus" },
+  red: {
+    wrap: "border-error/30 bg-error/10",
+    icon: "bg-error",
+    eyebrow: "text-error",
+  },
+};
+
+/**
+ * A tone-tinted insight row: a circle icon in the tone colour, a mono eyebrow
+ * label, and a bold one-line title (plus an optional mono sub-line). The single
+ * building block for every live insight in the sheet — reused so guidance, live
+ * status, risk and future shelter/bike/PCN alerts share one visual grammar.
+ */
+function InsightCard({
+  tone,
+  eyebrow,
+  title,
+  sub,
+  Icon,
+  onClick,
+  className,
+}: {
+  tone: InsightTone;
+  eyebrow: string;
+  title: ReactNode;
+  sub?: ReactNode;
+  Icon: typeof ArrowUp;
+  onClick?: () => void;
+  className?: string;
+}) {
+  const t = INSIGHT_TONE[tone];
+  const Wrapper = onClick ? "button" : "div";
+  return (
+    <Wrapper
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg border p-3 text-left",
+        t.wrap,
+        onClick && "transition-opacity hover:opacity-90",
+        className,
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white",
+          t.icon,
+        )}
+      >
+        <Icon size={20} strokeWidth={2.5} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className={cn("eyebrow text-[10px]", t.eyebrow)}>{eyebrow}</div>
+        <div className="truncate text-sm font-semibold text-[var(--fg)]">
+          {title}
+        </div>
+        {sub != null && (
+          <div className="data-voice mt-0.5 truncate text-[11px] text-ripple-muted">
+            {sub}
+          </div>
+        )}
+      </div>
+    </Wrapper>
+  );
+}
+
+/** Short mode label for the leg hero eyebrow — carries the bus number / line
+ *  so the destination line below can stay purely about where you're headed. */
+function modeWord(leg: RouteLeg): string {
+  if (leg.type === "walk") return "Walk";
+  if (leg.type === "cycle") return "Cycle";
+  if (leg.type === "bus") return `Bus ${leg.busNo ?? ""}`.trim();
+  return `${leg.lineCode ? leg.lineCode + " line" : lineName(leg.lineCode)}`;
+}
+
+/**
+ * The current-leg hero — mirrors the plan-route walk/cycle card: mono eyebrow
+ * ("Current leg · Walk"), a serif time hero paired with the mono distance still
+ * to cover, then the destination. The mode icon sits in a haloed node so the
+ * card still anchors the "you are here" step. shadow-card lifts it above the
+ * flatter insight rows.
+ */
+function LegHero({
+  leg,
+  remainingM,
+  legColor,
+}: {
+  leg: RouteLeg;
+  remainingM: number;
+  legColor: string;
+}) {
+  const onFoot = leg.type === "walk" || leg.type === "cycle";
+  const instr = instruction(leg);
+  return (
+    <div className="mb-3 flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3.5 shadow-[var(--shadow-card)]">
+      <span
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white"
+        style={{ background: legColor, boxShadow: `0 0 0 5px ${legColor}33` }}
+      >
+        {legIcon(leg.type, 22)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="eyebrow text-[10px] text-ripple-muted">
+          Current leg · {modeWord(leg)}
+        </div>
+        <div className="mt-0.5 flex items-baseline gap-2">
+          <span className="font-serif text-[26px] font-bold leading-none tracking-tight">
+            {fmtDuration(leg.duration)}
+          </span>
+          {onFoot && (
+            <span className="data-voice text-sm font-semibold text-ripple-muted">
+              {fmtDistance(remainingM)}
+            </span>
+          )}
+        </div>
+        <div className="mt-1 truncate text-sm text-ripple-muted">
+          {instr.detail}
+        </div>
+        {leg.type === "mrt" && leg.exitName && (
+          <div className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+            <DoorOpen size={12} /> {leg.exitName}
+            {leg.exitDistanceM != null && ` · ${fmtDistance(leg.exitDistanceM)}`}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Live walk/cycle guidance. Rather than a jumpy distance-to-next-turn (which
  * flickers even when you're on the right path), this keeps the focus on ONE
@@ -928,11 +1077,9 @@ const ON_ROUTE_M = 45; // ...come back within this to clear it (hysteresis)
 function WalkGuidance({
   leg,
   position,
-  color,
 }: {
   leg: RouteLeg;
   position: LatLng | null;
-  color: string;
 }) {
   const q = trpc.onemap.walkSteps.useQuery(
     {
@@ -979,100 +1126,25 @@ function WalkGuidance({
   const nextTurn = steps[Math.min(seg + 1, steps.length - 1)];
   const TurnIcon = nextTurn ? TURN_ICON[nextTurn.turn] : Navigation;
 
+  if (off)
+    return (
+      <InsightCard
+        tone="amber"
+        eyebrow="Off route"
+        title={`${drift != null ? `~${fmtDistance(Math.round(drift))} away — ` : ""}head back to the path`}
+        Icon={TriangleAlert}
+        className="mb-3"
+      />
+    );
   return (
-    <div
-      className={cn(
-        "mb-3 flex items-center gap-3 rounded-lg border p-3",
-        off
-          ? "border-warning/50 bg-warning/10"
-          : "border-[var(--border)] bg-[var(--bg)]",
-      )}
-    >
-      <span
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
-        style={{ background: off ? "#f59e0b" : color }}
-      >
-        {off ? (
-          <TriangleAlert size={22} strokeWidth={2.5} />
-        ) : (
-          <TurnIcon size={22} strokeWidth={2.5} />
-        )}
-      </span>
-      <div className="min-w-0 flex-1">
-        {off ? (
-          <>
-            <div className="text-sm font-semibold text-warning">
-              Off your route
-            </div>
-            <div className="text-xs text-ripple-muted">
-              {drift != null ? `~${fmtDistance(Math.round(drift))} away — ` : ""}
-              head back to the path
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center gap-1.5 text-sm font-semibold">
-              On route
-              {q.isLoading && (
-                <Loader2 size={12} className="animate-spin text-ripple-muted" />
-              )}
-            </div>
-            {nextTurn && (
-              <div className="mt-0.5 truncate text-xs text-ripple-muted">
-                Next: {nextTurn.instruction}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CurrentNextStepper({
-  leg,
-  nextLeg,
-  legColor,
-  remainingM,
-}: {
-  leg: RouteLeg | undefined;
-  nextLeg: RouteLeg | undefined;
-  legColor: string;
-  remainingM: number;
-}) {
-  if (!leg) return null;
-  const instr = instruction(leg);
-  const onFoot = leg.type === "walk" || leg.type === "cycle";
-  return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <span
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
-          style={{ background: legColor, boxShadow: `0 0 0 5px ${legColor}33` }}
-        >
-          {legIcon(leg.type)}
-        </span>
-        {nextLeg && (
-          <span className="mt-1 min-h-[14px] w-0.5 flex-1 bg-[var(--border)]" />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-base font-semibold">{instr.title}</div>
-        <div className="text-sm text-ripple-muted">{instr.detail}</div>
-        {leg.type === "mrt" && leg.exitName && (
-          <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
-            <DoorOpen size={12} /> {leg.exitName}
-            {leg.exitDistanceM != null && ` · ${fmtDistance(leg.exitDistanceM)}`}
-          </div>
-        )}
-        <div className="data-voice mt-1 flex items-center gap-1.5 text-xs text-ripple-muted">
-          <Navigation size={12} />
-          {onFoot
-            ? `${fmtDistance(remainingM)} · ~${fmtDuration(leg.duration)}`
-            : fmtDuration(leg.duration)}
-        </div>
-      </div>
-    </div>
+    <InsightCard
+      tone="good"
+      eyebrow="On route"
+      title={nextTurn ? nextTurn.instruction : "Continue on your path"}
+      sub={q.isLoading ? "finding your next turn…" : undefined}
+      Icon={TurnIcon}
+      className="mb-3"
+    />
   );
 }
 
@@ -1101,18 +1173,14 @@ function LiveStatus({
 }) {
   if (!busLeg || busMin == null) return null;
   return (
-    <div className="mt-2.5 flex items-center gap-2.5 rounded-lg bg-bus/10 px-3 py-2.5">
-      <Clock size={18} className="shrink-0 text-bus" />
-      <div className="min-w-0">
-        <div className="text-sm font-semibold text-bus">
-          Bus {busLeg.busNo}{" "}
-          {busMin === 0 ? "arriving now" : `arrives in ${busMin} min`}
-        </div>
-        <div className="data-voice text-[11px] text-bus/80">
-          {busLeg.startBusStop ? `at ${busLeg.startBusStop} · ` : ""}live
-        </div>
-      </div>
-    </div>
+    <InsightCard
+      tone="blue"
+      eyebrow="Live arrival"
+      title={`Bus ${busLeg.busNo} ${busMin === 0 ? "arriving now" : `arrives in ${busMin} min`}`}
+      sub={`${busLeg.startBusStop ? `at ${busLeg.startBusStop} · ` : ""}live`}
+      Icon={Clock}
+      className="mt-2.5"
+    />
   );
 }
 
@@ -1128,24 +1196,18 @@ function RiskBanner({
   onReroute: () => void;
 }) {
   const miss = risk.level === "miss";
-  const tone = miss
-    ? { bg: "bg-error/10", border: "border-error/30", fg: "text-error" }
-    : { bg: "bg-warning/10", border: "border-warning/30", fg: "text-warning" };
   return (
-    <div
-      className={cn("mt-2.5 rounded-lg border p-2.5", tone.bg, tone.border)}
-    >
-      <div className="flex items-start gap-2">
-        <TriangleAlert size={18} className={cn("shrink-0", tone.fg)} />
-        <div className="min-w-0">
-          <div className={cn("text-sm font-semibold", tone.fg)}>
-            {risk.headline}
-          </div>
-          <div className={cn("data-voice text-[11px] opacity-80", tone.fg)}>
-            {risk.caption}
-          </div>
-        </div>
-      </div>
+    <div className="mt-2.5">
+      {/* The escalated state speaks the same InsightCard language as the calm
+          live status it replaces — only the tone (red/amber) and the attached
+          re-route CTA below mark it as urgent. */}
+      <InsightCard
+        tone={miss ? "red" : "amber"}
+        eyebrow={miss ? "Miss risk" : "Running tight"}
+        title={risk.headline}
+        sub={risk.caption}
+        Icon={TriangleAlert}
+      />
       <button
         onClick={onReroute}
         disabled={loading}
