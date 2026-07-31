@@ -8,6 +8,7 @@ import {
   Navigation,
   X,
   ChevronLeft,
+  ChevronDown,
   ArrowRight,
   ArrowLeft,
   ArrowUp,
@@ -219,7 +220,10 @@ export function LiveJourney() {
   } | null>(null);
   const [rerouteLoading, setRerouteLoading] = useState(false);
   // Map + sheet view: the current leg (tight) or the whole remaining route.
-  const [viewMode, setViewMode] = useState<"leg" | "route">("leg");
+  // One unified live mode: navigation always shows; the whole journey is an
+  // inline expander under it (no step-by-step ↔ full-route toggle, no camera
+  // swap — the map always follows the current leg).
+  const [routeOpen, setRouteOpen] = useState(false);
   // Re-render periodically so the ETA and live countdowns stay fresh even while
   // the user is stationary (waiting at a stop) and GPS isn't updating.
   const [, setTick] = useState(0);
@@ -399,7 +403,7 @@ export function LiveJourney() {
   const walkCamera:
     | { pitch: number; bearing: number; follow: LatLng; followZoom: number }
     | Record<string, never> =
-    viewMode === "leg" && (leg?.type === "walk" || leg?.type === "cycle")
+    leg?.type === "walk" || leg?.type === "cycle"
       ? {
           pitch: 55,
           bearing:
@@ -455,17 +459,13 @@ export function LiveJourney() {
     traffic: legTraffic.data ?? [],
   });
 
-  // Camera target (§2): full route fits the remaining journey; current-leg mode
-  // fits the current transit leg (walk/cycle use the follow camera above).
-  const remainingLegPoints = legs
-    .slice(journey.currentLeg)
-    .flatMap((l) => [l.startPoint, l.endPoint]);
+  // Camera (§2): the map always follows the current leg — the tilted walk/cycle
+  // follow above, or a fit to the current transit leg here. (No full-route
+  // camera mode; the whole journey is a panel expander instead.)
   const fitPoints: LatLng[] | null =
-    viewMode === "route"
-      ? [...remainingLegPoints, journey.destination]
-      : leg && leg.type !== "walk" && leg.type !== "cycle"
-        ? [leg.startPoint, leg.endPoint]
-        : null;
+    leg && leg.type !== "walk" && leg.type !== "cycle"
+      ? [leg.startPoint, leg.endPoint]
+      : null;
 
   async function handleReroute() {
     const start = geo.position ?? leg?.startPoint ?? journey!.origin;
@@ -552,11 +552,6 @@ export function LiveJourney() {
           heading={onPath && snap ? snap.bearing : null}
           fitPoints={fitPoints}
           liveJourney
-          viewToggle={{
-            mode: viewMode,
-            onChange: () =>
-              setViewMode((m) => (m === "leg" ? "route" : "leg")),
-          }}
           {...walkCamera}
         />
         {!geo.supported && (
@@ -573,43 +568,60 @@ export function LiveJourney() {
 
       {/* Guidance sheet */}
       <div className="max-h-[55%] shrink-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--surface)] p-4">
-        {viewMode === "route" && (
-          <div className="mb-2 eyebrow text-ripple-muted">Full route</div>
+        {/* One unified live view: the navigation guidance for the leg in
+            progress (turn-by-turn for a walk/cycle — including a transit access
+            walk — plus current/next stepper and the single most decision-
+            relevant live fact), then the whole journey folded into an expander. */}
+        {leg && (leg.type === "walk" || leg.type === "cycle") && (
+          <WalkGuidance leg={leg} position={geo.position} color={legColor} />
         )}
 
-        {viewMode === "route" ? (
-          <FullStepper legs={legs} current={journey.currentLeg} />
+        <CurrentNextStepper
+          leg={leg}
+          nextLeg={nextLeg}
+          legColor={legColor}
+          remainingM={remainingM}
+        />
+
+        {risk ? (
+          <RiskBanner
+            risk={risk}
+            loading={rerouteLoading}
+            onReroute={handleReroute}
+          />
         ) : (
-          <>
-            {/* Turn-by-turn for the walk/cycle leg in progress — applies to
-                access walks on a transit journey just as much as a full walk. */}
-            {leg && (leg.type === "walk" || leg.type === "cycle") && (
-              <WalkGuidance leg={leg} position={geo.position} color={legColor} />
-            )}
+          <LiveStatus busLeg={busLeg} busMin={busMin} />
+        )}
 
-            <CurrentNextStepper
-              leg={leg}
-              nextLeg={nextLeg}
-              legColor={legColor}
-              remainingM={remainingM}
-            />
+        {nextLeg && <NextPreview leg={nextLeg} />}
 
-            {/* Live status — the single most decision-relevant live fact,
-                promoted to its own tinted container. Escalates to an amber/red
-                risk banner (with an attached re-route CTA) when live data turns
-                the catch tight/missed or a disruption newly applies (§4). */}
-            {risk ? (
-              <RiskBanner
-                risk={risk}
-                loading={rerouteLoading}
-                onReroute={handleReroute}
+        {/* Full route — the whole journey, in place. Replaces the old separate
+            "full route" mode + its camera; tap to expand, no view switch. */}
+        {total > 1 && (
+          <div className="mt-3 border-t border-[var(--border)] pt-2.5">
+            <button
+              type="button"
+              onClick={() => setRouteOpen((o) => !o)}
+              aria-expanded={routeOpen}
+              className="flex w-full items-center justify-between hover:opacity-80"
+            >
+              <span className="eyebrow text-ripple-muted">
+                Full route · {total} legs
+              </span>
+              <ChevronDown
+                size={15}
+                className={cn(
+                  "text-ripple-muted transition-transform",
+                  routeOpen && "rotate-180",
+                )}
               />
-            ) : (
-              <LiveStatus busLeg={busLeg} busMin={busMin} />
+            </button>
+            {routeOpen && (
+              <div className="mt-2.5">
+                <FullStepper legs={legs} current={journey.currentLeg} />
+              </div>
             )}
-
-            {nextLeg && <NextPreview leg={nextLeg} />}
-          </>
+          </div>
         )}
 
         {/* Log-this-journey CTA (§ trip logging): press once to commit the
@@ -657,7 +669,7 @@ export function LiveJourney() {
         {/* Quiet secondary re-route — the default, no-risk affordance. When a
             live risk is flagged the prominent attached CTA in RiskBanner takes
             over, so this is hidden to avoid a duplicate. */}
-        {(busLeg || mrtLeg) && !risk && viewMode === "leg" && (
+        {(busLeg || mrtLeg) && !risk && (
           <button
             onClick={handleReroute}
             disabled={rerouteLoading}
