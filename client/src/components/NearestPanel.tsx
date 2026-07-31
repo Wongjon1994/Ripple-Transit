@@ -25,7 +25,6 @@ import { Link } from "wouter";
 import { StatusBadge } from "./StatusBadge.js";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
-import { keepPreviousData } from "@tanstack/react-query";
 import { usePrefs } from "../lib/prefs.js";
 import { cn } from "../lib/utils.js";
 import type {
@@ -249,7 +248,10 @@ export function NearestPanel({
       enabled: !!poiCategory && anchor !== "route" && !!anchorPoint,
       staleTime: 60_000,
       retry: false,
-      placeholderData: keepPreviousData,
+      // No keepPreviousData: switching category/anchor must clear to the loader,
+      // never render the previous category's rows under the new label (which,
+      // if the new query is slow or rate-limited, looks like "it stopped
+      // working").
     },
   );
   const routeQuery = trpc.nearest.alongTheWay.useQuery(
@@ -260,7 +262,6 @@ export function NearestPanel({
       enabled: !!poiCategory && anchor === "route" && canRoute,
       staleTime: 120_000,
       retry: false,
-      placeholderData: keepPreviousData,
     },
   );
   const active = anchor === "route" ? routeQuery : pointQuery;
@@ -463,6 +464,17 @@ export function NearestPanel({
               <Loader2 size={13} className="animate-spin" /> Ranking by real
               travel time…
             </div>
+          ) : active.isError ? (
+            // Honest, recoverable failure — the nearby data sources rate-limit
+            // bursts, so a retry usually succeeds. Never leave the panel showing
+            // stale rows or a misleading "none found".
+            <button
+              onClick={() => active.refetch()}
+              className="flex w-full items-center gap-2 py-2 text-xs font-medium text-warning hover:underline"
+            >
+              <TriangleAlert size={13} className="shrink-0" />
+              Couldn’t load nearby {catDef?.label.toLowerCase()} — tap to retry
+            </button>
           ) : results.length === 0 ? (
             <p className="py-1.5 text-xs text-ripple-muted">
               No verified {catDef?.label.toLowerCase()} found{" "}

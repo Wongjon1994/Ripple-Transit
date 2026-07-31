@@ -742,31 +742,36 @@ export function Home() {
           </div>
         )}
 
-        {/* Nearby discovery — subsumed into an optional CTA (below the routes)
-            so the plan stays focused on the answer, not every feature. */}
+        {/* Nearby discovery — an optional CTA below the routes so the plan stays
+            focused on the answer. Given a merlion-gold treatment (the suite's
+            "worth-a-look" accent) so it reads as an invitation, not a buried
+            list row — but at the same py-3 height, so it never crowds the card. */}
         <div className="border-t border-[var(--border)]">
           <button
             type="button"
-            onClick={() =>
-              setNearestOpen((o) => {
-                const next = !o;
-                if (!next) {
-                  setNearestPois([]);
-                  setShowCorridor(false);
-                }
-                return next;
-              })
-            }
+            onClick={() => {
+              const next = !nearestOpen;
+              setNearestOpen(next);
+              // Clear the map overlay when collapsing (kept out of the setState
+              // updater so it isn't a side effect inside a pure reducer).
+              if (!next) {
+                setNearestPois([]);
+                setShowCorridor(false);
+              }
+            }}
             aria-expanded={nearestOpen}
-            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-ripple-muted/5"
+            className={cn(
+              "flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-gold transition-colors",
+              nearestOpen ? "bg-gold/10" : "bg-gold/[0.07] hover:bg-gold/15",
+            )}
           >
             <span className="flex items-center gap-2">
-              <Compass size={16} className="text-brand" /> Find nearby places
+              <Compass size={16} /> Find nearby places
             </span>
             <ChevronDown
               size={16}
               className={cn(
-                "text-ripple-muted transition-transform",
+                "transition-transform",
                 nearestOpen && "rotate-180",
               )}
             />
