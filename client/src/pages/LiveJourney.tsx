@@ -26,7 +26,11 @@ import {
   RotateCcw,
   Loader2,
   Leaf,
+  Umbrella,
+  CloudRain,
+  TreePine,
 } from "lucide-react";
+import { surfaceGuide } from "../lib/surfaceGuide.js";
 import { useState } from "react";
 import type { WalkStep } from "@shared/types.js";
 import { toast } from "sonner";
@@ -592,6 +596,12 @@ export function LiveJourney() {
 
         {leg && (leg.type === "walk" || leg.type === "cycle") && (
           <WalkGuidance leg={leg} position={geo.position} />
+        )}
+
+        {/* One contextual comfort layer, condition/proximity-gated: walk shelter
+            when it's wet, cycle park-connector entrance/exit as you near it. */}
+        {leg && (leg.type === "walk" || leg.type === "cycle") && leg.surface && (
+          <SurfaceInsight leg={leg} position={geo.position} />
         )}
 
         {risk ? (
@@ -1160,6 +1170,96 @@ function WalkGuidance({
       className="mb-3"
     />
   );
+}
+
+const PCN_PROXIMITY_M = 120; // surface the cycle PCN card only when a change is near
+
+/**
+ * The single contextual comfort layer for a walk/cycle leg, derived from the
+ * leg's surface spans + live position. WALK is rain-gated: only when it's wet
+ * does the shelter card appear ("Covered for the next 180 m" / "90 m to your
+ * next cover"). CYCLE is proximity-triggered: a park-connector entrance/exit
+ * card surfaces only as you approach it, then clears — impressionable, never a
+ * persistent list. Renders one InsightCard, or nothing.
+ */
+function SurfaceInsight({
+  leg,
+  position,
+}: {
+  leg: RouteLeg;
+  position: LatLng | null;
+}) {
+  // Rain gate for the walk shelter card — is it wet where you are right now?
+  // Keyed on the (stable) leg start so it doesn't refetch on every GPS move.
+  const wx = trpc.weather.current.useQuery(
+    { lat: leg.startPoint.lat, lng: leg.startPoint.lng },
+    { enabled: leg.type === "walk", staleTime: 5 * 60_000, retry: 1 },
+  );
+
+  if (!position || !leg.surface) return null;
+  const g = surfaceGuide(position, leg.surface);
+  if (!g || g.offRoute) return null;
+
+  if (leg.type === "walk") {
+    // Dry: no shelter card at all — cover only matters when you'd get wet.
+    if (!wx.data?.wet) return null;
+    if (g.currentClass === "shelter") {
+      return (
+        <InsightCard
+          tone="blue"
+          eyebrow="Sheltered"
+          title={
+            g.currentRunToEnd
+              ? "Covered the rest of the way"
+              : `Covered for the next ${fmtDistance(g.currentRunAheadM)}`
+          }
+          Icon={Umbrella}
+          className="mt-2.5"
+        />
+      );
+    }
+    return (
+      <InsightCard
+        tone="amber"
+        eyebrow="In the open"
+        title={
+          g.toShelterM != null
+            ? `${fmtDistance(g.toShelterM)} to your next cover`
+            : `No cover ahead — ${fmtDistance(g.currentRunAheadM)} in the open`
+        }
+        Icon={CloudRain}
+        className="mt-2.5"
+      />
+    );
+  }
+
+  // Cycle: only speak up near a park-connector boundary.
+  const near =
+    g.nextChange && g.nextChange.distanceM <= PCN_PROXIMITY_M
+      ? g.nextChange
+      : null;
+  if (!near) return null;
+  if (near.toClass === "pcn")
+    return (
+      <InsightCard
+        tone="good"
+        eyebrow="Park connector"
+        title={`Joining in ${fmtDistance(near.distanceM)}`}
+        Icon={TreePine}
+        className="mt-2.5"
+      />
+    );
+  if (near.fromClass === "pcn" && near.toClass === "plain")
+    return (
+      <InsightCard
+        tone="amber"
+        eyebrow="Road ahead"
+        title={`Leaving the connector in ${fmtDistance(near.distanceM)}`}
+        Icon={CornerUpRight}
+        className="mt-2.5"
+      />
+    );
+  return null;
 }
 
 /** Dimmed one-line preview of the next leg, connected to the current node. */

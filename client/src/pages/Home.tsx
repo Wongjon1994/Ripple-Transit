@@ -363,6 +363,13 @@ export function Home() {
         polyline: s.polyline,
         toName: stops[i]?.text,
         viaStopIndex: i > 0 ? i : undefined,
+        // Surface spans cover the whole route; attach to the single leg so the
+        // live journey can drive its shelter / PCN-entrance guidance. (Walk and
+        // cycle are single-destination, so there's exactly one segment.)
+        surface:
+          selectedVariant.segments.length === 1
+            ? selectedVariant.surface
+            : undefined,
       })),
     };
   }, [shownTab, selectedVariant, active.data, routeParams, stops]);

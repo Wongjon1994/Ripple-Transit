@@ -67,6 +67,10 @@ export interface RouteLeg {
    *  OneMap's pedestrian graph couldn't route out of the origin (see
    *  originIsGraphTrapped). Shown to the user as an estimate, never as fact. */
   walkEstimated?: boolean;
+  /** Walk/cycle only: the leg split into consecutive pcn / shelter / plain runs
+   *  (from classifyRoute), so the live journey can say which surface you're on
+   *  and how far to cover — powers the rain-gated shelter + PCN-entrance cards. */
+  surface?: RouteSurfaceSpan[];
 
   // mrt
   lineCode?: string;
