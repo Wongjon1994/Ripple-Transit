@@ -151,14 +151,19 @@ function add3dBuildings(map: MaplibreMap, dark: boolean) {
           // darker + warmer than CARTO's near-white ground/roads (they used to
           // share a lightness, so buildings washed out). The vertical gradient
           // plus the directional light below shade each face for solidity.
+          // Day range shifted DARKER than before: the old top (#ece4d5) was
+          // nearly white, so tall roofs blended into CARTO's near-white ground.
+          // Now even the tallest roof stays a clear mid-stone below the ground's
+          // lightness — day gets the same crisp separation night already has
+          // (where buildings read lighter than the dark ground).
           "fill-extrusion-color": [
             "interpolate",
             ["linear"],
             ["coalesce", ["get", "render_height"], 8],
             0,
-            dark ? "#2f3644" : "#cec6b7",
+            dark ? "#2f3644" : "#afa693",
             120,
-            dark ? "#4a5568" : "#ece4d5",
+            dark ? "#4a5568" : "#cfc7b6",
           ],
           // Near-opaque in light mode so the ground no longer bleeds through and
           // flattens the massing.
