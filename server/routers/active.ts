@@ -13,6 +13,7 @@ import {
   getShelterNetwork,
 } from "../services/activeNetwork.js";
 import { buildActiveMode } from "../services/activeVariants.js";
+import { bikeStandsNear } from "../services/bikeParking.js";
 import type {
   ActiveRoutesResult,
   ActiveModeRoutes,
@@ -120,5 +121,21 @@ export const activeRouter = router({
         cycleAdvisory,
         co2SavedGrams: Math.round(drivingCo2Grams(driveKm).carGrams),
       };
+    }),
+
+  /**
+   * Bike parking near a point (usually the cycle destination) from OSM. The
+   * live journey asks as you approach your stop and shows the nearest stand.
+   */
+  bikeParking: publicProcedure
+    .input(
+      z.object({
+        point: z.object({ lat: z.number(), lng: z.number() }),
+        radiusM: z.number().min(50).max(1000).optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const stands = await bikeStandsNear(input.point, input.radiusM);
+      return { stands: stands.slice(0, 5) };
     }),
 });

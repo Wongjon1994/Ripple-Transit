@@ -29,6 +29,7 @@ import {
   Umbrella,
   CloudRain,
   TreePine,
+  ParkingSquare,
 } from "lucide-react";
 import { surfaceGuide } from "../lib/surfaceGuide.js";
 import { useState } from "react";
@@ -1173,6 +1174,7 @@ function WalkGuidance({
 }
 
 const PCN_PROXIMITY_M = 120; // surface the cycle PCN card only when a change is near
+const BIKE_NEAR_M = 220; // start pointing out end-of-ride bike parking this close
 
 /**
  * The single contextual comfort layer for a walk/cycle leg, derived from the
@@ -1194,6 +1196,11 @@ function SurfaceInsight({
   const wx = trpc.weather.current.useQuery(
     { lat: leg.startPoint.lat, lng: leg.startPoint.lng },
     { enabled: leg.type === "walk", staleTime: 5 * 60_000, retry: 1 },
+  );
+  // Bike parking near where this cycle ride ends (asked once, as you near it).
+  const bike = trpc.active.bikeParking.useQuery(
+    { point: leg.endPoint },
+    { enabled: leg.type === "cycle", staleTime: 30 * 60_000, retry: 1 },
   );
 
   if (!position || !leg.surface) return null;
@@ -1233,7 +1240,24 @@ function SurfaceInsight({
     );
   }
 
-  // Cycle: only speak up near a park-connector boundary.
+  // Cycle, nearing the end of the ride: point out where to park. Takes
+  // precedence over a PCN boundary — arriving is the more useful cue now.
+  const stand = bike.data?.stands[0];
+  if (stand && haversineMeters(position, leg.endPoint) <= BIKE_NEAR_M) {
+    const aheadM = Math.round(haversineMeters(position, stand));
+    return (
+      <InsightCard
+        tone="good"
+        eyebrow="Bike parking"
+        title={`${stand.covered ? "Sheltered rack" : "Bike rack"} ${fmtDistance(aheadM)} ahead — at your stop`}
+        sub={stand.capacity ? `${stand.capacity} spaces · OSM` : "OSM"}
+        Icon={ParkingSquare}
+        className="mt-2.5"
+      />
+    );
+  }
+
+  // Otherwise only speak up near a park-connector boundary.
   const near =
     g.nextChange && g.nextChange.distanceM <= PCN_PROXIMITY_M
       ? g.nextChange

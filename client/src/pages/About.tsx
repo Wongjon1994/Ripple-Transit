@@ -84,7 +84,7 @@ const SOURCES: { name: string; use: string; href: string }[] = [
   },
   {
     name: "OpenStreetMap",
-    use: "Sheltered-walkway network (covered footways — used to colour sheltered stretches on the route) & establishment opening hours via Overpass",
+    use: "Sheltered-walkway network (covered footways — used to colour sheltered stretches on the route), bicycle parking near your cycle destination, & establishment opening hours via Overpass",
     href: "https://www.openstreetmap.org/copyright",
   },
   {
