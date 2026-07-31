@@ -147,18 +147,22 @@ function add3dBuildings(map: MaplibreMap, dark: boolean) {
         paint: {
           // Height-shaded massing: taller floors read lighter, giving buildings
           // real depth instead of the flat grey slab they were in daylight.
-          // Warm paper tones in light mode; cool slate at night. The vertical
-          // gradient still darkens each face for solidity.
+          // Cool slate at night; a WARM STONE in light mode that sits distinctly
+          // darker + warmer than CARTO's near-white ground/roads (they used to
+          // share a lightness, so buildings washed out). The vertical gradient
+          // plus the directional light below shade each face for solidity.
           "fill-extrusion-color": [
             "interpolate",
             ["linear"],
             ["coalesce", ["get", "render_height"], 8],
             0,
-            dark ? "#2f3644" : "#e3e1da",
+            dark ? "#2f3644" : "#cec6b7",
             120,
-            dark ? "#4a5568" : "#f3f1ec",
+            dark ? "#4a5568" : "#ece4d5",
           ],
-          "fill-extrusion-opacity": dark ? 0.9 : 0.82,
+          // Near-opaque in light mode so the ground no longer bleeds through and
+          // flattens the massing.
+          "fill-extrusion-opacity": dark ? 0.9 : 0.96,
           "fill-extrusion-vertical-gradient": true,
           "fill-extrusion-height": [
             "interpolate",
@@ -174,6 +178,19 @@ function add3dBuildings(map: MaplibreMap, dark: boolean) {
       },
       firstSymbol,
     );
+    // Directional light so extrusion faces catch light unevenly — a lit side and
+    // a shaded side read as real volume. Light mode was effectively flat/ambient
+    // (buildings looked like blocks); a raking light gives them a shadowed face.
+    // Only in light mode — dark mode already reads well, and a fresh style reload
+    // (on every theme switch) resets the light to CARTO's default for us.
+    if (!dark) {
+      map.setLight({
+        anchor: "viewport",
+        color: "#ffffff",
+        intensity: 0.55,
+        position: [1.5, 315, 45], // [radius, azimuth°, polar°] — light from top-left
+      });
+    }
   } catch {
     /* basemap schema differs — skip 3D buildings */
   }
