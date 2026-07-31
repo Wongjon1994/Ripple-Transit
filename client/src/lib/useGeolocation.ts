@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 import type { LatLng } from "@shared/types.js";
+import {
+  stepGeoFilter,
+  EMPTY_GEO_FILTER,
+  type GeoFilterState,
+} from "./geoFilter.js";
 
 export interface GeoState {
   position: LatLng | null;
@@ -24,15 +29,26 @@ export function useGeolocation(enabled: boolean): GeoState {
 
   useEffect(() => {
     if (!enabled || !supported) return;
+    // Filter each raw fix (accuracy gate + outlier rejection + smoothing) so the
+    // dot glides along instead of teleporting on a bad urban-canyon fix.
+    let filter: GeoFilterState = EMPTY_GEO_FILTER;
     const id = navigator.geolocation.watchPosition(
-      (pos) =>
+      (pos) => {
+        const { state: next, position } = stepGeoFilter(filter, {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          t: pos.timestamp,
+        });
+        filter = next;
         setState({
-          position: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+          position,
           accuracy: pos.coords.accuracy,
           updatedAt: pos.timestamp,
           error: null,
           supported,
-        }),
+        });
+      },
       (err) =>
         setState((s) => ({
           ...s,
