@@ -44,6 +44,12 @@ const spans: RouteSurfaceSpan[] = [
   { surfaceClass: "plain", polyline: encode([P4, P5, P6]) },
 ];
 
+// Plain → named park connector, for the cycle "Joining …" card.
+const pcnSpans: RouteSurfaceSpan[] = [
+  { surfaceClass: "plain", polyline: encode([P0, P1, P2]) },
+  { surfaceClass: "pcn", polyline: encode([P2, P3, P4]), name: "Ulu Pandan Park Connector" },
+];
+
 describe("buildSurfaceTimeline", () => {
   it("returns null for empty / missing spans", () => {
     expect(buildSurfaceTimeline(undefined)).toBeNull();
@@ -86,6 +92,12 @@ describe("surfaceGuide", () => {
     expect(g.toShelterM).toBeNull();
     expect(g.nextChange).toBeNull();
     expect(g.currentRunToEnd).toBe(true);
+  });
+
+  it("names the park connector you're about to join", () => {
+    const g = surfaceGuide(P1, pcnSpans)!;
+    expect(g.nextChange?.toClass).toBe("pcn");
+    expect(g.nextChange?.toName).toBe("Ulu Pandan Park Connector");
   });
 
   it("flags a fix that is far off the route", () => {

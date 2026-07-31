@@ -187,6 +187,9 @@ export type RouteSurfaceClass = "pcn" | "shelter" | "plain";
 export interface RouteSurfaceSpan {
   surfaceClass: RouteSurfaceClass;
   polyline: string; // encoded, precision 5 — a continuous run of one class
+  /** For a `pcn` run: the named NParks park connector it runs along, when one
+   *  is known — lets the live cycle card say "Joining Ulu Pandan PC". */
+  name?: string;
 }
 
 export interface ActiveVariant {

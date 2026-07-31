@@ -15,6 +15,7 @@ import {
   encodePolyline5,
   routeCoverage,
   classifyRoute,
+  dominantName,
   comfortLabel,
   activeKcal,
   planarMeters,
@@ -186,6 +187,12 @@ function compose(
         ).map((run) => ({
           surfaceClass: run.surfaceClass,
           polyline: encodePolyline5(run.pts),
+          // Name the PCN run so the live cycle card can say which connector
+          // you're joining ("Joining Ulu Pandan PC in 100 m").
+          name:
+            run.surfaceClass === "pcn" && pcnGrid
+              ? dominantName(run.pts, pcnGrid)
+              : undefined,
         }))
       : undefined;
   // The specific park connector(s) this route runs along, in order — shown as

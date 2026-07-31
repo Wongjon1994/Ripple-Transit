@@ -1176,6 +1176,11 @@ function WalkGuidance({
 const PCN_PROXIMITY_M = 120; // surface the cycle PCN card only when a change is near
 const BIKE_NEAR_M = 220; // start pointing out end-of-ride bike parking this close
 
+/** "Ulu Pandan Park Connector" → "Ulu Pandan PC" so it fits one line. */
+function shortPcn(name: string): string {
+  return name.replace(/\bpark connector\b/i, "PC").trim();
+}
+
 /**
  * The single contextual comfort layer for a walk/cycle leg, derived from the
  * leg's surface spans + live position. WALK is rain-gated: only when it's wet
@@ -1268,7 +1273,11 @@ function SurfaceInsight({
       <InsightCard
         tone="good"
         eyebrow="Park connector"
-        title={`Joining in ${fmtDistance(near.distanceM)}`}
+        title={
+          near.toName
+            ? `Joining ${shortPcn(near.toName)} in ${fmtDistance(near.distanceM)}`
+            : `Joining the park connector in ${fmtDistance(near.distanceM)}`
+        }
         Icon={TreePine}
         className="mt-2.5"
       />

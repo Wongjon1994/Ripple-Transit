@@ -44,6 +44,7 @@ export interface SurfaceTimeline {
   pts: LatLng[]; // the whole route, in order (spans concatenated)
   cum: number[]; // cumulative metres at each point (len = pts.length)
   segClass: RouteSurfaceClass[]; // surface of segment i→i+1 (len = pts.length-1)
+  segName: (string | undefined)[]; // named connector of segment i→i+1, if any
   total: number; // route length, metres
 }
 
@@ -58,10 +59,14 @@ export function buildSurfaceTimeline(
   if (!spans || spans.length === 0) return null;
   const pts: LatLng[] = [];
   const segClass: RouteSurfaceClass[] = [];
+  const segName: (string | undefined)[] = [];
   for (const span of spans) {
     const sp = decode(span.polyline);
     for (let i = 0; i < sp.length; i++) {
-      if (pts.length > 0) segClass.push(span.surfaceClass);
+      if (pts.length > 0) {
+        segClass.push(span.surfaceClass);
+        segName.push(span.name);
+      }
       pts.push(sp[i]);
     }
   }
@@ -70,7 +75,7 @@ export function buildSurfaceTimeline(
   for (let i = 1; i < pts.length; i++) {
     cum.push(cum[i - 1] + haversineMeters(pts[i - 1], pts[i]));
   }
-  return { pts, cum, segClass, total: cum[cum.length - 1] };
+  return { pts, cum, segClass, segName, total: cum[cum.length - 1] };
 }
 
 /** Project `position` onto the timeline: nearest segment, arc-length `s`, and
@@ -118,6 +123,8 @@ export interface SurfaceGuide {
     fromClass: RouteSurfaceClass;
     toClass: RouteSurfaceClass;
     distanceM: number;
+    /** Named connector you're entering, when the new run has one. */
+    toName?: string;
   } | null;
 }
 
@@ -138,10 +145,12 @@ export function surfaceGuide(
   // Walk forward from the current segment to the first class change.
   let changeAt: number | null = null;
   let toClass: RouteSurfaceClass | null = null;
+  let toName: string | undefined;
   for (let i = seg + 1; i < tl.segClass.length; i++) {
     if (tl.segClass[i] !== currentClass) {
       changeAt = tl.cum[i]; // boundary is the start point of segment i
       toClass = tl.segClass[i];
+      toName = tl.segName[i];
       break;
     }
   }
@@ -167,7 +176,12 @@ export function surfaceGuide(
     toShelterM,
     nextChange:
       changeAt != null && toClass != null
-        ? { fromClass: currentClass, toClass, distanceM: Math.max(0, changeAt - s) }
+        ? {
+            fromClass: currentClass,
+            toClass,
+            distanceM: Math.max(0, changeAt - s),
+            toName,
+          }
         : null,
   };
 }

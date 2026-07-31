@@ -250,6 +250,32 @@ export class SegmentGrid {
     return false;
   }
 
+  /** The nearest NAMED segment's name within `nearM` of a single point, or
+   *  undefined (unnamed networks / nothing close). */
+  nameNear(p: Pt, nearM = NEAR_METERS): string | undefined {
+    const la = Math.floor(p.lat / CELL_DEG);
+    const lo = Math.floor(p.lng / CELL_DEG);
+    let best: string | undefined;
+    let bestD = nearM;
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        const ids = this.cells.get(`${la + i}:${lo + j}`);
+        if (!ids) continue;
+        for (const id of ids) {
+          const nm = this.names[id];
+          if (!nm) continue;
+          const [a, b] = this.segments[id];
+          const d = pointToSegmentMeters(p, a, b);
+          if (d <= bestD) {
+            bestD = d;
+            best = nm;
+          }
+        }
+      }
+    }
+    return best;
+  }
+
   /**
    * Distinct names of the network stretches this route runs along, in the order
    * first met. For each sampled point it takes the nearest NAMED segment within
@@ -260,33 +286,36 @@ export class SegmentGrid {
     const out: string[] = [];
     const seen = new Set<string>();
     for (const p of samplePath(coords)) {
-      const la = Math.floor(p.lat / CELL_DEG);
-      const lo = Math.floor(p.lng / CELL_DEG);
-      let best: string | undefined;
-      let bestD = nearM;
-      for (let i = -1; i <= 1; i++) {
-        for (let j = -1; j <= 1; j++) {
-          const ids = this.cells.get(`${la + i}:${lo + j}`);
-          if (!ids) continue;
-          for (const id of ids) {
-            const nm = this.names[id];
-            if (!nm) continue;
-            const [a, b] = this.segments[id];
-            const d = pointToSegmentMeters(p, a, b);
-            if (d <= bestD) {
-              bestD = d;
-              best = nm;
-            }
-          }
-        }
-      }
-      if (best && !seen.has(best)) {
-        seen.add(best);
-        out.push(best);
+      const nm = this.nameNear(p, nearM);
+      if (nm && !seen.has(nm)) {
+        seen.add(nm);
+        out.push(nm);
       }
     }
     return out;
   }
+}
+
+/** The connector name that dominates a run of points (most-sampled NParks name),
+ *  or undefined when the run isn't along a named connector. */
+export function dominantName(
+  pts: Pt[],
+  grid: SegmentGrid,
+): string | undefined {
+  const tally = new Map<string, number>();
+  for (const p of pts) {
+    const nm = grid.nameNear(p);
+    if (nm) tally.set(nm, (tally.get(nm) ?? 0) + 1);
+  }
+  let best: string | undefined;
+  let bestN = 0;
+  for (const [nm, n] of tally) {
+    if (n > bestN) {
+      bestN = n;
+      best = nm;
+    }
+  }
+  return best;
 }
 
 // ── Coverage scoring ──────────────────────────────────────────
