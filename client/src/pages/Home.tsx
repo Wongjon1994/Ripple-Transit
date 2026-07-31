@@ -868,13 +868,13 @@ export function Home() {
         />
       </main>
 
-      {/* Restore the collapsed planning panel. Bottom-centre on mobile,
-          top-left on desktop where the sidebar lived. */}
+      {/* Restore the collapsed planning panel. Bottom-centre on all sizes — a
+          top-left position on desktop overlapped the map's zoom + control stack. */}
       {panelCollapsed && (
         <button
           type="button"
           onClick={() => setPanelCollapsed(false)}
-          className="absolute bottom-5 left-1/2 z-[600] flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold text-brand shadow-[var(--shadow-card)] md:bottom-auto md:left-4 md:top-4 md:translate-x-0"
+          className="absolute bottom-5 left-1/2 z-[600] flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold text-brand shadow-[var(--shadow-card)]"
         >
           <Search size={15} /> Plan a route
         </button>

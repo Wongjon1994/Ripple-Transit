@@ -1337,7 +1337,11 @@ export function MapView({
           return (
             <div
               className="absolute left-[10px] z-[1] flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 px-2.5 py-1.5 text-[10px] font-medium text-ripple-muted shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm"
-              style={{ bottom: bottomInset + 12 }}
+              style={{
+                // Sit above the bottom sheet when it's open; otherwise clear the
+                // floating "Plan a route" pill that sits bottom-centre.
+                bottom: bottomInset > 0 ? bottomInset + 12 : 72,
+              }}
             >
               {items.map((it) => (
                 <span key={it.key} className="flex items-center gap-1.5">

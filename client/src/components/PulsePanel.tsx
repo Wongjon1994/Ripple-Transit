@@ -225,7 +225,7 @@ export function PulsePanel({
   const canFocus =
     !!onHeadlineFocus && !!headline?.focus && headline.focus.length > 0;
   return (
-    <div className="absolute right-[10px] top-[10px] z-[1] w-[244px] max-w-[calc(100vw-20px)] rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 text-[11px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm md:left-[10px] md:right-auto md:top-[152px]">
+    <div className="absolute right-[10px] top-[10px] z-[1] w-[244px] max-w-[calc(100vw-20px)] rounded-lg border border-[var(--border)] bg-[var(--surface)]/95 text-[11px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] backdrop-blur-sm md:left-[10px] md:right-auto md:top-[188px]">
       <button
         type="button"
         onClick={onToggle}
