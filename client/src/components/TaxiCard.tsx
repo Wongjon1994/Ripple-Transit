@@ -1,4 +1,4 @@
-import { Car, TriangleAlert } from "lucide-react";
+import { Car } from "lucide-react";
 import type { TaxiEstimate, TaxiAvailability } from "@shared/types.js";
 
 const AVAIL: Record<TaxiAvailability, { label: string; color: string }> = {
@@ -9,8 +9,8 @@ const AVAIL: Record<TaxiAvailability, { label: string; color: string }> = {
 
 /**
  * One-line taxi comparison strip (three-tier discipline: it's a reference
- * point, not a peer option card). A live traffic incident on the driving path
- * adds a second warning line — the road-transit risk for the taxi option.
+ * point, not a peer option card). Road-delay context now rides the route-level
+ * banner at the top of the results, so it's dropped from here.
  */
 export function TaxiCard({ taxi }: { taxi: TaxiEstimate }) {
   const a = AVAIL[taxi.availability];
@@ -33,12 +33,6 @@ export function TaxiCard({ taxi }: { taxi: TaxiEstimate }) {
           {a.label}
         </span>
       </div>
-      {taxi.trafficAlert && (
-        <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-warning">
-          <TriangleAlert size={12} className="shrink-0" />
-          {taxi.trafficAlert} — expect delays
-        </div>
-      )}
     </div>
   );
 }

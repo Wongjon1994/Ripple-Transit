@@ -108,17 +108,15 @@ function msToSgParts(ms: number): { date: string; time: string } {
   return { date, time };
 }
 
-/** Congestion multiplier for a bus ride departing at `boardMs`. */
-function rideDelayFactor(boardMs: number, leg: RouteLeg): number {
+/** Peak-window congestion multiplier for a bus ride departing at `boardMs`. */
+function peakFactor(boardMs: number): number {
   const sg = new Date(boardMs + 8 * 60 * 60 * 1000);
   const day = sg.getUTCDay(); // 0 Sun … 6 Sat
   const hour = sg.getUTCHours() + sg.getUTCMinutes() / 60;
   const weekday = day >= 1 && day <= 5;
   const peak =
     weekday && ((hour >= 7.5 && hour <= 9.5) || (hour >= 17.5 && hour <= 20));
-  let f = peak ? PEAK_FACTOR : 1;
-  if (leg.trafficAlert) f *= INCIDENT_FACTOR;
-  return f;
+  return peak ? PEAK_FACTOR : 1;
 }
 
 /** Interchangeable live buses for a leg's boarding stop, soonest first. */
@@ -225,13 +223,26 @@ function realizeSchedule(
 
       const wait = Math.max(0, board - reach);
       totalWaitMs += wait;
-      const ride = schedRide * rideDelayFactor(board, leg);
+      // Ride time inflates with peak congestion and, on top, a live road
+      // incident on this leg's path. Both are already in the route total; here
+      // we also fold them into the leg's own displayed duration and surface the
+      // incident-attributable delay as a per-leg figure ("+N min · roadwork").
+      const peakF = peakFactor(board);
+      const incidentF = leg.trafficAlert ? INCIDENT_FACTOR : 1;
+      const ride = schedRide * peakF * incidentF;
       const arrive = board + ride;
       const bufferMin = Math.round((board - reach) / 60000);
+      const incidentDelayMs = schedRide * peakF * (incidentF - 1);
 
       leg.busNo = svc;
       leg.startTimeMs = board;
       leg.endTimeMs = arrive;
+      leg.duration = Math.round(ride / 1000);
+      // Only set when there's a real delay — leaving the field absent otherwise
+      // keeps it out of every bus leg's superjson meta.
+      if (leg.trafficAlert && incidentDelayMs >= 60_000) {
+        leg.delayMinutes = Math.round(incidentDelayMs / 60_000);
+      }
       leg.busLegFeasibility = {
         status: scheduled ? "ok" : classify(bufferMin),
         scheduled: scheduled || undefined,

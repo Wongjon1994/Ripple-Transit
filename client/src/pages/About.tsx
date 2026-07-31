@@ -59,7 +59,7 @@ const FEATURES: { Icon: typeof Radio; title: string; body: string }[] = [
 const SOURCES: { name: string; use: string; href: string }[] = [
   {
     name: "LTA DataMall",
-    use: "Live bus arrivals, bus stops & routes, MRT station data & platform crowding, road incidents & live traffic speed bands",
+    use: "Live bus arrivals, bus stops & routes, MRT station data & platform crowding, road incidents & live traffic speed bands, and live MRT service-disruption alerts",
     href: "https://datamall.lta.gov.sg",
   },
   {
@@ -69,7 +69,7 @@ const SOURCES: { name: string; use: string; href: string }[] = [
   },
   {
     name: "data.gov.sg",
-    use: "Park connectors, cycling paths, hawker centres, clinics, parks, libraries, sports facilities, attractions, MRT exits, NEA hygiene grades",
+    use: "Named NParks park connectors (used to colour the route and name the connectors you'll pass), cycling paths, hawker centres, clinics, parks, libraries, sports facilities, attractions, MRT exits, NEA hygiene grades",
     href: "https://data.gov.sg",
   },
   {
@@ -78,8 +78,13 @@ const SOURCES: { name: string; use: string; href: string }[] = [
     href: "https://www.nea.gov.sg",
   },
   {
+    name: "PUB — national water agency",
+    use: "Flash-flood alerts (public @PUBFloodAlerts channel) — flooded roads to avoid, shown on Pulse",
+    href: "https://www.pub.gov.sg",
+  },
+  {
     name: "OpenStreetMap",
-    use: "Sheltered-walkway network (covered footways) & establishment opening hours via Overpass",
+    use: "Sheltered-walkway network (covered footways — used to colour sheltered stretches on the route) & establishment opening hours via Overpass",
     href: "https://www.openstreetmap.org/copyright",
   },
   {

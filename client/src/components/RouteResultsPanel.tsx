@@ -232,7 +232,9 @@ function LegStep({
 
         {leg.type === "bus" && leg.trafficAlert && (
           <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
-            <TriangleAlert size={12} /> {leg.trafficAlert} — allow extra time
+            <TriangleAlert size={12} />
+            {leg.delayMinutes ? `+${leg.delayMinutes} min · ` : ""}
+            {leg.trafficAlert}
           </div>
         )}
 
@@ -598,6 +600,15 @@ export function RouteResultsPanel({
   const visible = showAll
     ? itineraries
     : itineraries.slice(0, PRIMARY_COUNT);
+  // Road delays on the SELECTED option's bus legs — surfaced as contextual info
+  // at the top (under the weather tile), not buried in the expanded stepper.
+  const selectedTraffic = Array.from(
+    new Set(
+      (itineraries[selected]?.legs ?? [])
+        .filter((l) => l.type === "bus" && l.trafficAlert)
+        .map((l) => l.trafficAlert as string),
+    ),
+  );
   const fastest = Math.min(...itineraries.map((it) => it.duration));
 
   // Decision aids: which option is quickest vs most reliable.
@@ -616,6 +627,17 @@ export function RouteResultsPanel({
     <div className="p-3">
       <div className="flex flex-col gap-2">
         <ContextualStatus weather={weather ?? null} />
+        {selectedTraffic.length > 0 && (
+          <div className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning">
+            <TriangleAlert size={14} className="mt-px shrink-0" />
+            <span>
+              {selectedTraffic[0]} — buses on this route may run late
+              {selectedTraffic.length > 1
+                ? ` · +${selectedTraffic.length - 1} more`
+                : ""}
+            </span>
+          </div>
+        )}
         {visible.map((it, i) => {
             const dev = Math.round((it.duration - fastest) / 60);
             const modes = journeyModes(it);
