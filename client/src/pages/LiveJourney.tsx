@@ -374,6 +374,25 @@ export function LiveJourney() {
           ? "#3b82f6"
           : lineColor(leg?.lineCode);
 
+  // Snap the dot to the route line so it rides the path instead of floating on
+  // noisy GPS — but only when we're basically on the line (real drift shows raw,
+  // and WalkGuidance still flags it off the RAW position). The tilt then faces
+  // down the path (segment tangent), not at the far endpoint.
+  const legPath: [number, number][] = leg
+    ? leg.polyline
+      ? decodePolyline(leg.polyline)
+      : [
+          [leg.startPoint.lat, leg.startPoint.lng],
+          [leg.endPoint.lat, leg.endPoint.lng],
+        ]
+    : [];
+  const snap =
+    geo.position && (leg?.type === "walk" || leg?.type === "cycle")
+      ? snapToPath(geo.position, legPath)
+      : null;
+  const onPath = !!snap && snap.distance <= SNAP_MAX_M;
+  const displayPosition = onPath && snap ? snap.point : geo.position;
+
   // Walk/cycle legs get a tilted, heading-up 3D navigation view that follows
   // you — but only in the "current leg" camera mode; the "full route" mode
   // fits the whole remaining journey instead.
@@ -383,10 +402,13 @@ export function LiveJourney() {
     viewMode === "leg" && (leg?.type === "walk" || leg?.type === "cycle")
       ? {
           pitch: 55,
-          bearing: geo.position
-            ? bearingBetween(geo.position, leg.endPoint)
-            : bearingBetween(leg.startPoint, leg.endPoint),
-          follow: geo.position ?? leg.startPoint,
+          bearing:
+            onPath && snap
+              ? snap.bearing
+              : geo.position
+                ? bearingBetween(geo.position, leg.endPoint)
+                : bearingBetween(leg.startPoint, leg.endPoint),
+          follow: displayPosition ?? leg.startPoint,
           followZoom: 18,
         }
       : {};
@@ -523,7 +545,7 @@ export function LiveJourney() {
           origin={journey.origin}
           destination={journey.destination}
           itinerary={journey.itinerary}
-          livePosition={geo.position}
+          livePosition={displayPosition}
           fitPoints={fitPoints}
           liveJourney
           viewToggle={{
@@ -830,6 +852,53 @@ function distanceToPath(p: LatLng, path: [number, number][]): number {
   return min;
 }
 
+/**
+ * Project `p` onto the route polyline and return the closest point ON the line,
+ * its distance, and the bearing of that segment (the travel direction there).
+ * Used to snap the live dot to the path so it rides the route instead of
+ * floating on noisy GPS, and to face the tilted 3D view DOWN the path (the
+ * segment tangent) rather than at the far endpoint. `path` is [lat, lng][].
+ */
+function snapToPath(
+  p: LatLng,
+  path: [number, number][],
+): { point: LatLng; distance: number; bearing: number } | null {
+  if (path.length < 2) return null;
+  const R = 6371000;
+  const rad = Math.PI / 180;
+  const latRef = p.lat * rad;
+  const xy = (lat: number, lng: number): [number, number] => [
+    (lng - p.lng) * rad * Math.cos(latRef) * R,
+    (lat - p.lat) * rad * R,
+  ];
+  let best = { d: Infinity, seg: 1, t: 0 };
+  for (let i = 1; i < path.length; i++) {
+    const [ax, ay] = xy(path[i - 1][0], path[i - 1][1]);
+    const [bx, by] = xy(path[i][0], path[i][1]);
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? -(ax * dx + ay * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(ax + t * dx, ay + t * dy);
+    if (d < best.d) best = { d, seg: i, t };
+  }
+  const a = path[best.seg - 1];
+  const b = path[best.seg];
+  return {
+    point: {
+      lat: a[0] + best.t * (b[0] - a[0]),
+      lng: a[1] + best.t * (b[1] - a[1]),
+    },
+    distance: best.d,
+    bearing: bearingBetween(
+      { lat: a[0], lng: a[1] },
+      { lat: b[0], lng: b[1] },
+    ),
+  };
+}
+
+const SNAP_MAX_M = 32; // snap the dot to the line only when basically on it
 const OFF_ROUTE_M = 70; // drift beyond this → "off route"
 const ON_ROUTE_M = 45; // ...come back within this to clear it (hysteresis)
 
