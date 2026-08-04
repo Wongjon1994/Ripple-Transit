@@ -30,13 +30,24 @@ import { useAuth } from "../lib/auth.js";
 import type {
   ActiveMode,
   ActiveVariant,
+  AskPreference,
   Itinerary,
   LatLng,
   NearestBusStop,
   NearestResult,
 } from "@shared/types.js";
+import type { PrefWeights } from "@shared/prefMatch.js";
 
 type ModeTab = "transit" | ActiveMode;
+
+/** Turn the Flux dimensions an ask emphasised ("less walking") into per-search
+ *  weights. AskPreference values are exactly the prefMatch dimensions. */
+function askWeights(prefs: AskPreference[]): PrefWeights | undefined {
+  if (prefs.length === 0) return undefined;
+  const w: PrefWeights = {};
+  for (const p of prefs) w[p] = 1;
+  return w;
+}
 
 const MODE_TABS: { id: ModeTab; label: string; Icon: typeof BusFront }[] = [
   { id: "transit", label: "Transit", Icon: BusFront },
@@ -92,6 +103,10 @@ export function Home() {
     destName?: string;
     /** date/time is a target arrival; the server solves the departure. */
     arriveBy?: boolean;
+    /** Per-search preference weights from an Ask Ripple query ("less walking").
+     *  Overrides the saved Flux weights for THIS search only — an ask never
+     *  rewrites the user's saved preferences. */
+    prefWeights?: PrefWeights;
   } | null>(saved?.routeParams ?? null);
   const [resolving, setResolving] = useState(false);
   // §49(ii): once a search is active the full form collapses to a summary bar
@@ -259,7 +274,8 @@ export function Home() {
           destName: routeParams.destName,
           arriveBy: routeParams.arriveBy,
           transitPriority: prefs.routePriority?.transit,
-          prefWeights: prefs.prefWeights,
+          // An ask's preferences override the saved Flux weights for that search.
+          prefWeights: routeParams.prefWeights ?? prefs.prefWeights,
         }
       : (undefined as never),
     {
@@ -509,6 +525,9 @@ export function Home() {
         points: [fromPoint, toPoint],
         destName: toLabel,
         arriveBy: intent.timeMode === "arrive" && !!intent.time,
+        // Apply the ask's preferences to THIS search's ranking (staged until
+        // now); never written to the user's saved Flux weights.
+        prefWeights: askWeights(intent.preferences),
         ...depart,
       });
       if (intent.understood) toast.success(intent.understood);
