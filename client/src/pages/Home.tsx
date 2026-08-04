@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Search,
   Compass,
+  Sparkles,
 } from "lucide-react";
 import { trpc } from "../lib/trpc.js";
 import {
@@ -408,6 +409,29 @@ export function Home() {
   });
   const askParse = trpc.ask.parse.useMutation();
 
+  /** The device's current location + a friendly label, or null if unavailable.
+   *  Used so an ask ("get me to Orchard") defaults the origin to where you are. */
+  async function currentLocation(): Promise<{ point: LatLng; label: string } | null> {
+    if (!navigator.geolocation) return null;
+    const pos = await new Promise<GeolocationPosition | null>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve(p),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10_000 },
+      );
+    });
+    if (!pos) return null;
+    const point = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    let label = "Current location";
+    try {
+      const r = await utils.onemap.reverseGeocode.fetch(point);
+      if (r.label) label = r.label;
+    } catch {
+      /* keep the generic label */
+    }
+    return { point, label };
+  }
+
   async function handleAsk(query: string) {
     let intent;
     try {
@@ -429,7 +453,8 @@ export function Home() {
         : null;
     };
 
-    // Origin: a named place, or the current-location dot we already hold.
+    // Origin: a named place if the user gave one, otherwise default to where
+    // they are — so an ask fills BOTH ends and can search straight away.
     let fromPoint: LatLng | null = from;
     let fromLabel = fromText;
     if (intent.from && intent.from.toLowerCase() !== "current location") {
@@ -437,6 +462,12 @@ export function Home() {
       if (g) {
         fromPoint = g.point;
         fromLabel = g.label;
+      }
+    } else {
+      const cur = await currentLocation();
+      if (cur) {
+        fromPoint = cur.point;
+        fromLabel = cur.label;
       }
     }
     let toPoint: LatLng | null = null;
@@ -921,7 +952,15 @@ export function Home() {
           onClick={() => setPanelCollapsed(false)}
           className="absolute bottom-5 left-1/2 z-[600] flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold text-brand shadow-[var(--shadow-card)]"
         >
-          <Search size={15} /> Plan a route
+          {askConfigured.data?.enabled ? (
+            <>
+              <Sparkles size={15} /> Ask Ripple, or plan a route
+            </>
+          ) : (
+            <>
+              <Search size={15} /> Plan a route
+            </>
+          )}
         </button>
       )}
     </div>

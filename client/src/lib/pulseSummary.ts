@@ -273,6 +273,14 @@ function heavyRegions(congestion: PulseCongestion[]): {
   return { text, points: groups[0] ?? [], groups };
 }
 
+/** The road an incident is on, from its "<type> on <road>" label (server
+ *  incidentLabel), or null when the label has no road — used to group
+ *  same-road incidents into one headline. */
+function incidentRoad(label: string): string | null {
+  const m = label.match(/ on (.+)$/);
+  return m ? m[1].trim() : null;
+}
+
 /** Short label for an MRT disruption headline/callout ("NE line disrupted"). */
 function mrtDisruptionLabel(d: PulseMrtDisruption): string {
   const lines = d.lines.join("/");
@@ -384,8 +392,34 @@ export function pulseSummary(input: PulseSummaryInput): PulseSummary {
       text: mrtDisruptionLabel(d),
       focus: d.stationPoints ?? [],
     });
-  for (const i of severeIncidents.slice(0, 3))
-    headlines.push({ tone: "red", text: i.label, focus: [{ lat: i.lat, lng: i.lng }] });
+  // Group severe incidents by the road they're on, so several on the same
+  // expressway read as "6 incidents on AYE" instead of six near-identical
+  // headlines. A road with a single incident keeps its specific label.
+  const incidentsByRoad = new Map<string, PulseIncident[]>();
+  const incidentsNoRoad: PulseIncident[] = [];
+  for (const i of severeIncidents) {
+    const road = incidentRoad(i.label);
+    if (road) {
+      const group = incidentsByRoad.get(road);
+      if (group) group.push(i);
+      else incidentsByRoad.set(road, [i]);
+    } else incidentsNoRoad.push(i);
+  }
+  const incidentHeadlines: PulseCallout[] = [
+    ...[...incidentsByRoad.entries()]
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([road, group]) => ({
+        tone: "red" as const,
+        text: group.length === 1 ? group[0].label : `${group.length} incidents on ${road}`,
+        focus: group.map((i) => ({ lat: i.lat, lng: i.lng })),
+      })),
+    ...incidentsNoRoad.map((i) => ({
+      tone: "red" as const,
+      text: i.label,
+      focus: [{ lat: i.lat, lng: i.lng }],
+    })),
+  ];
+  for (const h of incidentHeadlines.slice(0, 3)) headlines.push(h);
   for (const p of packed.slice(0, 3))
     headlines.push({
       tone: "red",

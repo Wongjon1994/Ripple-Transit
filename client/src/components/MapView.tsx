@@ -644,6 +644,9 @@ export function MapView({
   // camera off a route the user is looking at).
   const hasFramedRef = useRef(false);
   hasFramedRef.current = allPoints.length > 0;
+  // A live-follow watch id (Google-style): once the user taps locate, the dot
+  // keeps up with them as they move.
+  const watchRef = useRef<number | null>(null);
 
   /** Get the device location: drop a "you are here" dot, and (only when the map
    *  isn't already framing a route) gently centre on it. `auto` skips the
@@ -669,6 +672,56 @@ export function MapView({
       { enableHighAccuracy: true, timeout: 10_000 },
     );
   }
+
+  /** The locate button: start following the user (a watch keeps the dot moving
+   *  with them), and recenter the camera on this press only — not every fix,
+   *  which would fight the user panning the map. */
+  function followMe() {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    const map = mapRef.current?.getMap();
+    // Already following → just recenter on the last known spot.
+    if (watchRef.current != null) {
+      if (map && myLocation && !hasFramedRef.current) {
+        map.easeTo({
+          center: [myLocation.lng, myLocation.lat],
+          zoom: Math.max(map.getZoom(), 15),
+          duration: 700,
+        });
+      }
+      setLocating(false);
+      return;
+    }
+    let recenter = true; // recenter on the first fix after this press
+    watchRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setMyLocation(p);
+        setLocating(false);
+        const m = mapRef.current?.getMap();
+        if (m && recenter && !hasFramedRef.current) {
+          m.easeTo({
+            center: [p.lng, p.lat],
+            zoom: Math.max(m.getZoom(), 15),
+            duration: 700,
+          });
+        }
+        recenter = false;
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 5_000 },
+    );
+  }
+
+  // Stop following when the map unmounts (e.g. entering the live journey).
+  useEffect(
+    () => () => {
+      if (watchRef.current != null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchRef.current);
+      }
+    },
+    [],
+  );
 
   // On load, centre on the user only if location is ALREADY granted — never
   // throw a permission prompt at a first-time visitor (the locate button is the
@@ -1194,7 +1247,7 @@ export function MapView({
           {!liveJourney && (
             <button
               type="button"
-              onClick={locateMe}
+              onClick={followMe}
               aria-label="Centre on my location"
               title="My location"
               className="absolute left-[10px] top-[148px] z-[1] flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-[0_2px_8px_rgba(0,0,0,0.12)]"

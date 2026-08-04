@@ -169,6 +169,35 @@ describe("pulseSummary — headline (worst citywide) + focus", () => {
     expect(s.allClear).toBe(true);
   });
 
+  it("groups several incidents on the same road into one headline", () => {
+    const s = pulseSummary(
+      input({
+        incidents: [
+          severe("Accident on AYE", EAST),
+          severe("Vehicle Breakdown on AYE", FAR),
+          severe("Obstacle on AYE", EAST),
+          severe("Accident on CTE", FAR),
+        ],
+      }),
+    );
+    const texts = s.headlines.map((h) => h.text);
+    // AYE (3) leads over CTE (1); the AYE headline is grouped, not one of the labels.
+    expect(texts[0]).toBe("3 incidents on AYE");
+    expect(texts).toContain("Accident on CTE");
+    // The grouped headline carries all three AYE points for cycling on the map.
+    expect(s.headlines[0].focus).toHaveLength(3);
+  });
+
+  it("keeps the specific label when a road has just one incident", () => {
+    const s = pulseSummary(
+      input({ incidents: [severe("Accident on AYE"), severe("Accident on CTE")] }),
+    );
+    expect(s.headlines.map((h) => h.text)).toEqual([
+      "Accident on AYE",
+      "Accident on CTE",
+    ]);
+  });
+
   it("packed station headline, then heavy-by-area, then rain", () => {
     expect(
       pulseSummary(input({ crowd: [{ name: "Orchard", level: "h", ...FAR }] }))
