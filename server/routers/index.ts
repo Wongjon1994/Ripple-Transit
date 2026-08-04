@@ -14,6 +14,7 @@ import { savedLocationsRouter } from "./savedLocations.js";
 import { favouriteRoutesRouter } from "./favouriteRoutes.js";
 import { settingsRouter } from "./settings.js";
 import { pulseRouter } from "./pulse.js";
+import { askRouter } from "./ask.js";
 
 export const appRouter = router({
   system: router({
@@ -34,6 +35,7 @@ export const appRouter = router({
   savedLocations: savedLocationsRouter,
   favouriteRoutes: favouriteRoutesRouter,
   settings: settingsRouter,
+  ask: askRouter,
 });
 
 export type AppRouter = typeof appRouter;

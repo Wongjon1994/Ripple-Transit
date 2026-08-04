@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type FormEvent } from "react";
 import { Link } from "wouter";
 import {
   ArrowUpDown,
@@ -13,6 +13,8 @@ import {
   ChevronDown,
   ChevronRight,
   Pencil,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "../lib/trpc.js";
@@ -201,6 +203,9 @@ export function SearchPanel({
   onPickFavourite,
   showShortcuts = true,
   onCollapse,
+  onAsk,
+  askEnabled = false,
+  asking = false,
 }: {
   fromText: string;
   /** Destinations in visit order (1–MAX_STOPS); the last one is "To". */
@@ -233,6 +238,11 @@ export function SearchPanel({
   /** Collapse the whole panel to the full-screen map — a chevron on the From
    *  row (the sheet's grab-handle header row was removed). */
   onCollapse?: () => void;
+  /** Ask Ripple (natural language) — parses a sentence into these same fields.
+   *  Only rendered when `askEnabled` (the server has an API key configured). */
+  onAsk?: (query: string) => void;
+  askEnabled?: boolean;
+  asking?: boolean;
 }) {
   const { user } = useAuth();
   const saved = trpc.savedLocations.list.useQuery(undefined, {
@@ -245,6 +255,7 @@ export function SearchPanel({
   const utils = trpc.useUtils();
   const [locating, setLocating] = useState(false);
   const [departOpen, setDepartOpen] = useState(false);
+  const [askText, setAskText] = useState("");
   // Favourite routes collapse to a summary row on the search screen (§2) so
   // they don't outweigh "Nearest ___" for top-of-fold space.
   const [favOpen, setFavOpen] = useState(false);
@@ -282,8 +293,44 @@ export function SearchPanel({
     );
   }
 
+  function submitAsk(e: FormEvent) {
+    e.preventDefault();
+    const q = askText.trim();
+    if (!q || asking || !onAsk) return;
+    onAsk(q);
+  }
+
   return (
     <div className="flex flex-col gap-3">
+      {/* Ask Ripple: a natural-language sentence that fills the fields below and
+          runs the same search. Hidden entirely when the server has no API key. */}
+      {askEnabled && onAsk && (
+        <form
+          onSubmit={submitAsk}
+          className="flex items-center gap-2 rounded-lg border border-brand/40 bg-brand/5 px-3 py-2 focus-within:border-brand"
+        >
+          <Sparkles size={16} className="shrink-0 text-brand" />
+          <input
+            value={askText}
+            onChange={(e) => setAskText(e.target.value)}
+            placeholder="Ask Ripple, or fill in below ↓"
+            aria-label="Ask Ripple"
+            className="min-w-0 flex-1 bg-transparent text-sm text-[var(--fg)] placeholder:text-ripple-muted focus:outline-none"
+          />
+          <button
+            type="submit"
+            aria-label="Ask"
+            disabled={asking || askText.trim().length === 0}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-white disabled:opacity-40"
+          >
+            {asking ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <ArrowRight size={15} />
+            )}
+          </button>
+        </form>
+      )}
       <div className="relative flex flex-col gap-3">
         <LocationInput
           label="From"

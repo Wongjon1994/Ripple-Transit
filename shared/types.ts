@@ -167,6 +167,40 @@ export interface Itinerary {
   waitSeconds?: number; // live waiting time at the first bus stop, if known
 }
 
+// ── Ask Ripple (natural-language layer) ───────────────────────
+/** A Flux preference dimension the user emphasised in their ask (maps 1:1 to
+ *  the scoreable dimensions in prefMatch). */
+export type AskPreference =
+  | "time"
+  | "transfers"
+  | "walking"
+  | "crowds"
+  | "cost"
+  | "carbon";
+
+/**
+ * Structured intent parsed from a natural-language route request. The model
+ * only EXTRACTS what the user stated — it never computes a time, fare, or route
+ * (the deterministic backend does that). Any field the user didn't state is
+ * null / empty, never guessed.
+ */
+export interface AskIntent {
+  /** Origin place/address text, the literal "current location", or null. */
+  from: string | null;
+  /** Destination place/address text, or null when none was given. */
+  to: string | null;
+  mode: "transit" | "walk" | "cycle" | null;
+  /** Whether `time` is a "leave at" or "arrive by" target. */
+  timeMode: "leave" | "arrive" | null;
+  /** Explicit clock time as 24h "HH:MM", or null (relative/none). */
+  time: string | null;
+  /** Flux dimensions the user emphasised — staged, applied on search. */
+  preferences: AskPreference[];
+  /** One short plain-English restatement of what was understood (no invented
+   *  numbers) — shown back to the user as confirmation. */
+  understood: string;
+}
+
 // ── Active mobility (Phase 14) ────────────────────────────────
 export type ActiveMode = "walk" | "cycle";
 

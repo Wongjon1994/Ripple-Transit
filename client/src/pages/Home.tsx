@@ -400,6 +400,96 @@ export function Home() {
     setRouteParams({ points, destName: toLabel, ...depart });
   }
 
+  // Ask Ripple (natural-language layer). `configured` gates the input so it
+  // disappears cleanly when the server has no API key; `parse` turns a sentence
+  // into a structured intent that fills the SAME fields a manual search uses.
+  const askConfigured = trpc.ask.configured.useQuery(undefined, {
+    staleTime: Infinity,
+  });
+  const askParse = trpc.ask.parse.useMutation();
+
+  async function handleAsk(query: string) {
+    let intent;
+    try {
+      intent = await askParse.mutateAsync({ query });
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : "Couldn't understand that — try the fields below.",
+      );
+      return;
+    }
+
+    const geocode = async (q: string) => {
+      const r = await utils.onemap.search.fetch({ q }).catch(() => null);
+      const top = r?.results[0];
+      return top
+        ? { point: { lat: top.lat, lng: top.lng }, label: top.title }
+        : null;
+    };
+
+    // Origin: a named place, or the current-location dot we already hold.
+    let fromPoint: LatLng | null = from;
+    let fromLabel = fromText;
+    if (intent.from && intent.from.toLowerCase() !== "current location") {
+      const g = await geocode(intent.from);
+      if (g) {
+        fromPoint = g.point;
+        fromLabel = g.label;
+      }
+    }
+    let toPoint: LatLng | null = null;
+    let toLabel = "";
+    if (intent.to) {
+      const g = await geocode(intent.to);
+      if (g) {
+        toPoint = g.point;
+        toLabel = g.label;
+      }
+    }
+
+    // An explicit clock time switches off "leave now"; otherwise stay auto.
+    if (intent.time) {
+      setTimeIsAuto(false);
+      setDate(nowParts().date);
+      setTime(intent.time);
+      setDepartMode(intent.timeMode === "arrive" ? "arrive" : "leave");
+    } else {
+      setTimeIsAuto(true);
+      setDepartMode("leave");
+    }
+
+    // Reflect whatever we resolved into the fields — a partial fill is fine.
+    if (fromLabel) setFromText(fromLabel);
+    if (fromPoint) setFrom(fromPoint);
+    if (toLabel) setStops([{ text: toLabel, point: toPoint }]);
+
+    const mode: ModeTab = intent.mode ?? "transit";
+    if (fromPoint && toPoint) {
+      setWalkTabStopCode(null);
+      setSelected(0);
+      setActiveSel(0);
+      setModeTab(mode);
+      const depart = intent.time
+        ? { date: nowParts().date, time: intent.time }
+        : nowParts();
+      setRouteParams({
+        points: [fromPoint, toPoint],
+        destName: toLabel,
+        arriveBy: intent.timeMode === "arrive" && !!intent.time,
+        ...depart,
+      });
+      if (intent.understood) toast.success(intent.understood);
+    } else {
+      toast.info(
+        intent.understood
+          ? `${intent.understood} — add the rest below.`
+          : "Filled what I understood — add the rest below.",
+      );
+    }
+  }
+
   function handlePickNearYou(myLocation: LatLng, r: NearestResult) {
     // Auto-select the mode tab that won the multi-modal ranking.
     runDirectSearch(
@@ -656,6 +746,9 @@ export function Home() {
             }}
             showShortcuts={!routeParams}
             onCollapse={() => setPanelCollapsed(true)}
+            askEnabled={askConfigured.data?.enabled ?? false}
+            asking={askParse.isPending}
+            onAsk={handleAsk}
           />
           )}
         </div>
