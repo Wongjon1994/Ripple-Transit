@@ -14,13 +14,19 @@ const AVAIL: Record<TaxiAvailability, { label: string; color: string }> = {
  */
 export function TaxiCard({ taxi }: { taxi: TaxiEstimate }) {
   const a = AVAIL[taxi.availability];
+  const hasSurcharges = taxi.surcharges.length > 0;
   return (
     <div className="px-1 py-1">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ripple-muted">
         <Car size={14} className="shrink-0 text-warning" />
         <span className="data-voice min-w-0">
-          Taxi ~${taxi.fare.toFixed(2)} · {taxi.durationMin} min · ~
-          {taxi.waitMin} min wait · est.
+          {/* Lead with the metered fare, then the total including surcharges so
+              the rider isn't surprised at the meter. */}
+          Taxi ~${taxi.fare.toFixed(2)}
+          {hasSurcharges && (
+            <> → ~${taxi.total.toFixed(2)} w/ surcharges</>
+          )}{" "}
+          · {taxi.durationMin} min · ~{taxi.waitMin} min wait · est.
         </span>
         <span
           className="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] font-medium"
@@ -33,6 +39,15 @@ export function TaxiCard({ taxi }: { taxi: TaxiEstimate }) {
           {a.label}
         </span>
       </div>
+      {hasSurcharges && (
+        <div className="data-voice mt-0.5 pl-[22px] text-[11px] text-ripple-muted">
+          {taxi.surcharges.map((s, i) => (
+            <span key={s.label}>
+              {i > 0 && ", "}+${s.amount.toFixed(2)} {s.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -402,8 +402,19 @@ export interface RoutePlan {
 // ── Taxi ──────────────────────────────────────────────────────
 export type TaxiAvailability = "available" | "limited" | "unavailable";
 
+/** An estimated taxi surcharge on top of the metered fare, labelled so the
+ *  rider sees what each one is (peak-hour, late-night, Changi Airport …). */
+export interface TaxiSurcharge {
+  label: string;
+  amount: number; // SGD
+}
+
 export interface TaxiEstimate {
-  fare: number; // SGD (estimate)
+  fare: number; // SGD — metered (flag-down + distance), before surcharges
+  /** Applicable surcharge estimates for the current time / location. */
+  surcharges: TaxiSurcharge[];
+  /** fare + all surcharges — what the rider actually pays. */
+  total: number;
   durationMin: number;
   distanceKm: number;
   availability: TaxiAvailability;

@@ -10,6 +10,7 @@ import type {
   LatLng,
   TaxiAvailability,
   TaxiEstimate,
+  TaxiSurcharge,
 } from "../../shared/types.js";
 
 const BASE = "https://datamall2.mytransport.sg/ltaodataservice";
@@ -26,6 +27,51 @@ export function estimateTaxiFare(distanceM: number): number {
   // $0.26 per 400m up to 10km, then per 350m.
   const fare = flagDown + (first10 / 400) * 0.26 + (beyond / 350) * 0.26;
   return Math.round(fare * 100) / 100;
+}
+
+// Central Changi Airport point — the flat airport surcharge applies to trips
+// starting within ~3.5 km (covers all terminals + Jewel).
+const CHANGI = { lat: 1.3592, lng: 103.9894 };
+
+/**
+ * Estimated surcharges on top of the metered fare for the current SG time and
+ * pickup location, each labelled. These are the common LTA-regulated ones
+ * (approximate, and they do change) — peak-hour / late-night as a % of the
+ * metered fare, plus the flat Changi Airport surcharge. Not included: ERP,
+ * booking fees, CBD/event surcharges. Pure — unit-tested.
+ */
+export function taxiSurcharges(
+  meteredFare: number,
+  origin: LatLng,
+  now: Date = new Date(),
+): TaxiSurcharge[] {
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  // SG local time (the server may run in UTC on Render).
+  const sg = new Date(now.getTime() + 8 * 3_600_000);
+  const h = sg.getUTCHours();
+  const min = sg.getUTCMinutes();
+  const dow = sg.getUTCDay(); // 0 = Sun … 6 = Sat
+  const out: TaxiSurcharge[] = [];
+
+  // Time-of-day, as a % of the metered fare (mutually exclusive windows).
+  if (h < 6) {
+    out.push({ label: "Late-night (+50%)", amount: round2(meteredFare * 0.5) });
+  } else {
+    const eveningPeak = h >= 18; // daily 6 pm – midnight
+    const morningPeak =
+      dow >= 1 && dow <= 5 && ((h >= 6 && h < 9) || (h === 9 && min < 30)); // Mon–Fri 6:00–9:29
+    if (eveningPeak || morningPeak) {
+      out.push({ label: "Peak-hour (+25%)", amount: round2(meteredFare * 0.25) });
+    }
+  }
+
+  // Flat Changi Airport surcharge on trips FROM the airport.
+  if (haversineMeters(origin, CHANGI) <= 3500) {
+    const higher = (dow === 5 || dow === 6 || dow === 0) && h >= 17; // Fri–Sun 5 pm–midnight
+    out.push({ label: "Changi Airport", amount: higher ? 8 : 6 });
+  }
+
+  return out;
 }
 
 /** Bucket nearby-taxi count into an availability level + rough wait. */
@@ -92,8 +138,17 @@ export async function taxiEstimate(
   );
   const trafficAlert = hits.length ? incidentLabel(hits[0]) : undefined;
 
+  const fare = estimateTaxiFare(drive.distanceM);
+  const surcharges = taxiSurcharges(fare, origin);
+  const total =
+    Math.round(
+      (fare + surcharges.reduce((s, x) => s + x.amount, 0)) * 100,
+    ) / 100;
+
   return {
-    fare: estimateTaxiFare(drive.distanceM),
+    fare,
+    surcharges,
+    total,
     durationMin: Math.max(1, Math.round(drive.durationS / 60)),
     distanceKm: Math.round((drive.distanceM / 1000) * 10) / 10,
     availability,
