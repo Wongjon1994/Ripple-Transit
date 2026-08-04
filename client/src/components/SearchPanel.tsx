@@ -315,7 +315,9 @@ export function SearchPanel({
             onChange={(e) => setAskText(e.target.value)}
             placeholder="Ask Ripple, or fill in below ↓"
             aria-label="Ask Ripple"
-            className="min-w-0 flex-1 bg-transparent text-sm text-[var(--fg)] placeholder:text-ripple-muted focus:outline-none"
+            // text-base (16px) below md so iOS Safari doesn't zoom the page in
+            // on focus (same fix as the From/To inputs).
+            className="min-w-0 flex-1 bg-transparent text-base text-[var(--fg)] placeholder:text-ripple-muted focus:outline-none md:text-sm"
           />
           <button
             type="submit"
