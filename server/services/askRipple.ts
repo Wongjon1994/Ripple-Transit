@@ -34,9 +34,33 @@ const INTENT_SCHEMA = {
         enum: ["time", "transfers", "walking", "crowds", "cost", "carbon"],
       },
     },
+    via: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            line: nullableString,
+            service: nullableString,
+            fromStop: nullableString,
+          },
+          required: ["line", "service", "fromStop"],
+        },
+        { type: "null" },
+      ],
+    },
     understood: { type: "string" },
   },
-  required: ["from", "to", "mode", "timeMode", "time", "preferences", "understood"],
+  required: [
+    "from",
+    "to",
+    "mode",
+    "timeMode",
+    "time",
+    "preferences",
+    "via",
+    "understood",
+  ],
 } as const;
 
 /** Thrown when no ANTHROPIC_API_KEY is configured — the feature stays disabled
@@ -51,7 +75,8 @@ Rules:
 - mode: "walk", "cycle", or "transit" (bus/train/MRT, and the default for getting somewhere). null if the user doesn't indicate one.
 - time + timeMode: set time ONLY when the user gives an explicit clock time, as 24-hour "HH:MM"; otherwise null. For daytime commute phrasing assume the sensible hour ("by 6" → "18:00", "meeting at 9am" → "09:00"). timeMode is "arrive" for "by/before <time>", "leave" for "leave/depart at <time>". A relative time you cannot resolve to a clock ("in 10 min", "now") → time null, timeMode "leave".
 - preferences: which of these the user emphasises — time (fastest/quickest), transfers (fewer changes/direct), walking (less walking), crowds (avoid crowds/quieter), cost (cheaper/save money), carbon (greener/lower emissions). Empty list if none.
-- understood: ONE short plain-English line restating exactly what you extracted, e.g. "To Orchard MRT, arrive by 6 pm, less walking." Do not include any number the user didn't give.`;
+- via: set ONLY when the user wants to travel via a specific line, bus, or stop; otherwise null. line = the 2-letter Singapore MRT/LRT line code when a rail line is named ("north-east line"/"NEL" → "NE"; "east-west" → "EW"; "circle" → "CC"; "downtown" → "DT"; "thomson-east coast" → "TE"; "north-south" → "NS"), else null. service = a bus service number as a string ("bus 186" → "186"), else null. fromStop = a named boarding stop if given ("from Opp Dawson Place" → "Opp Dawson Place"), else null.
+- understood: ONE short plain-English line restating exactly what you extracted, e.g. "To Orchard MRT via the NE line, arrive by 6 pm." Do not include any number the user didn't give.`;
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -71,6 +96,11 @@ function getClient(): Anthropic {
  */
 export function normalizeIntent(raw: AskIntent): AskIntent {
   const time = raw.time && /^\d{2}:\d{2}$/.test(raw.time.trim()) ? raw.time.trim() : null;
+  const line = raw.via?.line?.trim().toUpperCase() || null;
+  const service = raw.via?.service?.trim() || null;
+  const fromStop = raw.via?.fromStop?.trim() || null;
+  // A via constraint is only meaningful if it names a line or a service.
+  const via = line || service ? { line, service, fromStop } : null;
   return {
     from: raw.from?.trim() || null,
     to: raw.to?.trim() || null,
@@ -79,6 +109,7 @@ export function normalizeIntent(raw: AskIntent): AskIntent {
     timeMode: time ? (raw.timeMode ?? "leave") : (raw.timeMode ?? null),
     time,
     preferences: [...new Set(raw.preferences ?? [])],
+    via,
     understood: raw.understood?.trim() || "",
   };
 }

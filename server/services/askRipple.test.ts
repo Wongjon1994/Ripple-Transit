@@ -9,6 +9,7 @@ const base: AskIntent = {
   timeMode: null,
   time: null,
   preferences: [],
+  via: null,
   understood: "",
 };
 
@@ -46,6 +47,28 @@ describe("normalizeIntent", () => {
     const out = normalizeIntent({ ...base, time: null, timeMode: null });
     expect(out.time).toBeNull();
     expect(out.timeMode).toBeNull();
+  });
+
+  it("normalizes a via constraint (uppercases the line, keeps service/stop)", () => {
+    expect(
+      normalizeIntent({
+        ...base,
+        via: { line: "ne", service: null, fromStop: null },
+      }).via,
+    ).toEqual({ line: "NE", service: null, fromStop: null });
+    expect(
+      normalizeIntent({
+        ...base,
+        via: { line: null, service: "186", fromStop: " Opp Dawson Place " },
+      }).via,
+    ).toEqual({ line: null, service: "186", fromStop: "Opp Dawson Place" });
+  });
+
+  it("drops an empty via constraint to null", () => {
+    expect(
+      normalizeIntent({ ...base, via: { line: "", service: null, fromStop: "x" } })
+        .via,
+    ).toBeNull();
   });
 
   it("de-dupes preferences", () => {

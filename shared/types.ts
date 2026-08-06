@@ -178,6 +178,18 @@ export type AskPreference =
   | "cost"
   | "carbon";
 
+/** A "via" constraint parsed from an ask ("via the NE line", "via bus 186 from
+ *  Opp Dawson Place") — used to PREFER a matching option among the normal search
+ *  results, never to fabricate a route. */
+export interface AskVia {
+  /** 2-letter MRT line code the rider wants to use, e.g. "NE" — null if none. */
+  line: string | null;
+  /** A bus service number, e.g. "186" — null if none. */
+  service: string | null;
+  /** A named boarding stop, e.g. "Opp Dawson Place" — informational. */
+  fromStop: string | null;
+}
+
 /**
  * Structured intent parsed from a natural-language route request. The model
  * only EXTRACTS what the user stated — it never computes a time, fare, or route
@@ -196,6 +208,8 @@ export interface AskIntent {
   time: string | null;
   /** Flux dimensions the user emphasised — staged, applied on search. */
   preferences: AskPreference[];
+  /** A specific line/bus/stop the rider wants to travel via — null if none. */
+  via: AskVia | null;
   /** One short plain-English restatement of what was understood (no invented
    *  numbers) — shown back to the user as confirmation. */
   understood: string;

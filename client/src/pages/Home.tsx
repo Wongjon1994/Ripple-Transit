@@ -31,6 +31,7 @@ import type {
   ActiveMode,
   ActiveVariant,
   AskPreference,
+  AskVia,
   Itinerary,
   LatLng,
   NearestBusStop,
@@ -47,6 +48,20 @@ function askWeights(prefs: AskPreference[]): PrefWeights | undefined {
   const w: PrefWeights = {};
   for (const p of prefs) w[p] = 1;
   return w;
+}
+
+/** Does an itinerary use the line/bus the ask named? (best-effort via matching) */
+function itineraryUsesVia(it: Itinerary, via: AskVia): boolean {
+  return it.legs.some(
+    (l) =>
+      (!!via.line &&
+        l.type === "mrt" &&
+        (l.lineCode ?? "").toUpperCase().startsWith(via.line)) ||
+      (!!via.service && l.type === "bus" && l.busNo === via.service),
+  );
+}
+function viaLabel(via: AskVia): string {
+  return via.service ? `bus ${via.service}` : `the ${via.line} line`;
 }
 
 const MODE_TABS: { id: ModeTab; label: string; Icon: typeof BusFront }[] = [
@@ -90,6 +105,9 @@ export function Home() {
   // the server solves for when to leave.
   const [departMode, setDepartMode] = useState<"leave" | "arrive">("leave");
   const [selected, setSelected] = useState(saved?.selected ?? 0);
+  // A pending "via" preference from an ask — applied to result selection once
+  // the transit options arrive (best-effort: prefer a matching option).
+  const [askVia, setAskVia] = useState<AskVia | null>(null);
   // Results mode: Transit | Walk | Cycle (all support multi-stop journeys).
   const [modeTab, setModeTab] = useState<ModeTab>(saved?.modeTab ?? "transit");
   // Selected variant within the active tab (fastest / sheltered / PCN).
@@ -304,6 +322,23 @@ export function Home() {
 
   const itineraries = route.data?.plan.itineraries ?? [];
 
+  // Best-effort "via": once the transit options land, prefer one that uses the
+  // line/bus the ask named; if none does, say so honestly rather than pretend.
+  useEffect(() => {
+    if (!askVia || route.isFetching || itineraries.length === 0) return;
+    const idx = itineraries.findIndex((it) => itineraryUsesVia(it, askVia));
+    if (idx >= 0) {
+      setSelected(idx);
+      setActiveSel(idx);
+    } else {
+      toast.info(
+        `No option via ${viaLabel(askVia)} right now — showing the best route.`,
+      );
+    }
+    setAskVia(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askVia, route.isFetching, itineraries.length]);
+
   // Arrive-by: the server returns when to leave the origin. Format for the pill.
   const leaveByMs =
     !isMulti && routeParams?.arriveBy ? singleRoute.data?.leaveByMs : null;
@@ -512,7 +547,10 @@ export function Home() {
     if (fromPoint) setFrom(fromPoint);
     if (toLabel) setStops([{ text: toLabel, point: toPoint }]);
 
-    const mode: ModeTab = intent.mode ?? "transit";
+    // A "via a line/bus" ask is a transit request; the matching option is picked
+    // once results arrive (askVia below).
+    const mode: ModeTab = intent.via ? "transit" : (intent.mode ?? "transit");
+    setAskVia(intent.via);
     if (fromPoint && toPoint) {
       setWalkTabStopCode(null);
       setSelected(0);
