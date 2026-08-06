@@ -360,12 +360,11 @@ export function SearchPanel({
                 <button
                   type="button"
                   onClick={onCollapse}
-                  aria-label="Collapse panel for full map"
-                  title="Collapse for full map"
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-ripple-muted hover:bg-ripple-muted/10 hover:text-[var(--fg)]"
+                  aria-label="Close panel for full map"
+                  title="Close for full map"
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border)] text-ripple-muted hover:bg-ripple-muted/10 hover:text-[var(--fg)]"
                 >
-                  <ChevronDown size={16} className="md:hidden" />
-                  <ChevronRight size={16} className="hidden md:block" />
+                  <X size={16} />
                 </button>
               )}
             </span>
