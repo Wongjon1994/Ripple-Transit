@@ -459,6 +459,28 @@ export function Home() {
     staleTime: Infinity,
   });
   const askParse = trpc.ask.parse.useMutation();
+  // Saved places (Home / Work / "Church" …) so an ask can say "from home to
+  // church" and we resolve those labels without geocoding.
+  const savedLocations = trpc.savedLocations.list.useQuery(undefined, {
+    enabled: !!user,
+  });
+
+  /** Match an ask's place text against a saved location label (case-insensitive:
+   *  exact, or the saved label contains the word — "church" → "Bukit Arang
+   *  Church"). Returns the saved point + label, or null. */
+  function matchSavedPlace(
+    text: string,
+  ): { point: LatLng; label: string } | null {
+    const t = text.trim().toLowerCase();
+    if (!t) return null;
+    const list = savedLocations.data ?? [];
+    const hit =
+      list.find((s) => s.label.toLowerCase() === t) ??
+      list.find((s) => s.label.toLowerCase().includes(t));
+    return hit
+      ? { point: { lat: Number(hit.lat), lng: Number(hit.lng) }, label: hit.label }
+      : null;
+  }
 
   /** The device's current location + a friendly label, or null if unavailable.
    *  Used so an ask ("get me to Orchard") defaults the origin to where you are. */
@@ -504,12 +526,13 @@ export function Home() {
         : null;
     };
 
-    // Origin: a named place if the user gave one, otherwise default to where
-    // they are — so an ask fills BOTH ends and can search straight away.
+    // Origin: a saved place ("home") or a named place if the user gave one,
+    // otherwise default to where they are — so an ask fills BOTH ends and can
+    // search straight away.
     let fromPoint: LatLng | null = from;
     let fromLabel = fromText;
     if (intent.from && intent.from.toLowerCase() !== "current location") {
-      const g = await geocode(intent.from);
+      const g = matchSavedPlace(intent.from) ?? (await geocode(intent.from));
       if (g) {
         fromPoint = g.point;
         fromLabel = g.label;
@@ -524,7 +547,7 @@ export function Home() {
     let toPoint: LatLng | null = null;
     let toLabel = "";
     if (intent.to) {
-      const g = await geocode(intent.to);
+      const g = matchSavedPlace(intent.to) ?? (await geocode(intent.to));
       if (g) {
         toPoint = g.point;
         toLabel = g.label;
