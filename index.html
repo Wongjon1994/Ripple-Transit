@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ripple Transit | Jonathan Wong</title>
+<meta name="description" content="Why I built a context-aware commute planner for Singapore, how it actually works, and what I'd do differently. By Jonathan Wong.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0A1628;
+    --navy-2: #101E36;
+    --parchment: #F5F0E8;
+    --ink: #E4E1D8;
+    --ink-dim: #A8A79C;
+    --gold: #D4A843;
+    --crimson: #C23B3B;
+    --teal: #2D8B8B;
+    --sage: #6FA37A;
+    --border: rgba(212,168,67,0.18);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--navy);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { font-family: 'Playfair Display', serif; color: #fff; letter-spacing: -0.01em; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  a { color: var(--gold); }
+
+  /* Nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10,22,40,0.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; }
+  nav .brand { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 18px; color: #fff; text-decoration: none; }
+  nav .links { display: flex; gap: 22px; font-size: 13px; }
+  nav .links a { color: var(--ink-dim); text-decoration: none; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
+  nav .links a:hover { color: var(--gold); }
+
+  /* Hero */
+  header.hero { padding: 88px 0 64px; text-align: center; border-bottom: 1px solid var(--border); }
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.18em; font-size: 12px; color: var(--gold); font-weight: 600; margin-bottom: 18px; }
+  header.hero h1 { font-size: 44px; line-height: 1.15; margin-bottom: 18px; }
+  header.hero p.tagline { font-size: 18px; color: var(--ink-dim); max-width: 640px; margin: 0 auto 36px; }
+  .stat-row { display: flex; justify-content: center; gap: 0; flex-wrap: wrap; margin-bottom: 40px; }
+  .stat { padding: 0 28px; border-left: 1px solid var(--border); }
+  .stat:first-child { border-left: none; }
+  .stat .num { font-family: 'JetBrains Mono', monospace; font-size: 26px; color: var(--gold); font-weight: 500; }
+  .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-dim); margin-top: 4px; }
+  .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 12px 24px; border-radius: 3px; font-size: 14px; font-weight: 600; text-decoration: none; transition: all 0.15s ease; }
+  .btn-primary { background: var(--gold); color: var(--navy); }
+  .btn-primary:hover { background: #e6bb56; }
+  .btn-ghost { border: 1px solid var(--border); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+  section { padding: 72px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+  .section-label { text-transform: uppercase; letter-spacing: 0.14em; font-size: 12px; color: var(--gold); font-weight: 600; margin-bottom: 12px; }
+  section h2 { font-size: 30px; margin-bottom: 22px; }
+  section > .wrap > p.lead { font-size: 17px; color: var(--ink-dim); max-width: 680px; margin-bottom: 28px; }
+
+  /* Architecture diagram */
+  .pipeline { display: flex; flex-direction: column; gap: 0; margin: 32px 0; }
+  .pipe-step {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--navy-2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; position: relative;
+  }
+  .pipe-step + .pipe-step { margin-top: 22px; }
+  .pipe-step .arrow {
+    position: absolute; top: -22px; left: 32px; color: var(--gold); font-size: 14px; font-family: 'JetBrains Mono', monospace;
+  }
+  .pipe-step .n { font-family: 'JetBrains Mono', monospace; color: var(--gold); font-size: 13px; min-width: 20px; }
+  .pipe-step .t { font-weight: 600; color: #fff; font-size: 15px; }
+  .pipe-step .d { color: var(--ink-dim); font-size: 13px; margin-top: 2px; }
+  .pipe-tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 10px; margin-left: auto; white-space: nowrap; }
+  .tag-n8n { background: rgba(45,139,139,0.18); color: var(--teal); }
+  .tag-api { background: rgba(212,168,67,0.18); color: var(--gold); }
+  .tag-db { background: rgba(111,163,122,0.18); color: var(--sage); }
+
+  /* Decision cards */
+  .decisions { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .decision-card { background: var(--navy-2); border: 1px solid var(--border); border-radius: 6px; padding: 22px 24px; }
+  .decision-card h3 { font-size: 17px; margin-bottom: 8px; color: var(--gold); font-family: 'Inter', sans-serif; font-weight: 600; }
+  .decision-card p { color: var(--ink-dim); font-size: 14.5px; }
+
+  /* Metrics grid */
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 28px; }
+  .metric-box { border: 1px solid var(--border); border-radius: 6px; padding: 20px; text-align: center; }
+  .metric-box .v { font-family: 'JetBrains Mono', monospace; font-size: 24px; color: var(--gold); }
+  .metric-box .l { font-size: 12px; color: var(--ink-dim); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* Learnings list */
+  .learnings { list-style: none; }
+  .learnings li { padding: 14px 0; border-top: 1px solid var(--border); display: flex; gap: 14px; }
+  .learnings li:first-child { border-top: none; }
+  .learnings .bullet { color: var(--gold); font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+  .learnings .txt { color: var(--ink-dim); font-size: 14.5px; }
+  .learnings .txt strong { color: var(--ink); }
+
+  /* Stack table */
+  table.stack { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+  table.stack th { text-align: left; color: var(--gold); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  table.stack td { padding: 12px; border-bottom: 1px solid var(--border); color: var(--ink-dim); vertical-align: top; }
+  table.stack td:first-child { color: var(--ink); font-weight: 500; }
+
+  /* Bio / footer */
+  .bio-box { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .bio-box .txt { flex: 1; min-width: 260px; }
+  .about-card {
+    border: 1px solid var(--border); border-top: 3px solid var(--gold); border-radius: 12px;
+    padding: 44px; background: linear-gradient(180deg, rgba(212,168,67,0.05), transparent 60%);
+  }
+  .bio-head { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 24px; }
+  .avatar {
+    width: 84px; height: 84px; border-radius: 50%; background: var(--gold); color: var(--navy);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    font-family: 'Playfair Display', serif; font-weight: 700; font-size: 28px;
+  }
+  .bio-head h2 { margin-bottom: 4px; }
+  .bio-head .subtitle { color: var(--ink-dim); font-size: 15px; }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 26px; }
+  .tag-pill {
+    display: inline-block; border: 1px solid var(--border); color: var(--gold);
+    padding: 7px 16px; border-radius: 999px; font-size: 13px; font-weight: 500;
+  }
+  .about-card p + p { margin-top: 14px; }
+  footer { padding: 48px 0 64px; text-align: center; }
+  footer .links { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
+  footer p.fine { color: var(--ink-dim); font-size: 12.5px; margin-top: 28px; max-width: 560px; margin-left: auto; margin-right: auto; }
+
+  @media (max-width: 640px) {
+    header.hero h1 { font-size: 32px; }
+    .stat { padding: 0 16px; border-left: none; }
+    nav .links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top">Ripple Transit</a>
+    <div class="links">
+      <a href="#architecture">How it works</a>
+      <a href="#decisions">Decisions</a>
+      <a href="#learnings">Learnings</a>
+      <a href="#about">About</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="eyebrow">Built &amp; operated solo · second Ripple project</div>
+    <h1>Ripple Transit</h1>
+    <p class="tagline">Time-sensitive commutes in Singapore used to mean three apps open at once: Google Maps for an ETA I didn't fully trust, SGBusTiming to check if the bus was actually where Google said, and a weather app to decide if it was a walk-to-station day or a bus day. All that effort just to answer one question: what's the fastest, least risky way to get there? So I built something that fuses all of it into one screen, and used it as a second test of the same question I asked with The Daily Ripple: could I design, build, and run something end to end outside financial services too?</p>
+    <div class="stat-row">
+      <div class="stat"><div class="num">7</div><div class="label">Live data sources</div></div>
+      <div class="stat"><div class="num">220+</div><div class="label">Tests passing</div></div>
+      <div class="stat"><div class="num">$7/mo</div><div class="label">Est. to run</div></div>
+      <div class="stat"><div class="num">1</div><div class="label">Person</div></div>
+    </div>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://ripple-transit.onrender.com/" target="_blank" rel="noopener">See the live site →</a>
+      <a class="btn btn-ghost" href="https://github.com/Wongjon1994/Ripple-Transit" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</header>
+
+<section id="problem">
+  <div class="wrap">
+    <div class="section-label">Why I built this</div>
+    <h2>Google Maps gives you an ETA. It doesn't tell you if you can actually catch the bus</h2>
+    <p class="lead">A normal Singapore commute meant Google Maps for the route, SGBusTiming to check whether the bus was actually where Google said it was, and a quick look at the weather app to decide whether today was a walk day or a bus day. Three apps, every morning, to answer one question: what's the fastest, least risky way to get to where I'm going?</p>
+    <p style="color:var(--ink-dim); font-size:15px; max-width:680px; margin-bottom:16px;">That's the idea behind Ripple Transit. It's a Singapore commute planner that pulls live bus arrivals, transfer risk, weather, and MRT status into one screen instead of five. I think of it as how I'd rebuild Google Maps if it were built for one specific person: a time-optimising, comparison-driven Singaporean commuter. That's not a knock on Google. Their global map is genuinely excellent, but a product built for the whole world can't lean into the handful of things that actually decide a Singapore commute: whether the next bus is really coming when it says, whether a transfer is tight or comfortable, and whether it's about to rain on you.</p>
+    <p style="color:var(--ink-dim); font-size:15px; max-width:680px;">It's also the second product in what I'm calling the Ripple series. The Daily Ripple tested whether I could run an agentic AI system end to end in a financial services context. Ripple Transit tests the same question in a completely different one: real-time, consumer-facing, and judged the moment it gets a bus arrival wrong.</p>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="wrap">
+    <div class="section-label">How it works</div>
+    <h2>Three layers stacked on top of one routing engine</h2>
+    <p class="lead">Underneath, it's OneMap doing the actual routing. Everything Ripple adds sits on top of that as separate, honest layers, not one black box.</p>
+
+    <div class="pipeline">
+      <div class="pipe-step">
+        <span class="n">01</span>
+        <div><div class="t">You ask, in your own words or by filling in From/To</div><div class="d">"Ask Ripple" (Claude Haiku 4.5) turns a sentence into structured fields. It only extracts what you actually said, never invents a time or a preference you didn't state</div></div>
+        <span class="pipe-tag tag-api">Claude API</span>
+      </div>
+      <div class="pipe-step">
+        <span class="arrow">↓</span>
+        <span class="n">02</span>
+        <div><div class="t">OneMap returns the routes</div><div class="d">Transit, walk, cycle. This is the deterministic base every other layer sits on</div></div>
+        <span class="pipe-tag tag-n8n">OneMap</span>
+      </div>
+      <div class="pipe-step">
+        <span class="arrow">↓</span>
+        <span class="n">03</span>
+        <div><div class="t">Live data gets folded in</div><div class="d">LTA bus arrivals re-rank ETAs every minute, road speed bands and MRT platform crowding feed Pulse, NEA forecasts and PUB flood alerts feed the weather read</div></div>
+        <span class="pipe-tag tag-n8n">LTA · NEA · PUB</span>
+      </div>
+      <div class="pipe-step">
+        <span class="arrow">↓</span>
+        <span class="n">04</span>
+        <div><div class="t">Every bus leg gets a catchability read</div><div class="d">Walking time to the stop against live arrival time, shown as green OK, amber tight, or red miss, with an alternative one tap away</div></div>
+        <span class="pipe-tag tag-db">Feasibility engine</span>
+      </div>
+      <div class="pipe-step">
+        <span class="arrow">↓</span>
+        <span class="n">05</span>
+        <div><div class="t">Flux weighs it against what you said matters</div><div class="d">Six sliders: time, transfers, walking, crowds, cost, emissions. Options get a match score instead of one fixed "best" answer</div></div>
+        <span class="pipe-tag tag-db">Flux</span>
+      </div>
+      <div class="pipe-step">
+        <span class="arrow">↓</span>
+        <span class="n">06</span>
+        <div><div class="t">One card, not five apps</div><div class="d">Fare, CO2 saved, catchability, and weather risk render together, and the whole thing re-routes on demand if you miss a connection</div></div>
+        <span class="pipe-tag tag-api">React · tRPC</span>
+      </div>
+    </div>
+
+    <table class="stack">
+      <tr><th>Layer</th><th>What I'm using</th></tr>
+      <tr><td>Frontend</td><td>React 19 + Vite 6, Wouter for routing, Tailwind CSS 4, Leaflet with OneMap tiles</td></tr>
+      <tr><td>Data layer</td><td>tRPC 11 + TanStack Query, superjson, types shared end to end between client and server</td></tr>
+      <tr><td>Backend</td><td>Express 4 + tRPC 11</td></tr>
+      <tr><td>Database</td><td>Drizzle ORM on libSQL/SQLite, deployed on Turso</td></tr>
+      <tr><td>Auth</td><td>Email + password with bcrypt, httpOnly cookie sessions</td></tr>
+      <tr><td>Natural language search</td><td>Claude Haiku 4.5 via the Anthropic API, strict JSON-schema output</td></tr>
+      <tr><td>Tests</td><td>Vitest, 220+ passing as of the last deploy</td></tr>
+      <tr><td>Hosting</td><td>Render (Starter web service), single Node process serving API and client on one port</td></tr>
+    </table>
+
+    <p style="margin-top:32px; color:var(--gold); font-size:13px; text-transform:uppercase; letter-spacing:0.08em; font-weight:600;">Live data it actually pulls from</p>
+    <table class="stack">
+      <tr><th>Source</th><th>What it feeds</th></tr>
+      <tr><td>LTA DataMall</td><td>Live bus arrivals, bus stops and routes, MRT platform crowding, road incidents and speed bands, service-disruption alerts</td></tr>
+      <tr><td>OneMap</td><td>Transit, walk, cycle, and drive routing, geocoding</td></tr>
+      <tr><td>data.gov.sg</td><td>Park connectors, cycling paths, hawker centres, clinics, parks, MRT exits, NEA hygiene grades</td></tr>
+      <tr><td>NEA</td><td>2-hour and 24-hour weather forecasts, temperature and humidity</td></tr>
+      <tr><td>PUB</td><td>Flash-flood alerts, shown on the live Pulse layer</td></tr>
+      <tr><td>OpenStreetMap</td><td>Sheltered-walkway network, bicycle parking near your destination, opening hours</td></tr>
+      <tr><td>HERE</td><td>Place discovery for dining, supermarkets, ATMs, used as a fallback when OneMap search comes up empty</td></tr>
+    </table>
+    <p style="color:var(--ink-dim); font-size:13.5px; margin-top:14px; max-width:680px;">About page says it straight: every figure in the app is either real data or a clearly labelled estimate. Nothing gets shown as a fact if it's a guess.</p>
+  </div>
+</section>
+
+<section id="decisions">
+  <div class="wrap">
+    <div class="section-label">Decisions worth explaining</div>
+    <h2>The parts I'd want you to ask me about</h2>
+    <div class="decisions">
+      <div class="decision-card">
+        <h3>Why I moved off the original spec's MySQL/TiDB and Manus OAuth</h3>
+        <p>The build brief I wrote for this assumed the Manus platform, so it called for MySQL/TiDB and Manus OAuth by default. Once I was actually building for a plain Node service on Render, that assumption stopped making sense. I moved the database to libSQL/SQLite on Turso, one dialect for zero-setup local dev and a cloud deploy, same six tables plus sessions. Auth became plain email and password with bcrypt and httpOnly cookies, self-contained, nothing external to depend on. Small deviation, but a real one: the platform you assume when you write the spec isn't always the platform you actually ship on, and it's worth catching that early rather than fighting it later.</p>
+      </div>
+      <div class="decision-card">
+        <h3>Ask Ripple only fills in what you actually said</h3>
+        <p>The natural-language search box turns a sentence into structured From/To/mode/time fields using Claude Haiku 4.5 with a strict JSON-schema output. The system prompt explicitly forbids inventing a destination, time, or preference you didn't state: unstated just means null. Every ETA, fare, and CO2 figure downstream still comes from the deterministic backend, never from the model. After what The Daily Ripple taught me about a model confidently getting a number wrong, I wasn't going to let this one guess at facts either. It's allowed to parse. It's not allowed to compute.</p>
+      </div>
+      <div class="decision-card">
+        <h3>The taxi estimate that quietly lied for weeks</h3>
+        <p>The fare estimator only ever showed the metered fare (flag-down plus distance) and explicitly excluded surcharges. So a Changi Airport trip or a peak-hour trip read well below what the meter would actually charge. A real test case: Changi T1 to Coronation Road priced at roughly $22.71 base when it should have read closer to $28.71 once the airport surcharge was added. Fixed it by estimating the common LTA surcharges (peak hour, late night, the flat Changi surcharge) and showing them as an itemised, labelled line rather than folding them silently into one number. It's still an estimate, ERP and event surcharges aren't modelled, but now it says so.</p>
+      </div>
+      <div class="decision-card">
+        <h3>An "8 hour 32 minute" route isn't a better route</h3>
+        <p>Re-routing mid-journey near the last train or bus of the night was offering OneMap's "wait for the first morning service" itinerary and showing it verbatim as the recommended alternative. Technically correct, practically useless. I added a sanity guard: only offer an alternative within roughly double the original remaining time, or plus 30 minutes for a missed connection, and if nothing sensible exists, say so honestly instead of surfacing an 8-hour plan. Also renamed the button from "Better route" to "Alternative from here," since it isn't always faster, just what's available.</p>
+      </div>
+      <div class="decision-card">
+        <h3>Stale data that looked exactly like a broken app</h3>
+        <p>The "nearby places" panel appeared to stop working after the first use. Switching category kept the previous category's results under the new label, because a caching setting kept old data visible while new data loaded, and if that new request was slow or rate-limited by data.gov.sg, the stale rows just sat there indefinitely looking like an answer. Fixed by clearing to a loading state on every switch instead of holding onto old data, and by adding an explicit, recoverable error message instead of silently showing something wrong. A UI that shows old data instead of no data reads as broken, even when nothing actually crashed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="learnings">
+  <div class="wrap">
+    <div class="section-label">What I'd do differently</div>
+    <h2>If I started this over</h2>
+    <ul class="learnings">
+      <li><span class="bullet">→</span><span class="txt"><strong>Log API cost and usage automatically, from the first commit.</strong> HERE has a hard cap enforced in code because it's metered and I was watching it closely. The Anthropic calls behind Ask Ripple aren't logged the same way yet, so I'm estimating that cost instead of reading it off a table, which is the same mistake I made on The Daily Ripple.</span></li>
+      <li><span class="bullet">→</span><span class="txt"><strong>Write the sanity guard before the feature ships, not after a live bug shows you needed one.</strong> The 8-hour re-route alternative was technically correct output from OneMap. It took an actual overnight edge case for me to realise "technically correct" and "useful" aren't the same bar.</span></li>
+      <li><span class="bullet">→</span><span class="txt"><strong>Loading and error states are part of the feature, not a detail to add later.</strong> The nearby-places bug wasn't really a data problem. It was a missing "this failed, tap to retry" state that let stale data pass as current for anyone who hit a slow response.</span></li>
+      <li><span class="bullet">→</span><span class="txt"><strong>Decide upfront which numbers are facts and which are estimates, and never blur the two.</strong> The taxi surcharge bug happened because "the fare" quietly meant "the fare minus surcharges" with no label saying so. Every number in the app should say what kind of number it is.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="economics">
+  <div class="wrap">
+    <div class="section-label">What it costs</div>
+    <h2>What this actually costs to run</h2>
+    <p class="lead">Worth being upfront: most of what feeds this is free, government open data. The real cost is hosting, plus a small, not-yet-logged amount for the AI layer.</p>
+    <div class="metrics-grid">
+      <div class="metric-box"><div class="v">$7</div><div class="l">Render Starter / month</div></div>
+      <div class="metric-box"><div class="v">Free</div><div class="l">Turso (SQLite) tier</div></div>
+      <div class="metric-box"><div class="v">29,950</div><div class="l">HERE calls / month cap</div></div>
+      <div class="metric-box"><div class="v">Free</div><div class="l">LTA · OneMap · NEA · PUB · OSM</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="enterprise">
+  <div class="wrap">
+    <div class="section-label">Why I think this matters beyond a route planner</div>
+    <h2>A context-aware decision layer, not a transport aggregator</h2>
+    <p class="lead">Take away the Singapore-commute framing and what's left is: fuse several live data streams into one view, weigh the options against preferences someone actually stated instead of one fixed "best" answer, use an LLM strictly as an interface layer bounded by a deterministic backend, and give an honest confidence read (OK, tight, miss) instead of a single number you're expected to trust blindly. That's the same shape as flagging an operational risk with a confidence label instead of a blanket alert, or weighting a recommendation to a client's stated preferences instead of handing back one generic answer.</p>
+    <p style="color:var(--ink-dim); font-size:15px; max-width:680px;">The part I think actually transfers: an LLM is useful as a parser and a translator of intent, not as the source of the numbers people are going to act on. Ask Ripple can read "get me to Changi by 6, I hate crowds" and turn it into structured fields. It never gets to invent the ETA, the fare, or the crowding level itself. That boundary, model interprets, deterministic system computes, is the one lesson I'd carry into any enterprise AI workflow, financial services or otherwise.</p>
+  </div>
+</section>
+
+<section id="about">
+  <div class="wrap">
+    <div class="about-card">
+      <div class="bio-head">
+        <div class="avatar">JW</div>
+        <div>
+          <div class="eyebrow" style="margin-bottom:6px;">About the builder</div>
+          <h2>Jonathan Wong</h2>
+          <div class="subtitle">Singapore · Business transformation, platforms &amp; applied AI</div>
+        </div>
+      </div>
+      <div class="tag-row">
+        <span class="tag-pill">Business transformation</span>
+        <span class="tag-pill">Product &amp; platform delivery</span>
+        <span class="tag-pill">Applied AI</span>
+        <span class="tag-pill">Financial services</span>
+        <span class="tag-pill">Payments &amp; wealth</span>
+        <span class="tag-pill">Consumer &amp; mobility</span>
+      </div>
+      <p style="color:var(--ink-dim); font-size:15px;">7+ years across consulting (Accenture) and banking (DBS), sitting at the intersection of business transformation, product and platform delivery, and technology, across retail banking, payments, wealth management, and private banking. What I'm actually good at is taking a problem where the requirements, process, and priorities aren't fully defined yet and turning it into something a team can build against, working across business, tech, data, risk, and ops without needing to own any of them formally.</p>
+      <p style="color:var(--ink-dim); font-size:15px;">The Daily Ripple was that same instinct pointed at something I could build myself, end to end, inside financial services. Ripple Transit is the second build in that process, a deliberate test of whether the same patterns hold up outside financial services: real-time instead of daily, consumer-facing instead of a subscriber briefing, judged the moment it gets a bus arrival wrong rather than the next morning. I'm on a deliberate career break right now, using it to go deep on the building side of what I've spent 7 years directing.</p>
+      <p style="color:var(--ink-dim); font-size:15px;">Where I'm headed isn't narrowly "AI product manager in a bank." It's roles at the intersection of financial services domain knowledge, business transformation, and applied AI, wherever intelligent platforms and workflows are the thing actually reshaping how a business or operating model works, not just a feature bolted on the side. Ripple Transit exists to show that instinct isn't limited to one domain.</p>
+      <div class="cta-row" style="justify-content:flex-start; margin-top:24px;">
+        <a class="btn btn-primary" href="https://www.linkedin.com/in/jonathan-wong-kw/" target="_blank" rel="noopener">Connect on LinkedIn</a>
+        <a class="btn btn-ghost" href="mailto:jonathanwong_1994@hotmail.com">Email</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="eyebrow">Ripple Transit</div>
+    <p style="color:var(--ink-dim); font-size:14px;">Independent, self-funded, personal project.</p>
+    <div class="links">
+      <a href="https://ripple-transit.onrender.com/" target="_blank" rel="noopener">Live site</a>
+      <a href="https://github.com/Wongjon1994/Ripple-Transit" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/jonathan-wong-kw/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+    <p class="fine">Still rough in places: some gaps, some days sharper than others. But it's real, it's live, and free to try. Not trying to replace Google Maps, no global coverage, no driving navigation, none of their place-data depth. Built entirely with Claude Code, working off a spec I wrote myself. I think that workflow, not just the app, is part of the point.</p>
+  </div>
+</footer>
+
+</body>
+</html>
