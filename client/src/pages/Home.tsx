@@ -9,6 +9,7 @@ import {
   Search,
   Compass,
   Sparkles,
+  X,
 } from "lucide-react";
 import { trpc } from "../lib/trpc.js";
 import {
@@ -459,15 +460,17 @@ export function Home() {
     staleTime: Infinity,
   });
   const askParse = trpc.ask.parse.useMutation();
-  // Saved places (Home / Work / "Church" …) so an ask can say "from home to
-  // church" and we resolve those labels without geocoding.
+  // Saved places + favourite routes so an ask can say "from home to church" and
+  // we resolve those personal labels instead of geocoding an ambiguous word.
   const savedLocations = trpc.savedLocations.list.useQuery(undefined, {
     enabled: !!user,
   });
+  const favouriteRoutes = trpc.favouriteRoutes.list.useQuery(undefined, {
+    enabled: !!user,
+  });
 
-  /** Match an ask's place text against a saved location label (case-insensitive:
-   *  exact, or the saved label contains the word — "church" → "Bukit Arang
-   *  Church"). Returns the saved point + label, or null. */
+  /** Match an ask's place text against a SAVED LOCATION label (has coords).
+   *  Exact label first, then a label that contains the word. */
   function matchSavedPlace(
     text: string,
   ): { point: LatLng; label: string } | null {
@@ -480,6 +483,30 @@ export function Home() {
     return hit
       ? { point: { lat: Number(hit.lat), lng: Number(hit.lng) }, label: hit.label }
       : null;
+  }
+
+  /** Resolve a personal alias from FAVOURITE ROUTES to a concrete place name to
+   *  geocode — "church" → "BETHESDA CHURCH". Favourite routes store the origin
+   *  and destination as text (no coords), plus a "Home to Church"-style label
+   *  the user chose; we pair the label halves with origin/destination, then also
+   *  fall back to a route endpoint that contains the word. Returns the place
+   *  TEXT (deterministic to geocode), or null. */
+  function favouriteAlias(text: string): string | null {
+    const t = text.trim().toLowerCase();
+    if (!t) return null;
+    const routes = favouriteRoutes.data ?? [];
+    for (const r of routes) {
+      const parts = r.label.split(/\s*(?:→|->|\bto\b)\s*/i);
+      if (parts.length === 2) {
+        if (parts[0].trim().toLowerCase() === t) return r.origin;
+        if (parts[1].trim().toLowerCase() === t) return r.destination;
+      }
+    }
+    for (const r of routes) {
+      if (r.destination.toLowerCase().includes(t)) return r.destination;
+      if (r.origin.toLowerCase().includes(t)) return r.origin;
+    }
+    return null;
   }
 
   /** The device's current location + a friendly label, or null if unavailable.
@@ -532,7 +559,9 @@ export function Home() {
     let fromPoint: LatLng | null = from;
     let fromLabel = fromText;
     if (intent.from && intent.from.toLowerCase() !== "current location") {
-      const g = matchSavedPlace(intent.from) ?? (await geocode(intent.from));
+      const g =
+        matchSavedPlace(intent.from) ??
+        (await geocode(favouriteAlias(intent.from) ?? intent.from));
       if (g) {
         fromPoint = g.point;
         fromLabel = g.label;
@@ -547,7 +576,9 @@ export function Home() {
     let toPoint: LatLng | null = null;
     let toLabel = "";
     if (intent.to) {
-      const g = matchSavedPlace(intent.to) ?? (await geocode(intent.to));
+      const g =
+        matchSavedPlace(intent.to) ??
+        (await geocode(favouriteAlias(intent.to) ?? intent.to));
       if (g) {
         toPoint = g.point;
         toLabel = g.label;
@@ -748,10 +779,19 @@ export function Home() {
           panelCollapsed && "hidden",
         )}
       >
-        {/* No grab-handle header row anymore (no drag / no multi-snap) — the map
-            gets that ~40px back. Collapse-to-map is a chevron laid out inline in
-            the summary corner (next to Edit) or the form's From row, passed via
-            onCollapse below. */}
+        {/* One obvious close-to-map control, floating at the panel's top-right
+            corner in every state (sticky so it stays put while the options
+            scroll). -mb-8 keeps it out of the flow so it overlays rather than
+            pushing content down. */}
+        <button
+          type="button"
+          onClick={() => setPanelCollapsed(true)}
+          aria-label="Close panel for full map"
+          title="Close for full map"
+          className="sticky top-2 z-[30] -mb-8 ml-auto mr-2.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-ripple-muted shadow-[var(--shadow-card)] hover:text-[var(--fg)]"
+        >
+          <X size={17} />
+        </button>
         <div
           className={cn(
             "px-4 pb-3 pt-2 md:pt-3",
@@ -774,7 +814,6 @@ export function Home() {
               departMode={departMode}
               leaveByLabel={leaveByLabel}
               onEdit={() => setEditingSearch(true)}
-              onCollapse={() => setPanelCollapsed(true)}
             />
           ) : (
           <SearchPanel
@@ -856,7 +895,6 @@ export function Home() {
               setStops([{ text: destination, point: null }]);
             }}
             showShortcuts={!routeParams}
-            onCollapse={() => setPanelCollapsed(true)}
             askEnabled={askConfigured.data?.enabled ?? false}
             asking={askParse.isPending}
             onAsk={handleAsk}

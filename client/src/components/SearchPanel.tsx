@@ -307,7 +307,7 @@ export function SearchPanel({
       {askEnabled && onAsk && (
         <form
           onSubmit={submitAsk}
-          className="flex items-center gap-2 rounded-lg border border-brand/40 bg-brand/5 px-3 py-2 focus-within:border-brand"
+          className="mr-9 flex items-center gap-2 rounded-lg border border-brand/40 bg-brand/5 px-3 py-2 focus-within:border-brand"
         >
           <Sparkles size={16} className="shrink-0 text-brand" />
           <input
@@ -319,6 +319,16 @@ export function SearchPanel({
             // on focus (same fix as the From/To inputs).
             className="min-w-0 flex-1 bg-transparent text-base text-[var(--fg)] placeholder:text-ripple-muted focus:outline-none md:text-sm"
           />
+          {askText.length > 0 && !asking && (
+            <button
+              type="button"
+              onClick={() => setAskText("")}
+              aria-label="Clear"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-ripple-muted hover:bg-ripple-muted/15 hover:text-[var(--fg)]"
+            >
+              <X size={15} />
+            </button>
+          )}
           <button
             type="submit"
             aria-label="Ask"
@@ -646,7 +656,8 @@ export function SearchSummaryBar({
   ];
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
-      <div className="flex items-start gap-2">
+      {/* pr-8 leaves room for the panel's floating close-X at the top-right. */}
+      <div className="flex items-start gap-2 pr-8">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           {points.map((p, i) => (
             <div key={i} className="flex items-start gap-2">
