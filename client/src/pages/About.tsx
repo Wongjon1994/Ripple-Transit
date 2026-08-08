@@ -79,7 +79,7 @@ const SOURCES: { name: string; use: string; href: string }[] = [
   },
   {
     name: "PUB — national water agency",
-    use: "Flash-flood alerts (public @PUBFloodAlerts channel) — flooded roads to avoid, shown on Pulse",
+    use: "Flash-flood alerts (via LTA DataMall's Flood Alerts API) — flooded areas to avoid, shown on Pulse",
     href: "https://www.pub.gov.sg",
   },
   {

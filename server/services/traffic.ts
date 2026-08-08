@@ -73,7 +73,7 @@ export interface CongestionSegment {
 
 interface SpeedBandRow {
   RoadName: string;
-  RoadCategory: string;
+  RoadCategory: string | number; // v4: numeric road-class code
   SpeedBand: number;
   StartLat: string;
   StartLon: string;
@@ -84,23 +84,28 @@ interface SpeedBandRow {
 /**
  * Congestion severity for a road link, or null to skip it. Tuned per road
  * class so the map shows real jams, not naturally-slow side streets:
- *  - Expressway (A): any band ≤3 is abnormal → red ≤2, amber at 3.
- *  - Major/arterial (B, C): band 1 (crawling) red, band 2 amber; band 3
+ *  - Expressway (cat 1): any band ≤3 is abnormal → red ≤2, amber at 3.
+ *  - Major/arterial (cat 2, 3): band 1 (crawling) red, band 2 amber; band 3
  *    (20-29 km/h) is normal for these, so ignored.
+ * v4 RoadCategory is numeric: 1 Expressway, 2 Major Arterial, 3 Arterial,
+ * 4 Minor Arterial, 5 Small, 6 Slip, 8 Short Tunnel. (Was letters A–F in v3.)
  */
 export function congestionLevel(
-  cat: string,
+  cat: string | number,
   band: number,
 ): "red" | "amber" | null {
   if (band < 1) return null; // 0 = no reading
-  if (cat === "A") return band <= 2 ? "red" : band === 3 ? "amber" : null;
-  if (cat === "B" || cat === "C")
+  const c = String(cat);
+  if (c === "1") return band <= 2 ? "red" : band === 3 ? "amber" : null;
+  if (c === "2" || c === "3")
     return band === 1 ? "red" : band === 2 ? "amber" : null;
-  return null; // D/E/F minor roads: always slow, never drawn
+  return null; // minor / slip / tunnel: always slow, never drawn
 }
 
 const SPEED_TTL_MS = 90 * 1000;
-const SPEED_BASE = `${BASE}/v3/TrafficSpeedBands`;
+// v4 as of LTA DataMall API guide 6.9 — v3 was retired and 404s. Same response
+// shape (RoadCategory / SpeedBand / Start·End Lat·Lon).
+const SPEED_BASE = `${BASE}/v4/TrafficSpeedBands`;
 let speedCache: { at: number; data: CongestionSegment[] } | null = null;
 let speedInflight: Promise<CongestionSegment[]> | null = null;
 
